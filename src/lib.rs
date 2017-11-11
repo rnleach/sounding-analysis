@@ -8,6 +8,7 @@ use sounding_base::{Sounding, DataRow, OptionVal};
 /// Interpolate values from the vertical sounding using pressure as the primary coordinate.
 ///
 /// Returns a `DataRow` struct with interpolated values.
+#[cfg_attr(feature = "cargo-clippy", allow(cyclomatic_complexity))]
 pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> DataRow {
 
     macro_rules! linear_interp {
