@@ -42,7 +42,7 @@ pub fn dendritic_growth_zone(snd: &Sounding, v_coord: Profile) -> Vec<(f64, f64)
                 // Just crossed into a dendritic zone
                 bottom = ::interpolation::linear_interp(WARM_SIDE, last_t, t, last_coord, coord);
             }
-            if (last_t > COLD_SIDE && t < COLD_SIDE) ||  (last_t < WARM_SIDE && t > WARM_SIDE) {
+            if (last_t > COLD_SIDE && t < COLD_SIDE) || (last_t < WARM_SIDE && t > WARM_SIDE) {
                 // Just crossed out of a dendritic zone
                 top = ::interpolation::linear_interp(COLD_SIDE, last_t, t, last_coord, coord);
                 result.push((bottom, top));
