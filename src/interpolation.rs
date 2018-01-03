@@ -1,11 +1,9 @@
-
-use sounding_base::{Sounding, DataRow, OptionVal};
+use sounding_base::{DataRow, OptionVal, Sounding};
 
 /// Interpolate values from the vertical sounding using pressure as the primary coordinate.
 ///
 /// Returns a `DataRow` struct with interpolated values.
 pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> DataRow {
-
     use sounding_base::Profile::*;
 
     let pressure = snd.get_profile(Pressure);
@@ -49,12 +47,10 @@ pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> DataRow {
 
         // Special interpolation for anlges
         if direction.len() > above_idx {
-            if let (Some(dir_below), Some(dir_above)) =
-                (
-                    direction[below_idx].as_option(),
-                    direction[above_idx].as_option(),
-                )
-            {
+            if let (Some(dir_below), Some(dir_above)) = (
+                direction[below_idx].as_option(),
+                direction[above_idx].as_option(),
+            ) {
                 let x_below = dir_below.to_radians().sin();
                 let x_above = dir_above.to_radians().sin();
                 let y_below = dir_below.to_radians().cos();

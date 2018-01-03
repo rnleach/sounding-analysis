@@ -1,4 +1,4 @@
-use sounding_base::{Sounding, Profile};
+use sounding_base::{Profile, Sounding};
 use sounding_base::Profile::*;
 
 /// Find the dendtritic growth zones throughout the profile. It is unusual, but possible there is
@@ -10,10 +10,9 @@ pub fn dendritic_growth_zone(snd: &Sounding, v_coord: Profile) -> Vec<(f64, f64)
     const WARM_SIDE: f64 = -12.0;
     const COLD_SIDE: f64 = -18.0;
 
-    let mut profile = snd.get_profile(Temperature).iter().zip(
-        snd.get_profile(v_coord)
-            .iter(),
-    );
+    let mut profile = snd.get_profile(Temperature)
+        .iter()
+        .zip(snd.get_profile(v_coord).iter());
 
     let mut bottom = ::std::f64::MAX; // Only initialize because compiler can't tell value not used
     let mut top: f64;
