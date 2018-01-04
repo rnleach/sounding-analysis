@@ -7,5 +7,9 @@ extern crate sounding_base;
 mod interpolation;
 pub use interpolation::linear_interpolate;
 
+pub mod met_formulas;
+
 mod snow;
 pub use snow::dendritic_growth_zone;
+
+pub mod utility;

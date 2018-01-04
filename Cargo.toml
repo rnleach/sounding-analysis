@@ -1,6 +1,6 @@
 [package]
 name = "sounding-analysis"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Ryan Leach <clumsycodemonkey@gmail.com>"]
 description = """Analysis capability for the sounding-base crate."""
 repository = "https://github.com/rnleach/sounding-analysis.git"

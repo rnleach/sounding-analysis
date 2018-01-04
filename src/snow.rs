@@ -4,6 +4,9 @@ use sounding_base::Profile::*;
 /// Find the dendtritic growth zones throughout the profile. It is unusual, but possible there is
 /// more than 1!
 pub fn dendritic_growth_zone(snd: &Sounding, v_coord: Profile) -> Vec<(f64, f64)> {
+
+    // FIXME: what happens if there is no profile for T or v_coord? Should return empty Vec.
+
     let mut result = Vec::with_capacity(2);
 
     // Dendritic snow growth zone temperature range in C
@@ -59,3 +62,9 @@ pub fn dendritic_growth_zone(snd: &Sounding, v_coord: Profile) -> Vec<(f64, f64)
 
     result
 }
+
+// TODO: Wet bulb zero height given v_coord Return multiple if needed.
+// TODO: Freezing level given v_coord. Return multiple if needed.
+// TODO: Metlting layer
+// TODO: Warm layer aloft.
+// TODO: Cold layer at surface.
