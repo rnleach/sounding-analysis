@@ -13,3 +13,21 @@ mod snow;
 pub use snow::dendritic_growth_zone;
 
 pub mod utility;
+
+/*
+
+Types:
+  Parcel: v_coord, temperature
+  IndexesExt: Container for indexes not already in the `Sounding` data type
+
+Take a `&mut Sounding` and fill in any missing information. Check element by element in the sounding
+for missing fields, and try to fill them in. 
+
+Not all analysis information will be in the `Sounding` structure. Or should it?
+
+Indexes data structure - to return.
+
+Create a parcel profile type.
+
+Analyze cape-cin.
+*/

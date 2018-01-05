@@ -25,7 +25,7 @@ pub fn dendritic_growth_zone(snd: &Sounding, v_coord: Profile) -> Vec<(f64, f64)
     let mut last_coord: f64;
     loop {
         if let Some((t, coord)) = profile.by_ref().next() {
-            if let (Some(t), Some(coord)) = (t.as_option(), coord.as_option()) {
+            if let (Some(t), Some(coord)) = (*t, *coord) {
                 last_t = t;
                 last_coord = coord;
                 break;
@@ -39,7 +39,7 @@ pub fn dendritic_growth_zone(snd: &Sounding, v_coord: Profile) -> Vec<(f64, f64)
     }
 
     for (t, coord) in profile {
-        if let (Some(t), Some(coord)) = (t.as_option(), coord.as_option()) {
+        if let (Some(t), Some(coord)) = (*t, *coord) {
             if (last_t > WARM_SIDE && t < WARM_SIDE) || (last_t < COLD_SIDE && t > COLD_SIDE) {
                 // Just crossed into a dendritic zone
                 bottom = ::interpolation::linear_interp(WARM_SIDE, last_t, t, last_coord, coord);

@@ -1,4 +1,4 @@
-use sounding_base::{DataRow, OptionVal, Sounding};
+use sounding_base::{DataRow, Sounding};
 
 /// Interpolate values from the vertical sounding using pressure as the primary coordinate.
 ///
@@ -18,12 +18,12 @@ pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> DataRow {
     let cloud_fraction = snd.get_profile(CloudFraction);
 
     let mut result = DataRow::default();
-    result.pressure = OptionVal::from(target_p);
+    result.pressure = Option::from(target_p);
 
     let mut below_idx: usize = 0;
     let mut above_idx: usize = 0;
     for (i, p) in pressure.iter().enumerate() {
-        if let Some(p) = p.as_option() {
+        if let Some(p) = *p {
             if p > target_p {
                 below_idx = i;
             }
@@ -48,8 +48,8 @@ pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> DataRow {
         // Special interpolation for anlges
         if direction.len() > above_idx {
             if let (Some(dir_below), Some(dir_above)) = (
-                direction[below_idx].as_option(),
-                direction[above_idx].as_option(),
+                direction[below_idx],
+                direction[above_idx],
             ) {
                 let x_below = dir_below.to_radians().sin();
                 let x_above = dir_above.to_radians().sin();
@@ -89,19 +89,19 @@ fn eval_linear_interp(
     abv_idx: usize,
     run: f64,
     dp: f64,
-    array: &[OptionVal<f64>],
-) -> OptionVal<f64> {
+    array: &[Option<f64>],
+) -> Option<f64> {
     if array.len() > abv_idx {
         if let (Some(val_below), Some(val_above)) =
-            (array[blw_idx].as_option(), array[abv_idx].as_option())
+            (array[blw_idx], array[abv_idx])
         {
             let rise = val_above - val_below;
-            OptionVal::from(val_below + dp * rise / run)
+            Option::from(val_below + dp * rise / run)
         } else {
-            OptionVal::default()
+            Option::default()
         }
     } else {
-        OptionVal::default()
+        Option::default()
     }
 }
 
