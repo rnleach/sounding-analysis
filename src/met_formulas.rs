@@ -1,4 +1,4 @@
-
+//! Formulas for meteorological calculations.
 
 /// Potential temperature in Kelvin
 pub fn theta_kelvin(pressure_hpa: f64, temperature_c: f64) -> f64 {
@@ -21,6 +21,7 @@ pub fn vapor_pressure_water(temperature_c: f64) -> f64 {
     6.11 * f64::powf(10.0, 7.5 * temperature_c / (237.3 + temperature_c))
 }
 
+/// Given the temperature and dew point in celsius, calculate the relative humidity.
 pub fn rh(temperature_c: f64, dew_point_c: f64) -> f64 {
     let e = vapor_pressure_water(dew_point_c);
     let es = vapor_pressure_water(temperature_c);
@@ -42,6 +43,7 @@ pub fn temperature_from_p_and_saturated_mw(p: f64, mw: f64) -> f64 {
     237.5 * f64::log10(z) / (7.5 - f64::log10(z))
 }
 
+/// Assuming a saturated parcel, calculate the equivalent potential temperature in Kelvin.
 pub fn theta_e_saturated_kelvin(pressure_hpa: f64, temperature_c: f64) -> f64 {
     use std::f64;
 
@@ -51,6 +53,7 @@ pub fn theta_e_saturated_kelvin(pressure_hpa: f64, temperature_c: f64) -> f64 {
     theta * f64::exp(2.6897e6 * mw / 1005.7 / (temperature_c + 273.15))
 }
 
+/// Convert celsius to fahrenheit. 
 pub fn celsius_to_f(temperature: f64) -> f64 {
     1.8 * temperature + 32.0
 }

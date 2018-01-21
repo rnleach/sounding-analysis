@@ -12,6 +12,8 @@ pub mod met_formulas;
 mod snow;
 pub use snow::dendritic_growth_zone;
 
+/// Utility functions and types. This will eventually be deprecated as it doesn't really belong in
+/// this crate's API.
 pub mod utility;
 
 /*

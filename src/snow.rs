@@ -34,18 +34,27 @@ pub fn dendritic_growth_zone(snd: &Sounding, v_coord: Profile) -> Vec<(f64, f64)
     }
 
     // Check to see if we are already in the dendtritic zone
-    if last_t < WARM_SIDE && last_t > COLD_SIDE {
+    if last_t <= WARM_SIDE && last_t >= COLD_SIDE {
         bottom = last_coord;
     }
 
     for (t, coord) in profile {
         if let (Some(t), Some(coord)) = (*t, *coord) {
-            if (last_t > WARM_SIDE && t < WARM_SIDE) || (last_t < COLD_SIDE && t > COLD_SIDE) {
-                // Just crossed into a dendritic zone
+            // Crossed into zone from warm side
+            if last_t > WARM_SIDE && t <= WARM_SIDE {
                 bottom = ::interpolation::linear_interp(WARM_SIDE, last_t, t, last_coord, coord);
             }
-            if (last_t > COLD_SIDE && t < COLD_SIDE) || (last_t < WARM_SIDE && t > WARM_SIDE) {
-                // Just crossed out of a dendritic zone
+            // Crossed into zone from cold side
+            if last_t < COLD_SIDE && t >= COLD_SIDE {
+                bottom = ::interpolation::linear_interp(COLD_SIDE, last_t, t, last_coord, coord);
+            }
+            // Crossed out of zone to warm side
+            if last_t <= WARM_SIDE && t > WARM_SIDE {
+                top = ::interpolation::linear_interp(WARM_SIDE, last_t, t, last_coord, coord);
+                result.push((bottom, top));
+            }
+            // Crossed out of zone to cold side
+            if last_t >= COLD_SIDE && t < COLD_SIDE {
                 top = ::interpolation::linear_interp(COLD_SIDE, last_t, t, last_coord, coord);
                 result.push((bottom, top));
             }
@@ -55,7 +64,7 @@ pub fn dendritic_growth_zone(snd: &Sounding, v_coord: Profile) -> Vec<(f64, f64)
     }
 
     // Check to see if we ended in a dendtritic zone
-    if last_t < WARM_SIDE && last_t > COLD_SIDE {
+    if last_t <= WARM_SIDE && last_t >= COLD_SIDE {
         top = last_coord;
         result.push((bottom, top));
     }
