@@ -2,34 +2,42 @@
 //! Functions for analyzing soundings from the
 //! [sounding-base](https://github.com/rnleach/sounding-base.git) crate.
 
+#[macro_use]
+extern crate error_chain;
+extern crate smallvec;
 extern crate sounding_base;
 
+mod error;
 mod interpolation;
 pub use interpolation::linear_interpolate;
 
+pub mod layers;
+pub mod levels;
 pub mod met_formulas;
-
-mod snow;
-pub use snow::dendritic_growth_zone;
+pub mod parcel;
 
 /// Utility functions and types. This will eventually be deprecated as it doesn't really belong in
 /// this crate's API.
 pub mod utility;
 
+/// A layer in the atmosphere described by the top and bottom pressures.
+pub struct Layer {
+    /// Pressure at the bottom of the layer.
+    pub bottom_press: f64,
+    /// Pressure at the top of the layer.
+    pub top_press: f64,
+}
+
+/// A special level, such as the freezing level or wet bulb zero level.
+pub struct Level {
+    /// The pressure value at the level.
+    pub pressure: f64,
+}
+
+const VEC_SIZE: usize = sounding_base::SMALL_VEC_SIZE;
+
 /*
-
 Types:
-  Parcel: v_coord, temperature
-  IndexesExt: Container for indexes not already in the `Sounding` data type
-
-Take a `&mut Sounding` and fill in any missing information. Check element by element in the sounding
-for missing fields, and try to fill them in. 
-
-Not all analysis information will be in the `Sounding` structure. Or should it?
-
-Indexes data structure - to return.
-
-Create a parcel profile type.
-
-Analyze cape-cin.
+  Parcel: temperature, pressure, dew-point
+  Layer: pressure_bottom, pressure_top
 */

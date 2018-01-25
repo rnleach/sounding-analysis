@@ -47,10 +47,8 @@ pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> DataRow {
 
         // Special interpolation for anlges
         if direction.len() > above_idx {
-            if let (Some(dir_below), Some(dir_above)) = (
-                direction[below_idx],
-                direction[above_idx],
-            ) {
+            if let (Some(dir_below), Some(dir_above)) = (direction[below_idx], direction[above_idx])
+            {
                 let x_below = dir_below.to_radians().sin();
                 let x_above = dir_above.to_radians().sin();
                 let y_below = dir_below.to_radians().cos();
@@ -92,9 +90,7 @@ fn eval_linear_interp(
     array: &[Option<f64>],
 ) -> Option<f64> {
     if array.len() > abv_idx {
-        if let (Some(val_below), Some(val_above)) =
-            (array[blw_idx], array[abv_idx])
-        {
+        if let (Some(val_below), Some(val_above)) = (array[blw_idx], array[abv_idx]) {
             let rise = val_above - val_below;
             Option::from(val_below + dp * rise / run)
         } else {

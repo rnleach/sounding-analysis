@@ -49,7 +49,15 @@ mod test {
 
     #[test]
     fn test_find_root() {
-        assert!(approx_equal(1.0, find_root(&|x| x * x - 1.0, 2.0, 0.0), 1.0e-10));
-        assert!(approx_equal(-1.0, find_root(&|x| x * x - 1.0, -2.0, 0.0), 1.0e-10));
+        assert!(approx_equal(
+            1.0,
+            find_root(&|x| x * x - 1.0, 2.0, 0.0),
+            1.0e-10
+        ));
+        assert!(approx_equal(
+            -1.0,
+            find_root(&|x| x * x - 1.0, -2.0, 0.0),
+            1.0e-10
+        ));
     }
 }

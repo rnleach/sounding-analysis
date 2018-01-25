@@ -11,4 +11,9 @@ categories = ["science"]
 keywords = ["weather","sounding","meteorology", "skew-t"]
 
 [dependencies]
-sounding-base = "0.2.0"
+error-chain = "^0.11"
+smallvec = "^0.6"
+sounding-base = "0.2.1"
+
+[patch.crates-io]
+sounding-base = {version="0.2.1", git = "https://github.com/rnleach/sounding-base.git" }

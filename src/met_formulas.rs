@@ -53,7 +53,7 @@ pub fn theta_e_saturated_kelvin(pressure_hpa: f64, temperature_c: f64) -> f64 {
     theta * f64::exp(2.6897e6 * mw / 1005.7 / (temperature_c + 273.15))
 }
 
-/// Convert celsius to fahrenheit. 
+/// Convert celsius to fahrenheit.
 pub fn celsius_to_f(temperature: f64) -> f64 {
     1.8 * temperature + 32.0
 }
@@ -61,11 +61,15 @@ pub fn celsius_to_f(temperature: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::utility::approx_equal;
+    use utility::approx_equal;
 
     #[test]
     fn test_theta_kelvin() {
-        assert!(approx_equal((32.0 + 273.15), theta_kelvin(1000.0, 32.0), 1.0e-2));
+        assert!(approx_equal(
+            (32.0 + 273.15),
+            theta_kelvin(1000.0, 32.0),
+            1.0e-2
+        ));
     }
 
     // TODO: Test all functions.
