@@ -4,7 +4,7 @@
 use error::*;
 use smallvec::SmallVec;
 
-use sounding_base::Sounding;
+use sounding_base::{Profile, Sounding};
 use sounding_base::Profile::*;
 
 use Layer;
@@ -111,19 +111,35 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
 pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     const ANALYSIS_NAME: &str = "Warm temperature layer aloft.";
 
+    warm_layer_aloft(snd, Temperature, ANALYSIS_NAME, "Temperature")
+}
+
+/// Assuming the wet bulb temperature is below freezing at the surface, this will find the warm
+/// layers aloft using the wet bulb temperature. Does not look above 500 hPa.
+pub fn warm_wet_bulb_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+    const ANALYSIS_NAME: &str = "Warm wet bulb layer aloft.";
+
+    warm_layer_aloft(snd, WetBulb, ANALYSIS_NAME, "Wet Bulb Temperature")
+}
+
+fn warm_layer_aloft(
+    snd: &Sounding,
+    var: Profile,
+    analysis_name: &'static str,
+    profile_name: &'static str,
+) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
 
-    // Dendritic snow growth zone temperature range in C
     const FREEZING: f64 = 0.0;
 
-    let t_profile = snd.get_profile(Temperature);
+    let t_profile = snd.get_profile(var);
     let p_profile = snd.get_profile(Pressure);
 
     if t_profile.is_empty() {
-        bail!(ErrorKind::MissingProfile("Temperature", ANALYSIS_NAME));
+        bail!(ErrorKind::MissingProfile(profile_name, analysis_name));
     }
     if p_profile.is_empty() {
-        bail!(ErrorKind::MissingProfile("Pressure", ANALYSIS_NAME));
+        bail!(ErrorKind::MissingProfile("Pressure", analysis_name));
     }
 
     let mut profile = t_profile.iter().zip(p_profile);
@@ -141,6 +157,8 @@ pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; :
                 last_press = press;
                 break;
             }
+        } else {
+            bail!(ErrorKind::NoDataProfile("Pressure, or temperature, or wet bulb", analysis_name));
         }
     }
 
@@ -188,6 +206,50 @@ pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; :
     Ok(to_return)
 }
 
+/// Assuming a warm layer aloft given by warm_layers, measure the cold surface layer.
+pub fn cold_surface_temperature_layer(snd: &Sounding, warm_layers: &[Layer],) -> Option<Layer> {
+    cold_surface_layer(snd, Temperature, warm_layers)
+}
 
-// TODO: Cold layer at surface.
-// TODO: Warm wet bulb layer aloft.
+fn cold_surface_layer(
+    snd: &Sounding,
+    var: Profile,
+    warm_layers: &[Layer],
+) -> Option<Layer> {
+    const FREEZING: f64 = 0.0;
+
+     // Return empty vector if no warm layers aloft
+    if warm_layers.is_empty() { return None;}
+
+    // Get the lowest (or surface) temperature
+    let t_profile = snd.get_profile(var);
+    let p_profile = snd.get_profile(Pressure);
+
+    if t_profile.is_empty() || p_profile.is_empty(){
+        return None; // Should not happen since we already used these to get warm layer
+    }
+    
+    let mut profile = t_profile.iter().zip(p_profile);
+
+    // Initialize the bottom of the sounding
+    let mut last_t: f64;
+    let mut last_press: f64;
+    loop {
+        if let Some((t, press)) = profile.by_ref().next() {
+            if let (Some(t), Some(press)) = (*t, *press) {
+                last_t = t;
+                last_press = press;
+                break;
+            }
+        } else {
+            return None;
+        }
+    }
+
+    // Check to see if we are below freezing at the bottom
+    if last_t > FREEZING {
+        return None;
+    }
+
+    Some(Layer{bottom_press: last_press, top_press: warm_layers[0].bottom_press})
+}

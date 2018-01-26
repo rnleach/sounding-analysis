@@ -1,3 +1,5 @@
+// FIXME: do not export this from the crate. Used in sonde currently, but generating profiles can
+// be done in this crate.
 /// Bisection algorithm for finding the root of an equation given values bracketing a root. Used
 /// when drawing moist adiabats.
 pub fn find_root(f: &Fn(f64) -> f64, mut low_val: f64, mut high_val: f64) -> f64 {

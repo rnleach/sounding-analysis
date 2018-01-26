@@ -101,7 +101,7 @@ fn eval_linear_interp(
     }
 }
 
-pub fn linear_interp(x_val: f64, x1: f64, x2: f64, y1: f64, y2: f64) -> f64 {
+pub(crate) fn linear_interp(x_val: f64, x1: f64, x2: f64, y1: f64, y2: f64) -> f64 {
     let run = x2 - x1;
     let rise = y2 - y1;
     let dx = x_val - x1;
