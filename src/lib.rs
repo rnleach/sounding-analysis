@@ -21,20 +21,22 @@ pub mod profile;
 /// this crate's API.
 pub mod utility;
 
+use sounding_base::DataRow;
+
 /// A layer in the atmosphere described by the top and bottom pressures.
 #[derive(Debug, Clone, Copy)]
 pub struct Layer {
     /// Pressure at the bottom of the layer.
-    pub bottom_press: f64,
+    pub bottom: DataRow,
     /// Pressure at the top of the layer.
-    pub top_press: f64,
+    pub top: DataRow,
 }
 
 /// A special level, such as the freezing level or wet bulb zero level.
 #[derive(Debug, Clone, Copy)]
 pub struct Level {
     /// The pressure value at the level.
-    pub pressure: f64,
+    pub pressure: DataRow,
 }
 
 pub(crate) const VEC_SIZE: usize = sounding_base::SMALL_VEC_SIZE;

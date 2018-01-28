@@ -9,7 +9,7 @@ error_chain!{
             display("Profile for {} is missing, cannot do {} analysis.", profile, analysis),
         }
 
-        /// A profile that is required for this analysis is missing.
+        /// There is no data available that meets the requirements.
         NoDataProfile(profile: &'static str, analysis: &'static str) {
             description("Profile has all missing values."),
             display("Profile for {} is full of missing values, cannot do {} analysis.", profile, analysis),

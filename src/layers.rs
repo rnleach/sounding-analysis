@@ -10,7 +10,7 @@ use sounding_base::Profile::*;
 use Layer;
 
 /// Find the dendtritic growth zones throughout the profile. It is unusual, but possible there is
-/// more than 1.
+/// more than one.
 ///
 /// # Errors
 /// If the sounding is missing a temperature or pressure profile, `error::ErrorKind::MissingProfile`
@@ -50,12 +50,28 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
                 last_press = press;
                 break;
             }
+        } else {
+            bail!(ErrorKind::NoDataProfile(
+                "Temperature and Pressure",
+                ANALYSIS_NAME
+            ));
         }
     }
 
     // Check to see if we are already in the dendtritic zone
     if last_t <= WARM_SIDE && last_t >= COLD_SIDE {
         bottom_press = last_press;
+    }
+
+    fn push_layer(
+        bottom_press: f64,
+        top_press: f64,
+        snd: &Sounding,
+        target_vec: &mut SmallVec<[Layer; ::VEC_SIZE]>,
+    ) {
+        let bottom = ::interpolation::linear_interpolate(snd, bottom_press);
+        let top = ::interpolation::linear_interpolate(snd, top_press);
+        target_vec.push(Layer { bottom, top });
     }
 
     for (t, press) in profile {
@@ -76,18 +92,12 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
             // Crossed out of zone to warm side
             if last_t <= WARM_SIDE && t > WARM_SIDE {
                 top_press = ::interpolation::linear_interp(WARM_SIDE, last_t, t, last_press, press);
-                to_return.push(Layer {
-                    bottom_press,
-                    top_press,
-                });
+                push_layer(bottom_press, top_press, snd, &mut to_return);
             }
             // Crossed out of zone to cold side
             if last_t >= COLD_SIDE && t < COLD_SIDE {
                 top_press = ::interpolation::linear_interp(COLD_SIDE, last_t, t, last_press, press);
-                to_return.push(Layer {
-                    bottom_press,
-                    top_press,
-                });
+                push_layer(bottom_press, top_press, snd, &mut to_return);
             }
             last_t = t;
             last_press = press;
@@ -97,10 +107,8 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
     // Check to see if we ended in a dendtritic zone
     if last_t <= WARM_SIDE && last_t >= COLD_SIDE {
         top_press = last_press;
-        to_return.push(Layer {
-            bottom_press,
-            top_press,
-        });
+
+        push_layer(bottom_press, top_press, snd, &mut to_return);
     }
 
     Ok(to_return)
@@ -128,6 +136,9 @@ fn warm_layer_aloft(
     analysis_name: &'static str,
     profile_name: &'static str,
 ) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+
+    assert!(var == Temperature || var == WetBulb);
+
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
 
     const FREEZING: f64 = 0.0;
@@ -158,7 +169,17 @@ fn warm_layer_aloft(
                 break;
             }
         } else {
-            bail!(ErrorKind::NoDataProfile("Pressure, or temperature, or wet bulb", analysis_name));
+            match var {
+                Temperature => bail!(ErrorKind::NoDataProfile(
+                    "Pressure and temperature",
+                    analysis_name
+                )),
+                WetBulb => bail!(ErrorKind::NoDataProfile(
+                    "Pressure, and wet bulb",
+                    analysis_name
+                )),
+                _ => unreachable!(),
+            }
         }
     }
 
@@ -183,10 +204,10 @@ fn warm_layer_aloft(
             // Crossed out of zone to warm side
             if last_t > FREEZING && t <= FREEZING {
                 top_press = ::interpolation::linear_interp(FREEZING, last_t, t, last_press, press);
-                to_return.push(Layer {
-                    bottom_press,
-                    top_press,
-                });
+
+                let bottom = ::interpolation::linear_interpolate(snd, bottom_press);
+                let top = ::interpolation::linear_interpolate(snd, top_press);
+                to_return.push(Layer { bottom, top });
                 in_warm_zone = false;
             }
             last_t = t;
@@ -197,45 +218,41 @@ fn warm_layer_aloft(
     // Check to see if we ended in a warm layer aloft
     if last_t > FREEZING && in_warm_zone {
         top_press = last_press;
-        to_return.push(Layer {
-            bottom_press,
-            top_press,
-        });
+        let bottom = ::interpolation::linear_interpolate(snd, bottom_press);
+        let top = ::interpolation::linear_interpolate(snd, top_press);
+        to_return.push(Layer { bottom, top });
     }
 
     Ok(to_return)
 }
 
 /// Assuming a warm layer aloft given by warm_layers, measure the cold surface layer.
-pub fn cold_surface_temperature_layer(snd: &Sounding, warm_layers: &[Layer],) -> Option<Layer> {
+pub fn cold_surface_temperature_layer(snd: &Sounding, warm_layers: &[Layer]) -> Option<Layer> {
     cold_surface_layer(snd, Temperature, warm_layers)
 }
 
-fn cold_surface_layer(
-    snd: &Sounding,
-    var: Profile,
-    warm_layers: &[Layer],
-) -> Option<Layer> {
+fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Option<Layer> {
+    assert!(var == Temperature || var == WetBulb);
+
     const FREEZING: f64 = 0.0;
 
-     // Return empty vector if no warm layers aloft
-    if warm_layers.is_empty() { return None;}
+    if warm_layers.is_empty() {
+        return None;
+    }
 
-    // Get the lowest (or surface) temperature
     let t_profile = snd.get_profile(var);
     let p_profile = snd.get_profile(Pressure);
 
-    if t_profile.is_empty() || p_profile.is_empty(){
+    if t_profile.is_empty() || p_profile.is_empty() {
         return None; // Should not happen since we already used these to get warm layer
     }
-    
+
     let mut profile = t_profile.iter().zip(p_profile);
 
-    // Initialize the bottom of the sounding
-    let mut last_t: f64;
-    let mut last_press: f64;
+    let last_t: f64;
+    let last_press: f64;
     loop {
-        if let Some((t, press)) = profile.by_ref().next() {
+        if let Some((t, press)) = profile.next() {
             if let (Some(t), Some(press)) = (*t, *press) {
                 last_t = t;
                 last_press = press;
@@ -251,5 +268,14 @@ fn cold_surface_layer(
         return None;
     }
 
-    Some(Layer{bottom_press: last_press, top_press: warm_layers[0].bottom_press})
+    let bottom = ::interpolation::linear_interpolate(snd, last_press);
+
+    Some(Layer {
+        bottom,
+        top: warm_layers[0].bottom,
+    })
 }
+
+// TODO: 0-3km AGL
+// TODO: 0-6km AGL
+// TODO: Inversions.
