@@ -1,6 +1,14 @@
-#![allow(missing_docs, unused_doc_comment)]
 //! Error types for the sounding-analysis crate.
 
+#[derive(Debug, Fail)]
+pub enum AnalysisError {
+    /// A profile that is required for this analysis is missing.
+    #[fail(display="Missing profile ({}) required for the analysis ({}).", _0, _1)]
+    MissingProfile(&'static str, &'static str),
+    /// There is no data available that meets the requirements.
+    
+    /// Bad or invalid input.
+}
 error_chain!{
     errors {
         /// A profile that is required for this analysis is missing.
