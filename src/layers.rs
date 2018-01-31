@@ -16,7 +16,7 @@ use Layer;
 /// If the sounding is missing a temperature or pressure profile, `error::ErrorKind::MissingProfile`
 /// is returned in the result. Otherwise, if no dendritic layers are found, an empty vector is
 /// returned in the `Result`
-pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, AnalysisError> {
     const ANALYSIS_NAME: &str = "Dendritic Snow Growth Zone(s)";
 
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
@@ -29,10 +29,10 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
     let p_profile = snd.get_profile(Pressure);
 
     if t_profile.is_empty() {
-        bail!(ErrorKind::MissingProfile("Temperature", ANALYSIS_NAME));
+        return Err(AnalysisError::MissingProfile("Temperature", ANALYSIS_NAME));
     }
     if p_profile.is_empty() {
-        bail!(ErrorKind::MissingProfile("Pressure", ANALYSIS_NAME));
+        return Err(AnalysisError::MissingProfile("Pressure", ANALYSIS_NAME));
     }
 
     let mut profile = t_profile.iter().zip(p_profile);
@@ -51,9 +51,9 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
                 break;
             }
         } else {
-            bail!(ErrorKind::NoDataProfile(
+            return Err(AnalysisError::NoDataProfile(
                 "Temperature and Pressure",
-                ANALYSIS_NAME
+                ANALYSIS_NAME,
             ));
         }
     }
@@ -116,7 +116,9 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
 
 /// Assuming it is below freezing at the surface, this will find the warm layers aloft using the
 /// dry bulb temperature. Does not look above 500 hPa.
-pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+pub fn warm_temperature_layer_aloft(
+    snd: &Sounding,
+) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, AnalysisError> {
     const ANALYSIS_NAME: &str = "Warm temperature layer aloft.";
 
     warm_layer_aloft(snd, Temperature, ANALYSIS_NAME, "Temperature")
@@ -124,7 +126,9 @@ pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; :
 
 /// Assuming the wet bulb temperature is below freezing at the surface, this will find the warm
 /// layers aloft using the wet bulb temperature. Does not look above 500 hPa.
-pub fn warm_wet_bulb_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+pub fn warm_wet_bulb_layer_aloft(
+    snd: &Sounding,
+) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, AnalysisError> {
     const ANALYSIS_NAME: &str = "Warm wet bulb layer aloft.";
 
     warm_layer_aloft(snd, WetBulb, ANALYSIS_NAME, "Wet Bulb Temperature")
@@ -135,8 +139,7 @@ fn warm_layer_aloft(
     var: Profile,
     analysis_name: &'static str,
     profile_name: &'static str,
-) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
-
+) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, AnalysisError> {
     assert!(var == Temperature || var == WetBulb);
 
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
@@ -147,10 +150,10 @@ fn warm_layer_aloft(
     let p_profile = snd.get_profile(Pressure);
 
     if t_profile.is_empty() {
-        bail!(ErrorKind::MissingProfile(profile_name, analysis_name));
+        return Err(AnalysisError::MissingProfile(profile_name, analysis_name));
     }
     if p_profile.is_empty() {
-        bail!(ErrorKind::MissingProfile("Pressure", analysis_name));
+        return Err(AnalysisError::MissingProfile("Pressure", analysis_name));
     }
 
     let mut profile = t_profile.iter().zip(p_profile);
@@ -170,14 +173,18 @@ fn warm_layer_aloft(
             }
         } else {
             match var {
-                Temperature => bail!(ErrorKind::NoDataProfile(
-                    "Pressure and temperature",
-                    analysis_name
-                )),
-                WetBulb => bail!(ErrorKind::NoDataProfile(
-                    "Pressure, and wet bulb",
-                    analysis_name
-                )),
+                Temperature => {
+                    return Err(AnalysisError::NoDataProfile(
+                        "Pressure and temperature",
+                        analysis_name,
+                    ))
+                }
+                WetBulb => {
+                    return Err(AnalysisError::NoDataProfile(
+                        "Pressure, and wet bulb",
+                        analysis_name,
+                    ))
+                }
                 _ => unreachable!(),
             }
         }
@@ -276,6 +283,73 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Op
     })
 }
 
-// TODO: 0-3km AGL
-// TODO: 0-6km AGL
+/// Get a layer that has a certain thickness, like 3km or 6km.
+pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer, AnalysisError> {
+    const ANALYSIS: &str = "Layer AGL";
+
+    let tgt_elev = if let Some(elev) = snd.get_location().2 {
+        elev + meters_agl
+    } else {
+        return Err(AnalysisError::MissingValue("station elevation", ANALYSIS));
+    };
+
+    let h_profile = snd.get_profile(GeopotentialHeight);
+    let p_profile = snd.get_profile(Pressure);
+
+    if h_profile.is_empty() {
+        return Err(AnalysisError::MissingProfile(
+            "Geopotential Height",
+            ANALYSIS,
+        ));
+    }
+    if p_profile.is_empty() {
+        return Err(AnalysisError::MissingProfile("Pressure", ANALYSIS));
+    }
+
+    let mut profile = h_profile.iter().zip(p_profile);
+
+    // Initialize the bottom of the sounding
+    let mut last_h: f64;
+    let mut last_press: f64;
+    loop {
+        if let Some((h, press)) = profile.by_ref().next() {
+            if let (Some(h), Some(press)) = (*h, *press) {
+                last_h = h;
+                last_press = press;
+                break;
+            }
+        } else {
+            return Err(AnalysisError::NoDataProfile(
+                "Geopotential Height",
+                ANALYSIS,
+            ));
+        }
+    }
+
+    // Check we aren't too high already.
+    if last_h > tgt_elev {
+        return Err(AnalysisError::NotEnoughData(ANALYSIS));
+    }
+
+    let bottom_press = last_press; // Lowest level we could find.
+    let bottom = ::interpolation::linear_interpolate(snd, bottom_press);
+
+    for (h, press) in profile {
+        if let (Some(h), Some(press)) = (*h, *press) {
+            if last_h <= tgt_elev && h > tgt_elev {
+                let top_press =
+                    ::interpolation::linear_interp(tgt_elev, last_h, h, last_press, press);
+
+                let top = ::interpolation::linear_interpolate(snd, top_press);
+
+                return Ok(Layer { bottom, top });
+            }
+            last_h = h;
+            last_press = press;
+        }
+    }
+
+    Err(AnalysisError::NotEnoughData(ANALYSIS))
+}
+
 // TODO: Inversions.
