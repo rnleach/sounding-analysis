@@ -352,4 +352,120 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer, AnalysisError
     Err(AnalysisError::NotEnoughData(ANALYSIS))
 }
 
-// TODO: Inversions.
+/// Get all inversion layers up 500 mb.
+pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, AnalysisError> {
+    const ANALYSIS_NAME: &str = "inversion(s)";
+
+    let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
+
+    let t_profile = snd.get_profile(Temperature);
+    let p_profile = snd.get_profile(Pressure);
+
+    if t_profile.is_empty() {
+        return Err(AnalysisError::MissingProfile("Temperature", ANALYSIS_NAME));
+    }
+    if p_profile.is_empty() {
+        return Err(AnalysisError::MissingProfile("Pressure", ANALYSIS_NAME));
+    }
+
+    let mut profile = t_profile.iter().zip(p_profile).enumerate()
+        .filter_map(|triplet|{
+            if let (i, (&Some(t), &Some(_))) = triplet {
+                Some((i,t))
+            } else {
+                None
+            }
+        });
+
+    let mut window = if let Some(window) = Window::new_with_iterator((0usize,0.0f64), profile){
+        window
+    } else {
+        return Err(AnalysisError::NotEnoughData(ANALYSIS_NAME));
+    };
+
+    let mut bottom_idx = 0usize; // Only init because compiler can't tell value not used
+    let mut top_idx: usize;
+    let mut in_inversion = false;
+
+    while window.slide() {
+        let data = window.view();
+        if !in_inversion {
+            let mut all_increasing = true;
+            let mut  last_t = -::std::f64::MAX;
+            for &(_, t) in data {
+                all_increasing = all_increasing && t > last_t;
+                last_t = t;
+            }
+
+            if all_increasing {
+                bottom_idx = data[0].0;
+                in_inversion = true;
+            }
+        } else {
+            let mut all_decreasing = true;
+            let mut last_t = ::std::f64::MAX;
+            for &(_, t) in data {
+                all_decreasing = all_decreasing && t < last_t;
+                last_t = t;
+            }
+
+            if all_decreasing {
+                top_idx = data[0].0;
+                in_inversion = false;
+
+                if let Some(bottom) = snd.get_data_row(bottom_idx) {
+                    if let Some(top) = snd.get_data_row(top_idx) {
+                        to_return.push(Layer{bottom,top});
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(to_return)
+}
+
+const WINDOW_SIZE:usize = 3;
+struct Window<T, I> {
+    window: [T; WINDOW_SIZE],
+    iter: I,
+
+}
+
+impl<T, I> Window<T,I> where T:Copy, I: Iterator<Item=T> {
+    fn new_with_iterator(seed: T, mut iter: I) -> Option<Self> {
+        let mut window = [seed; WINDOW_SIZE];
+        let mut count = 0;
+        
+        while let Some(val) = iter.by_ref().next(){
+            window[count] = val;
+            count += 1;
+            if count == WINDOW_SIZE - 1 {
+                break;
+            }
+        }
+
+        if count == WINDOW_SIZE - 1 {
+            Some(Window{window, iter})
+        } else {
+            None
+        }
+    }
+
+    fn slide(&mut self) -> bool where I: Iterator<Item=T>{
+        for i in 0..(WINDOW_SIZE-1) {
+            self.window[i] = self.window[i + 1];
+        }
+
+        if let Some(val) = self.iter.next() {
+            self.window[WINDOW_SIZE - 1] = val;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn view(&self) -> &[T] {
+        &self.window
+    }
+}
