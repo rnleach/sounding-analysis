@@ -306,24 +306,25 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer, AnalysisError
         return Err(AnalysisError::MissingProfile("Pressure", ANALYSIS));
     }
 
-    let mut profile = h_profile.iter().zip(p_profile);
+    let mut profile = h_profile.iter().zip(p_profile).filter_map(|pair| {
+        if let (&Some(h), &Some(p)) = pair {
+            Some((h, p))
+        } else {
+            None
+        }
+    });
 
     // Initialize the bottom of the sounding
     let mut last_h: f64;
     let mut last_press: f64;
-    loop {
-        if let Some((h, press)) = profile.by_ref().next() {
-            if let (Some(h), Some(press)) = (*h, *press) {
-                last_h = h;
-                last_press = press;
-                break;
-            }
-        } else {
-            return Err(AnalysisError::NoDataProfile(
-                "Geopotential Height",
-                ANALYSIS,
-            ));
-        }
+    if let Some((h, press)) = profile.by_ref().next() {
+        last_h = h;
+        last_press = press;
+    } else {
+        return Err(AnalysisError::NoDataProfile(
+            "Geopotential Height or Pressure",
+            ANALYSIS,
+        ));
     }
 
     // Check we aren't too high already.
@@ -335,18 +336,15 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer, AnalysisError
     let bottom = ::interpolation::linear_interpolate(snd, bottom_press);
 
     for (h, press) in profile {
-        if let (Some(h), Some(press)) = (*h, *press) {
-            if last_h <= tgt_elev && h > tgt_elev {
-                let top_press =
-                    ::interpolation::linear_interp(tgt_elev, last_h, h, last_press, press);
+        if last_h <= tgt_elev && h > tgt_elev {
+            let top_press = ::interpolation::linear_interp(tgt_elev, last_h, h, last_press, press);
 
-                let top = ::interpolation::linear_interpolate(snd, top_press);
+            let top = ::interpolation::linear_interpolate(snd, top_press);
 
-                return Ok(Layer { bottom, top });
-            }
-            last_h = h;
-            last_press = press;
+            return Ok(Layer { bottom, top });
         }
+        last_h = h;
+        last_press = press;
     }
 
     Err(AnalysisError::NotEnoughData(ANALYSIS))
@@ -368,16 +366,19 @@ pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, Analy
         return Err(AnalysisError::MissingProfile("Pressure", ANALYSIS_NAME));
     }
 
-    let mut profile = t_profile.iter().zip(p_profile).enumerate()
-        .filter_map(|triplet|{
+    let profile = t_profile
+        .iter()
+        .zip(p_profile)
+        .enumerate()
+        .filter_map(|triplet| {
             if let (i, (&Some(t), &Some(_))) = triplet {
-                Some((i,t))
+                Some((i, t))
             } else {
                 None
             }
         });
 
-    let mut window = if let Some(window) = Window::new_with_iterator((0usize,0.0f64), profile){
+    let mut window = if let Some(window) = Window::new_with_iterator((0usize, 0.0f64), profile) {
         window
     } else {
         return Err(AnalysisError::NotEnoughData(ANALYSIS_NAME));
@@ -391,7 +392,7 @@ pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, Analy
         let data = window.view();
         if !in_inversion {
             let mut all_increasing = true;
-            let mut  last_t = -::std::f64::MAX;
+            let mut last_t = -::std::f64::MAX;
             for &(_, t) in data {
                 all_increasing = all_increasing && t > last_t;
                 last_t = t;
@@ -415,7 +416,7 @@ pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, Analy
 
                 if let Some(bottom) = snd.get_data_row(bottom_idx) {
                     if let Some(top) = snd.get_data_row(top_idx) {
-                        to_return.push(Layer{bottom,top});
+                        to_return.push(Layer { bottom, top });
                     }
                 }
             }
@@ -425,19 +426,22 @@ pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, Analy
     Ok(to_return)
 }
 
-const WINDOW_SIZE:usize = 3;
+const WINDOW_SIZE: usize = 3;
 struct Window<T, I> {
     window: [T; WINDOW_SIZE],
     iter: I,
-
 }
 
-impl<T, I> Window<T,I> where T:Copy, I: Iterator<Item=T> {
+impl<T, I> Window<T, I>
+where
+    T: Copy,
+    I: Iterator<Item = T>,
+{
     fn new_with_iterator(seed: T, mut iter: I) -> Option<Self> {
         let mut window = [seed; WINDOW_SIZE];
         let mut count = 0;
-        
-        while let Some(val) = iter.by_ref().next(){
+
+        while let Some(val) = iter.by_ref().next() {
             window[count] = val;
             count += 1;
             if count == WINDOW_SIZE - 1 {
@@ -446,14 +450,17 @@ impl<T, I> Window<T,I> where T:Copy, I: Iterator<Item=T> {
         }
 
         if count == WINDOW_SIZE - 1 {
-            Some(Window{window, iter})
+            Some(Window { window, iter })
         } else {
             None
         }
     }
 
-    fn slide(&mut self) -> bool where I: Iterator<Item=T>{
-        for i in 0..(WINDOW_SIZE-1) {
+    fn slide(&mut self) -> bool
+    where
+        I: Iterator<Item = T>,
+    {
+        for i in 0..(WINDOW_SIZE - 1) {
             self.window[i] = self.window[i + 1];
         }
 
