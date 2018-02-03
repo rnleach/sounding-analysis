@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn test_theta_kelvin() {
         assert!(approx_equal(
-            (32.0 + 273.15),
+            32.0 + 273.15,
             theta_kelvin(1000.0, 32.0),
             1.0e-2
         ));

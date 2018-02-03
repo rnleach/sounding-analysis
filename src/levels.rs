@@ -9,8 +9,6 @@ use smallvec::SmallVec;
 use sounding_base::Sounding;
 use sounding_base::Profile::*;
 
-use Level;
-
 // TODO: Wet bulb zero height Return multiple if needed.
 // TODO: Freezing. Return multiple if needed.
 // TODO: Max Tw aloft.

@@ -476,3 +476,27 @@ where
         &self.window
     }
 }
+
+#[cfg(test)]
+mod test {
+    
+    test_suite! {
+        name dendritic_snow_zone;
+
+        use super::super::*;
+        use ::test_data;
+        use galvanic_assert::matchers::*;
+
+        test simple_dendritic_layer(){
+            let snd = test_data::create_simple_dendtritic_test_sounding();
+            let layers = dendritic_snow_zone(&snd).unwrap();
+            assert_that!(&layers.len(), eq(1));
+        }
+
+        test complex_dendritic_layer(){
+            let snd = test_data::create_complex_dendtritic_test_sounding();
+            let layers = dendritic_snow_zone(&snd).unwrap();
+            assert_that!(&layers.len(), eq(3));
+        }
+    }
+}

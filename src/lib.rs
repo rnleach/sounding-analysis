@@ -1,15 +1,10 @@
 #![warn(missing_docs)]
-//! Functions for analyzing soundings from the
+//! Functions and data types for analyzing soundings from the
 //! [sounding-base](https://github.com/rnleach/sounding-base.git) crate.
 
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
-extern crate smallvec;
-extern crate sounding_base;
-
-mod error;
-mod interpolation;
+//
+// API
+//
 pub use interpolation::linear_interpolate;
 
 pub mod layers;
@@ -18,11 +13,9 @@ pub mod met_formulas;
 pub mod parcel;
 pub mod profile;
 
-/// Utility functions and types. This will eventually be deprecated as it doesn't really belong in
+/// Utility functions and types. This will eventually be removed as it doesn't really belong in
 /// this crate's API.
 pub mod utility;
-
-use sounding_base::DataRow;
 
 /// A layer in the atmosphere described by the top and bottom pressures.
 #[derive(Debug, Clone, Copy)]
@@ -33,17 +26,48 @@ pub struct Layer {
     pub top: DataRow,
 }
 
-/// A special level, such as the freezing level or wet bulb zero level.
+/// Variables defining a parcel as used in parcel analysis.
 #[derive(Debug, Clone, Copy)]
-pub struct Level {
-    /// The pressure value at the level.
-    pub pressure: DataRow,
+pub struct Parcel {
+    /// Temperature in C
+    pub temperature: f64,
+    /// Pressure in hPa
+    pub pressure: f64, 
+    /// Dew point in C
+    pub dew_point:f64,
 }
 
+// 
+// Internal use only
+//
+
+// 3rd party libs
+extern crate failure;
+#[macro_use]
+extern crate failure_derive;
+extern crate smallvec;
+
+// framework libs
+extern crate sounding_base;
+
+// dev only libs
+#[cfg(test)]
+#[macro_use]
+extern crate galvanic_test;
+#[cfg(test)]
+#[macro_use]
+extern crate galvanic_assert;
+#[cfg(test)]
+extern crate sounding_validate;
+
+
+// Modules
+mod error;
+mod interpolation;
+#[cfg(test)]
+mod test_data;
+
+// Internal use only
 pub(crate) const VEC_SIZE: usize = sounding_base::SMALL_VEC_SIZE;
 
-/*
-Types:
-  Parcel: temperature, pressure, dew-point
-  Layer: pressure_bottom, pressure_top
-*/
+use sounding_base::DataRow;
