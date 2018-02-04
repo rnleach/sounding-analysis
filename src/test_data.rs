@@ -242,7 +242,10 @@ pub fn create_simple_dendtritic_test_sounding() -> Sounding {
             ],
         );
 
-    assert!(validate(&snd).is_ok(), "Simple dendritic test data failed validation.");
+    assert!(
+        validate(&snd).is_ok(),
+        "Simple dendritic test data failed validation."
+    );
 
     snd
 }
@@ -308,7 +311,10 @@ pub fn create_complex_dendtritic_test_sounding() -> Sounding {
             ],
         );
 
-    assert!(validate(&snd).is_ok(), "Complex dendritic test data failed validation.");
+    assert!(
+        validate(&snd).is_ok(),
+        "Complex dendritic test data failed validation."
+    );
 
     snd
 }

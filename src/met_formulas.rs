@@ -61,7 +61,7 @@ pub fn celsius_to_f(temperature: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use utility::approx_equal;
+    use utility::test_tools::*;
 
     #[test]
     fn test_theta_kelvin() {

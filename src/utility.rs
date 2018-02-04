@@ -39,15 +39,18 @@ pub fn find_root(f: &Fn(f64) -> f64, mut low_val: f64, mut high_val: f64) -> f64
 // TODO: unit conversions.
 
 #[cfg(test)]
-pub fn approx_equal(val1: f64, val2: f64, eps: f64) -> bool {
-    assert!(eps > 0.0);
+pub mod test_tools {
+    pub fn approx_equal(val1: f64, val2: f64, eps: f64) -> bool {
+        assert!(eps > 0.0);
 
-    (val1 - val2).abs() < eps
+        (val1 - val2).abs() < eps
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use utility::test_tools::*;
 
     #[test]
     fn test_find_root() {

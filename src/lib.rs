@@ -32,12 +32,12 @@ pub struct Parcel {
     /// Temperature in C
     pub temperature: f64,
     /// Pressure in hPa
-    pub pressure: f64, 
+    pub pressure: f64,
     /// Dew point in C
-    pub dew_point:f64,
+    pub dew_point: f64,
 }
 
-// 
+//
 // Internal use only
 //
 
@@ -52,14 +52,7 @@ extern crate sounding_base;
 
 // dev only libs
 #[cfg(test)]
-#[macro_use]
-extern crate galvanic_test;
-#[cfg(test)]
-#[macro_use]
-extern crate galvanic_assert;
-#[cfg(test)]
 extern crate sounding_validate;
-
 
 // Modules
 mod error;
