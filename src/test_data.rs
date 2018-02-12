@@ -1,5 +1,11 @@
 //! Data used in tests.
 
+use std::fs::File;
+use std::io::Read;
+use std::path::PathBuf;
+use std::str::FromStr;
+
+use sounding_base::Profile::*;
 use sounding_base::Sounding;
 use sounding_validate::validate;
 
@@ -317,4 +323,47 @@ pub fn create_complex_dendtritic_test_sounding() -> Sounding {
     );
 
     snd
+}
+
+fn load_test_csv_sounding(location: &PathBuf) -> Sounding {
+    let mut f = File::open(location).expect(&format!("Error opening file: {:?}", location));
+
+    let mut contents = String::new();
+    f.read_to_string(&mut contents).expect(&format!("Error reading file: {:?}", location));
+
+    let lines: Vec<&str> = contents.split('\n').skip(1).collect();
+    let mut height: Vec<Option<f64>> = Vec::with_capacity(lines.len());
+    let mut temp: Vec<Option<f64>> = Vec::with_capacity(lines.len());
+    let mut dp: Vec<Option<f64>> = Vec::with_capacity(lines.len());
+    let mut press: Vec<Option<f64>> = Vec::with_capacity(lines.len());
+    let mut wspd: Vec<Option<f64>> = Vec::with_capacity(lines.len());
+    let mut wdir: Vec<Option<f64>> = Vec::with_capacity(lines.len());
+
+    for line in lines {
+        let tokens:Vec<&str> = line.split(',').collect();
+        if tokens.len() < 6 { continue; }
+        height.push(f64::from_str(tokens[0]).ok());
+        temp.push(f64::from_str(tokens[1]).ok());
+        dp.push(f64::from_str(tokens[2]).ok());
+        press.push(f64::from_str(tokens[3]).ok());
+        wspd.push(f64::from_str(tokens[4]).ok());
+        wdir.push(f64::from_str(tokens[5]).ok());
+    }
+
+   Sounding::new()
+       .set_profile(GeopotentialHeight, height)
+       .set_profile(Temperature, temp)
+       .set_profile(DewPoint, dp)
+       .set_profile(Pressure, press)
+       .set_profile(WindSpeed, wspd)
+       .set_profile(WindDirection, wdir)
+}
+
+#[test]
+fn test_load_test_csv_sounding() {
+    let mut test_path = PathBuf::new();
+    test_path.push("test_data");
+    test_path.push("standard.csv");
+    let snd = load_test_csv_sounding(&test_path);
+    assert!(validate(&snd).is_ok(), "Failed validation.");
 }
