@@ -5,38 +5,20 @@
 //
 // API
 //
+pub mod error;
+pub use error::*;
+
 pub use interpolation::linear_interpolate;
 
 pub mod layers;
+pub use layers::Layer;
+
 pub mod levels;
-pub mod met_formulas;
+
 pub mod parcel;
+pub use parcel::Parcel;
+
 pub mod profile;
-
-/// Utility functions and types. This will eventually be removed as it doesn't really belong in
-/// this crate's API.
-#[deprecated]
-pub mod utility;
-
-/// A layer in the atmosphere described by the values at the top and bottom.
-#[derive(Debug, Clone, Copy)]
-pub struct Layer {
-    /// Pressure at the bottom of the layer.
-    pub bottom: DataRow,
-    /// Pressure at the top of the layer.
-    pub top: DataRow,
-}
-
-/// Variables defining a parcel as used in parcel analysis.
-#[derive(Debug, Clone, Copy)]
-pub struct Parcel {
-    /// Temperature in C
-    pub temperature: f64,
-    /// Pressure in hPa
-    pub pressure: f64,
-    /// Dew point in C
-    pub dew_point: f64,
-}
 
 //
 // Internal use only
@@ -49,6 +31,7 @@ extern crate failure_derive;
 extern crate smallvec;
 
 // framework libs
+extern crate metfor;
 extern crate sounding_base;
 
 // dev only libs
@@ -56,12 +39,9 @@ extern crate sounding_base;
 extern crate sounding_validate;
 
 // Modules
-mod error;
 mod interpolation;
 #[cfg(test)]
 mod test_data;
 
 // Internal use only
 pub(crate) const VEC_SIZE: usize = 2;
-
-use sounding_base::DataRow;

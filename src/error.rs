@@ -1,5 +1,6 @@
 //! Error types for the sounding-analysis crate.
 
+/// Error type for the crate.
 #[derive(Debug, Fail)]
 pub enum AnalysisError {
     /// A profile that is required for this analysis is missing.
@@ -18,3 +19,6 @@ pub enum AnalysisError {
     #[fail(display = "Invalid input to {}: {}", _0, _1)]
     InvalidInput(&'static str, &'static str),
 }
+
+/// Shorthand for results.
+pub type Result<T> = ::std::result::Result<T, AnalysisError>;

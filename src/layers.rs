@@ -4,10 +4,17 @@
 use error::*;
 use smallvec::SmallVec;
 
-use sounding_base::{Profile, Sounding};
+use sounding_base::{DataRow, Profile, Sounding};
 use sounding_base::Profile::*;
 
-use Layer;
+/// A layer in the atmosphere described by the values at the top and bottom.
+#[derive(Debug, Clone, Copy)]
+pub struct Layer {
+    /// Pressure at the bottom of the layer.
+    pub bottom: DataRow,
+    /// Pressure at the top of the layer.
+    pub top: DataRow,
+}
 
 impl Layer {
     /// Get the average lapse rate in C/km
@@ -29,8 +36,30 @@ impl Layer {
 
     /// Get the bulk wind shear (spd kts, direction degrees)
     pub fn wind_shear(&self) -> Option<(f64, f64)> {
-        // TODO:
-        unimplemented!()
+        let top_spd = self.top.speed?;
+        let top_dir = self.top.direction?;
+        let bottom_spd = self.bottom.speed?;
+        let bottom_dir = self.bottom.direction?;
+
+        let top_u = top_dir.to_radians().cos() * top_spd;
+        let top_v = top_dir.to_radians().sin() * top_spd;
+        let bottom_u = bottom_dir.to_radians().cos() * bottom_spd;
+        let bottom_v = bottom_dir.to_radians().sin() * bottom_spd;
+
+        let du = top_u - bottom_u;
+        let dv = top_v - bottom_v;
+
+        let shear_spd = du.hypot(dv);
+        let mut shear_dir = dv.atan2(du).to_degrees();
+
+        while shear_dir < 0.0 {
+            shear_dir += 360.0;
+        }
+        while shear_dir > 360.0 {
+            shear_dir -= 360.0;
+        }
+
+        Some((shear_spd, shear_dir))
     }
 }
 
@@ -41,7 +70,7 @@ impl Layer {
 /// If the sounding is missing a temperature or pressure profile, `error::ErrorKind::MissingProfile`
 /// is returned in the result. Otherwise, if no dendritic layers are found, an empty vector is
 /// returned in the `Result`
-pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, AnalysisError> {
+pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     const ANALYSIS_NAME: &str = "Dendritic Snow Growth Zone(s)";
 
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
@@ -141,9 +170,7 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
 
 /// Assuming it is below freezing at the surface, this will find the warm layers aloft using the
 /// dry bulb temperature. Does not look above 500 hPa.
-pub fn warm_temperature_layer_aloft(
-    snd: &Sounding,
-) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, AnalysisError> {
+pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     const ANALYSIS_NAME: &str = "Warm temperature layer aloft.";
 
     warm_layer_aloft(snd, Temperature, ANALYSIS_NAME, "Temperature")
@@ -151,9 +178,7 @@ pub fn warm_temperature_layer_aloft(
 
 /// Assuming the wet bulb temperature is below freezing at the surface, this will find the warm
 /// layers aloft using the wet bulb temperature. Does not look above 500 hPa.
-pub fn warm_wet_bulb_layer_aloft(
-    snd: &Sounding,
-) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, AnalysisError> {
+pub fn warm_wet_bulb_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     const ANALYSIS_NAME: &str = "Warm wet bulb layer aloft.";
 
     warm_layer_aloft(snd, WetBulb, ANALYSIS_NAME, "Wet Bulb Temperature")
@@ -164,7 +189,7 @@ fn warm_layer_aloft(
     var: Profile,
     analysis_name: &'static str,
     profile_name: &'static str,
-) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, AnalysisError> {
+) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     assert!(var == Temperature || var == WetBulb);
 
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
@@ -309,10 +334,10 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Op
 }
 
 /// Get a layer that has a certain thickness, like 3km or 6km.
-pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer, AnalysisError> {
+pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
     const ANALYSIS: &str = "Layer AGL";
 
-    let tgt_elev = if let Some(elev) = snd.get_location().2 {
+    let tgt_elev = if let Some(elev) = snd.get_station_info().elevation() {
         elev + meters_agl
     } else {
         return Err(AnalysisError::MissingValue("station elevation", ANALYSIS));
@@ -395,7 +420,7 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Option<Layer
 }
 
 /// Get all inversion layers up 500 mb.
-pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>, AnalysisError> {
+pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     const ANALYSIS_NAME: &str = "inversion(s)";
 
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();

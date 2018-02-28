@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use sounding_base::Profile;
-use sounding_base::Sounding;
+use sounding_base::{Sounding, StationInfo};
 use sounding_validate::validate;
 
 pub fn create_test_sounding() -> Sounding {
@@ -14,10 +14,9 @@ pub fn create_test_sounding() -> Sounding {
     use sounding_base::Surface;
 
     let snd = Sounding::new()
-        .set_station_num(1)
+        .set_station_info(StationInfo::new_with_values(1, (45.0, -115.0), 600.0))
         .set_valid_time(None)
         .set_lead_time(0)
-        .set_location(45.0, -115.0, 600.0)
         .set_index(Showalter, -2.0)
         .set_index(LI, -2.0)
         .set_index(SWeT, 35.0)
@@ -188,8 +187,6 @@ pub fn create_test_sounding() -> Sounding {
 
 /// Single dendritic layer, basic crossing
 pub fn create_simple_dendtritic_test_sounding() -> Sounding {
-    use sounding_base::Profile::*;
-
     let snd = create_test_sounding()
         .set_profile(
             Profile::Temperature,
@@ -257,7 +254,6 @@ pub fn create_simple_dendtritic_test_sounding() -> Sounding {
 
 /// Multiple dendritic layer, jumps over, 3-layers
 pub fn create_complex_dendtritic_test_sounding() -> Sounding {
-
     let snd = create_test_sounding()
         .set_profile(
             Profile::Temperature,
