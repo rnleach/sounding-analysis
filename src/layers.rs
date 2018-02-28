@@ -9,6 +9,31 @@ use sounding_base::Profile::*;
 
 use Layer;
 
+impl Layer {
+    /// Get the average lapse rate in C/km
+    pub fn lapse_rate(&self) -> Option<f64> {
+        let dt = self.top.temperature? - self.bottom.temperature?;
+        let dz = self.height_thickness()?;
+        Some(dt / dz * 1000.0)
+    }
+
+    /// Get the height thickness in meters
+    pub fn height_thickness(&self) -> Option<f64> {
+        Some(self.top.height? - self.bottom.height?)
+    }
+
+    /// Get the pressure thickness.
+    pub fn pressure_thickness(&self) -> Option<f64> {
+        Some(self.bottom.pressure? - self.top.pressure?)
+    }
+
+    /// Get the bulk wind shear (spd kts, direction degrees)
+    pub fn wind_shear(&self) -> Option<(f64, f64)> {
+        // TODO:
+        unimplemented!()
+    }
+}
+
 /// Find the dendtritic growth zones throughout the profile. It is unusual, but possible there is
 /// more than one.
 ///
@@ -314,26 +339,31 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer, AnalysisError
         }
     });
 
+    let bottom = snd.surface_as_data_row();
+
     // Initialize the bottom of the sounding
     let mut last_h: f64;
     let mut last_press: f64;
-    if let Some((h, press)) = profile.by_ref().next() {
+    // Try surface data
+    if let (Some(h), Some(p)) = (bottom.height, bottom.pressure) {
         last_h = h;
-        last_press = press;
+        last_press = p;
     } else {
-        return Err(AnalysisError::NoDataProfile(
-            "Geopotential Height or Pressure",
-            ANALYSIS,
-        ));
+        // Find lowest level in sounding
+        if let Some((h, press)) = profile.by_ref().next() {
+            last_h = h;
+            last_press = press;
+        } else {
+            return Err(AnalysisError::NoDataProfile(
+                "Geopotential Height or Pressure",
+                ANALYSIS,
+            ));
+        }
     }
 
-    // Check we aren't too high already.
     if last_h > tgt_elev {
         return Err(AnalysisError::NotEnoughData(ANALYSIS));
     }
-
-    let bottom_press = last_press; // Lowest level we could find.
-    let bottom = ::interpolation::linear_interpolate(snd, bottom_press);
 
     for (h, press) in profile {
         if last_h <= tgt_elev && h > tgt_elev {
@@ -348,6 +378,20 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer, AnalysisError
     }
 
     Err(AnalysisError::NotEnoughData(ANALYSIS))
+}
+
+/// Get a layer defined by two pressure levels. `bottom_p` > `top_p`
+pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Option<Layer> {
+    let sfc = snd.surface_as_data_row();
+
+    if sfc.pressure.is_some() && sfc.pressure.unwrap() < bottom_p {
+        return None;
+    }
+
+    let bottom = ::interpolation::linear_interpolate(snd, bottom_p);
+    let top = ::interpolation::linear_interpolate(snd, top_p);
+
+    Some(Layer { bottom, top })
 }
 
 /// Get all inversion layers up 500 mb.

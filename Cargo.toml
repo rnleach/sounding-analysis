@@ -17,7 +17,6 @@ smallvec = "^0.6"
 sounding-base = "0.3"
 
 [patch.crates-io]
-sounding-base = {version="0.3", git = "https://github.com/rnleach/sounding-base.git" }
 sounding-validate = {version="0.3", git = "https://github.com/rnleach/sounding-validate.git" }
 
 [dev-dependencies]

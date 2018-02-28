@@ -36,8 +36,6 @@ pub fn find_root(f: &Fn(f64) -> f64, mut low_val: f64, mut high_val: f64) -> f64
     mid_val
 }
 
-// TODO: unit conversions.
-
 #[cfg(test)]
 pub mod test_tools {
     pub fn approx_equal(val1: f64, val2: f64, eps: f64) -> bool {

@@ -5,14 +5,13 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use sounding_base::Profile::*;
+use sounding_base::Profile;
 use sounding_base::Sounding;
 use sounding_validate::validate;
 
 pub fn create_test_sounding() -> Sounding {
-    use sounding_base::Profile::*;
     use sounding_base::Index::*;
-    use sounding_base::Surface::*;
+    use sounding_base::Surface;
 
     let snd = Sounding::new()
         .set_station_num(1)
@@ -33,7 +32,7 @@ pub fn create_test_sounding() -> Sounding {
         .set_index(LFC, 800.0)
         .set_index(BulkRichardsonNumber, 1.2)
         .set_profile(
-            Pressure,
+            Profile::Pressure,
             vec![
                 Option::from(1000.0),
                 Option::from(975.0),
@@ -51,7 +50,7 @@ pub fn create_test_sounding() -> Sounding {
             ],
         )
         .set_profile(
-            Temperature,
+            Profile::Temperature,
             vec![
                 Option::from(30.0),
                 Option::from(29.0),
@@ -69,7 +68,7 @@ pub fn create_test_sounding() -> Sounding {
             ],
         )
         .set_profile(
-            WetBulb,
+            Profile::WetBulb,
             // FIXME: Actually calculate these to be correct
             vec![
                 Option::from(20.0),
@@ -88,7 +87,7 @@ pub fn create_test_sounding() -> Sounding {
             ],
         )
         .set_profile(
-            DewPoint,
+            Profile::DewPoint,
             vec![
                 Option::from(18.0),
                 Option::from(17.0),
@@ -106,7 +105,7 @@ pub fn create_test_sounding() -> Sounding {
             ],
         )
         .set_profile(
-            WindDirection,
+            Profile::WindDirection,
             vec![
                 Option::from(0.0),
                 Option::from(40.0),
@@ -124,7 +123,7 @@ pub fn create_test_sounding() -> Sounding {
             ],
         )
         .set_profile(
-            WindSpeed,
+            Profile::WindSpeed,
             vec![
                 Option::from(5.0),
                 Option::from(10.0),
@@ -142,7 +141,7 @@ pub fn create_test_sounding() -> Sounding {
             ],
         )
         .set_profile(
-            GeopotentialHeight,
+            Profile::GeopotentialHeight,
             vec![
                 Option::from(650.0),
                 Option::from(700.0),
@@ -160,7 +159,7 @@ pub fn create_test_sounding() -> Sounding {
             ],
         )
         .set_profile(
-            CloudFraction,
+            Profile::CloudFraction,
             vec![
                 Option::from(0.0),
                 Option::from(20.0),
@@ -177,10 +176,10 @@ pub fn create_test_sounding() -> Sounding {
                 Option::from(10.0),
             ],
         )
-        .set_surface_value(MSLP, 1014.0)
-        .set_surface_value(StationPressure, 1010.0)
-        .set_surface_value(UWind, 0.0)
-        .set_surface_value(VWind, 0.0);
+        .set_surface_value(Surface::MSLP, 1014.0)
+        .set_surface_value(Surface::StationPressure, 1010.0)
+        .set_surface_value(Surface::UWind, 0.0)
+        .set_surface_value(Surface::VWind, 0.0);
 
     assert!(validate(&snd).is_ok(), "Test data failed validation.");
 
@@ -193,7 +192,7 @@ pub fn create_simple_dendtritic_test_sounding() -> Sounding {
 
     let snd = create_test_sounding()
         .set_profile(
-            Temperature,
+            Profile::Temperature,
             vec![
                 Option::from(-8.1),
                 Option::from(-10.0),
@@ -211,7 +210,7 @@ pub fn create_simple_dendtritic_test_sounding() -> Sounding {
             ],
         )
         .set_profile(
-            WetBulb,
+            Profile::WetBulb,
             // FIXME: Actually calculate these to be correct
             vec![
                 Option::from(-8.5),
@@ -230,7 +229,7 @@ pub fn create_simple_dendtritic_test_sounding() -> Sounding {
             ],
         )
         .set_profile(
-            DewPoint,
+            Profile::DewPoint,
             vec![
                 Option::from(-9.0),
                 Option::from(-11.00),
@@ -258,11 +257,10 @@ pub fn create_simple_dendtritic_test_sounding() -> Sounding {
 
 /// Multiple dendritic layer, jumps over, 3-layers
 pub fn create_complex_dendtritic_test_sounding() -> Sounding {
-    use sounding_base::Profile::*;
 
     let snd = create_test_sounding()
         .set_profile(
-            Temperature,
+            Profile::Temperature,
             vec![
                 Option::from(-12.1),
                 Option::from(-10.0),
@@ -280,7 +278,7 @@ pub fn create_complex_dendtritic_test_sounding() -> Sounding {
             ],
         )
         .set_profile(
-            WetBulb,
+            Profile::WetBulb,
             // FIXME: Actually calculate these to be correct
             vec![
                 Option::from(-12.5),
@@ -299,7 +297,7 @@ pub fn create_complex_dendtritic_test_sounding() -> Sounding {
             ],
         )
         .set_profile(
-            DewPoint,
+            Profile::DewPoint,
             vec![
                 Option::from(-13.0),
                 Option::from(-11.00),
@@ -329,7 +327,8 @@ fn load_test_csv_sounding(location: &PathBuf) -> Sounding {
     let mut f = File::open(location).expect(&format!("Error opening file: {:?}", location));
 
     let mut contents = String::new();
-    f.read_to_string(&mut contents).expect(&format!("Error reading file: {:?}", location));
+    f.read_to_string(&mut contents)
+        .expect(&format!("Error reading file: {:?}", location));
 
     let lines: Vec<&str> = contents.split('\n').skip(1).collect();
     let mut height: Vec<Option<f64>> = Vec::with_capacity(lines.len());
@@ -340,8 +339,10 @@ fn load_test_csv_sounding(location: &PathBuf) -> Sounding {
     let mut wdir: Vec<Option<f64>> = Vec::with_capacity(lines.len());
 
     for line in lines {
-        let tokens:Vec<&str> = line.split(',').collect();
-        if tokens.len() < 6 { continue; }
+        let tokens: Vec<&str> = line.split(',').collect();
+        if tokens.len() < 6 {
+            continue;
+        }
         height.push(f64::from_str(tokens[0]).ok());
         temp.push(f64::from_str(tokens[1]).ok());
         dp.push(f64::from_str(tokens[2]).ok());
@@ -350,13 +351,13 @@ fn load_test_csv_sounding(location: &PathBuf) -> Sounding {
         wdir.push(f64::from_str(tokens[5]).ok());
     }
 
-   Sounding::new()
-       .set_profile(GeopotentialHeight, height)
-       .set_profile(Temperature, temp)
-       .set_profile(DewPoint, dp)
-       .set_profile(Pressure, press)
-       .set_profile(WindSpeed, wspd)
-       .set_profile(WindDirection, wdir)
+    Sounding::new()
+        .set_profile(Profile::GeopotentialHeight, height)
+        .set_profile(Profile::Temperature, temp)
+        .set_profile(Profile::DewPoint, dp)
+        .set_profile(Profile::Pressure, press)
+        .set_profile(Profile::WindSpeed, wspd)
+        .set_profile(Profile::WindDirection, wdir)
 }
 
 #[test]

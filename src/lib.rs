@@ -15,9 +15,10 @@ pub mod profile;
 
 /// Utility functions and types. This will eventually be removed as it doesn't really belong in
 /// this crate's API.
+#[deprecated]
 pub mod utility;
 
-/// A layer in the atmosphere described by the top and bottom pressures.
+/// A layer in the atmosphere described by the values at the top and bottom.
 #[derive(Debug, Clone, Copy)]
 pub struct Layer {
     /// Pressure at the bottom of the layer.
@@ -61,6 +62,6 @@ mod interpolation;
 mod test_data;
 
 // Internal use only
-pub(crate) const VEC_SIZE: usize = sounding_base::SMALL_VEC_SIZE;
+pub(crate) const VEC_SIZE: usize = 2;
 
 use sounding_base::DataRow;

@@ -1,6 +1,8 @@
 //! Formulas for meteorological calculations.
+#![deprecated]
 
 /// Potential temperature in Kelvin
+#[deprecated]
 pub fn theta_kelvin(pressure_hpa: f64, temperature_c: f64) -> f64 {
     use std::f64;
 
@@ -8,6 +10,7 @@ pub fn theta_kelvin(pressure_hpa: f64, temperature_c: f64) -> f64 {
 }
 
 /// Temperture in C
+#[deprecated]
 pub fn temperature_c_from_theta(theta_kelvin: f64, pressure_hpa: f64) -> f64 {
     use std::f64;
 
@@ -15,6 +18,7 @@ pub fn temperature_c_from_theta(theta_kelvin: f64, pressure_hpa: f64) -> f64 {
 }
 
 /// Get the vapor pressure of water as a function of temperature in hPa
+#[deprecated]
 pub fn vapor_pressure_water(temperature_c: f64) -> f64 {
     use std::f64;
 
@@ -22,6 +26,7 @@ pub fn vapor_pressure_water(temperature_c: f64) -> f64 {
 }
 
 /// Given the temperature and dew point in celsius, calculate the relative humidity.
+#[deprecated]
 pub fn rh(temperature_c: f64, dew_point_c: f64) -> f64 {
     let e = vapor_pressure_water(dew_point_c);
     let es = vapor_pressure_water(temperature_c);
@@ -29,6 +34,7 @@ pub fn rh(temperature_c: f64, dew_point_c: f64) -> f64 {
 }
 
 /// Get the mixing ratio in g/kg.
+#[deprecated]
 pub fn mixing_ratio(temperature_c: f64, pressure_hpa: f64) -> f64 {
     let vp = vapor_pressure_water(temperature_c);
     621.97 * (vp / (pressure_hpa - vp))
@@ -36,6 +42,7 @@ pub fn mixing_ratio(temperature_c: f64, pressure_hpa: f64) -> f64 {
 
 /// Given a mixing ratio and pressure, calculate the temperature. The p is in hPa and the mw is in
 /// g/kg. Assume 100% rh.
+#[deprecated]
 pub fn temperature_from_p_and_saturated_mw(p: f64, mw: f64) -> f64 {
     use std::f64;
 
@@ -44,6 +51,7 @@ pub fn temperature_from_p_and_saturated_mw(p: f64, mw: f64) -> f64 {
 }
 
 /// Assuming a saturated parcel, calculate the equivalent potential temperature in Kelvin.
+#[deprecated]
 pub fn theta_e_saturated_kelvin(pressure_hpa: f64, temperature_c: f64) -> f64 {
     use std::f64;
 
@@ -54,23 +62,7 @@ pub fn theta_e_saturated_kelvin(pressure_hpa: f64, temperature_c: f64) -> f64 {
 }
 
 /// Convert celsius to fahrenheit.
+#[deprecated]
 pub fn celsius_to_f(temperature: f64) -> f64 {
     1.8 * temperature + 32.0
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use utility::test_tools::*;
-
-    #[test]
-    fn test_theta_kelvin() {
-        assert!(approx_equal(
-            32.0 + 273.15,
-            theta_kelvin(1000.0, 32.0),
-            1.0e-2
-        ));
-    }
-
-    // TODO: Test all functions.
 }
