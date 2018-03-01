@@ -78,6 +78,7 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
     // Dendritic snow growth zone temperature range in C
     const WARM_SIDE: f64 = -12.0;
     const COLD_SIDE: f64 = -18.0;
+    const TOP_PRESSURE: f64 = 300.0; // don't look above here.
 
     let t_profile = snd.get_profile(Temperature);
     let p_profile = snd.get_profile(Pressure);
@@ -132,6 +133,10 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
         if let (Some(t), Some(press)) = (*t, *press) {
             // Do not use if-else or continue statements because a layer might be so thin that
             // you cross into and out of it between levels.
+
+            if press < TOP_PRESSURE {
+                break;
+            }
 
             // Crossed into zone from warm side
             if last_t > WARM_SIDE && t <= WARM_SIDE {
@@ -553,15 +558,67 @@ mod test {
 
     #[test]
     fn simple_dendritic_layer() {
-        let snd = test_data::create_simple_dendtritic_test_sounding();
-        let layers = dendritic_snow_zone(&snd).unwrap();
-        assert!(layers.len() == 1);
+        let (snd, tgt_float_vals, tgt_int_vals) = test_data::load_test_file("standard.csv");
+
+        // Check for number of dendritic growth zones.
+        if let Some(num_dendritic_layers) = tgt_int_vals.get("num dendritic zones") {
+            let num_dendritic_layers = *num_dendritic_layers as usize;
+            let analyzed_num = dendritic_snow_zone(&snd).unwrap().len();
+            assert!(num_dendritic_layers == analyzed_num);
+        } else {
+            panic!("No dendritic zones in test file.")
+        }
+
+        // Check the pressure levels of those growth zones.
+        if let Some(dendritic_zone_pressures) = tgt_float_vals.get("dendritic zone pressures") {
+            let dendritic_zone_pressures = dendritic_zone_pressures.chunks(2);
+            let analyzed_layers = dendritic_snow_zone(&snd).unwrap();
+            let analyzed_layers = analyzed_layers.iter();
+            for (lyr, it) in analyzed_layers.zip(dendritic_zone_pressures) {
+                println!(
+                    "\nbottom {:?}  ---  {:?}",
+                    lyr.bottom.pressure.unwrap(),
+                    it[0]
+                );
+                assert!(test_data::approx_equal(
+                    lyr.bottom.pressure.unwrap(),
+                    it[0],
+                    0.1
+                ));
+                println!("top {:?}  ---  {:?}", lyr.top.pressure.unwrap(), it[1]);
+                assert!(test_data::approx_equal(
+                    lyr.top.pressure.unwrap(),
+                    it[1],
+                    0.1
+                ));
+            }
+        }
     }
 
+    // TODO: Test complex dendritic layer.
+
     #[test]
-    fn complex_dendritic_layer() {
-        let snd = test_data::create_complex_dendtritic_test_sounding();
-        let layers = dendritic_snow_zone(&snd).unwrap();
-        assert!(layers.len() == 3);
+    fn test_warm_layer_aloft() {
+        let (snd, _tgt_float_vals, tgt_int_vals) = test_data::load_test_file("standard.csv");
+
+        // Check for number of warm layers aloft.
+        if let Some(num_warm_layers) = tgt_int_vals.get("num warm dry bulb aloft") {
+            let num_warm_layers = *num_warm_layers as usize;
+            let analyzed_num = warm_temperature_layer_aloft(&snd).unwrap().len();
+            assert!(num_warm_layers == analyzed_num);
+        } else {
+            panic!("No warm dry bulb layer info in test file.")
+        }
+
+        // Check for number of warm layers aloft.
+        if let Some(num_warm_layers) = tgt_int_vals.get("num warm wet bulb aloft") {
+            let num_warm_layers = *num_warm_layers as usize;
+            let analyzed_num = warm_wet_bulb_layer_aloft(&snd).unwrap().len();
+            assert!(num_warm_layers == analyzed_num);
+        } else {
+            panic!("No warm wet bulb layer info in test file.")
+        }
     }
+
+    // TODO: test with actual frozen surface and warm layer.
 }
