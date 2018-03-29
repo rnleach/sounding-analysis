@@ -214,8 +214,7 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<SmallVec<[Layer; ::V
             }
         } else {
             match var {
-                Temperature => return Err(AnalysisError::NoDataProfile),
-                WetBulb => return Err(AnalysisError::NoDataProfile),
+                Temperature | WetBulb => return Err(AnalysisError::NoDataProfile),
                 _ => unreachable!(),
             }
         }
@@ -264,7 +263,7 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<SmallVec<[Layer; ::V
     Ok(to_return)
 }
 
-/// Assuming a warm layer aloft given by warm_layers, measure the cold surface layer.
+/// Assuming a warm layer aloft given by `warm_layers`, measure the cold surface layer.
 pub fn cold_surface_temperature_layer(snd: &Sounding, warm_layers: &[Layer]) -> Option<Layer> {
     cold_surface_layer(snd, Temperature, warm_layers)
 }
@@ -349,14 +348,12 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
     if let (Some(h), Some(p)) = (bottom.height, bottom.pressure) {
         last_h = h;
         last_press = p;
-    } else {
+    } else if let Some((h, press)) = profile.by_ref().next() {
         // Find lowest level in sounding
-        if let Some((h, press)) = profile.by_ref().next() {
-            last_h = h;
-            last_press = press;
-        } else {
-            return Err(AnalysisError::NoDataProfile);
-        }
+        last_h = h;
+        last_press = press;
+    } else {
+        return Err(AnalysisError::NoDataProfile);
     }
 
     if last_h > tgt_elev {
