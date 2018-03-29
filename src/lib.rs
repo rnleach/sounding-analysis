@@ -19,6 +19,8 @@ error result, I will set the value to `Option::None`. If the user wants to know 
 //
 // API
 //
+pub use analysis::{Analysis, Index};
+
 pub mod error;
 pub use error::*;
 
@@ -54,6 +56,7 @@ extern crate sounding_validate;
 
 // Modules
 mod interpolation;
+mod analysis;
 #[cfg(test)]
 mod test_data;
 
