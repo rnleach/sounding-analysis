@@ -1,10 +1,19 @@
 #![warn(missing_docs)]
-//! Functions and data types for analyzing soundings from the
-//! [sounding-base](https://github.com/rnleach/sounding-base.git) crate.
+/*!
+Functions and data types for analyzing soundings from the 
+[sounding-base](https://github.com/rnleach/sounding-base.git) crate.
+
+## Purpose
+Provides analysis capabilities for the [sounding-base](https://github.com/rnleach/sounding-base.git) 
+crate.
+
+*/
 
 //
 // API
 //
+pub use analysis::{Analysis, Index};
+
 pub mod error;
 pub use error::*;
 
@@ -40,8 +49,8 @@ extern crate sounding_validate;
 
 // Modules
 mod interpolation;
+mod analysis;
 #[cfg(test)]
 mod test_data;
 
-// Internal use only
 pub(crate) const VEC_SIZE: usize = 2;

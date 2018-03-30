@@ -1,9 +1,12 @@
 use sounding_base::{DataRow, Sounding};
 
+use error::*;
+use error::AnalysisError::*;
+
 /// Interpolate values from the vertical sounding using pressure as the primary coordinate.
 ///
 /// Returns a `DataRow` struct with interpolated values.
-pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> DataRow {
+pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> Result<DataRow> {
     use sounding_base::Profile::*;
 
     let pressure = snd.get_profile(Pressure);
@@ -22,14 +25,17 @@ pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> DataRow {
 
     let mut below_idx: usize = 0;
     let mut above_idx: usize = 0;
+    let mut found_bottom: bool = false;
     for (i, p) in pressure.iter().enumerate() {
         if let Some(p) = *p {
             if p > target_p {
                 below_idx = i;
-            }
-            if p < target_p {
+                found_bottom = true;
+            } else if p < target_p && found_bottom {
                 above_idx = i;
                 break;
+            } else {
+                break; // leave above_idx = 0 to signal error
             }
         }
     }
@@ -77,9 +83,11 @@ pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> DataRow {
         result.omega = eval_linear_interp(below_idx, above_idx, run, dp, omega);
         result.height = eval_linear_interp(below_idx, above_idx, run, dp, height);
         result.cloud_fraction = eval_linear_interp(below_idx, above_idx, run, dp, cloud_fraction);
+        Ok(result)
+    } else {
+        // Target pressure was above or below actual pressures in the sounding.
+        Err(InvalidInput)
     }
-
-    result
 }
 
 fn eval_linear_interp(

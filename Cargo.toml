@@ -1,6 +1,6 @@
 [package]
 name = "sounding-analysis"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Ryan Leach <clumsycodemonkey@gmail.com>"]
 description = """Analysis capability for the sounding-base crate."""
 repository = "https://github.com/rnleach/sounding-analysis.git"
@@ -14,8 +14,8 @@ keywords = ["weather","sounding","meteorology", "skew-t"]
 failure = "^0.1.1"
 failure_derive = "^0.1.1"
 smallvec = "^0.6"
-sounding-base = "^0.3"
+sounding-base = "^0.4"
 metfor = "^0.2"
 
 [dev-dependencies]
-sounding-validate = "^0.3"
+sounding-validate = "^0.4"

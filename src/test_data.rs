@@ -95,8 +95,8 @@ fn load_test_csv_sounding(
             .set_surface_value(Surface::DewPoint, dp_c)
             .set_surface_value(Surface::StationPressure, press_hpa)
             // FIXME: set these!
-            .set_surface_value(Surface::UWind, None)
-            .set_surface_value(Surface::VWind, None)
+            .set_surface_value(Surface::WindSpeed, None)
+            .set_surface_value(Surface::WindDirection, None)
     }
 
     //
