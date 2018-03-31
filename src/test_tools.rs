@@ -10,20 +10,88 @@ use metfor;
 use sounding_base::{Profile, Sounding, StationInfo, Surface};
 use sounding_validate::validate;
 
-pub fn approx_equal(tgt: f64, guess: f64, tol: f64) -> bool {
+macro_rules! check_file_complete {
+    ($test_name:ident, $fname:expr) => {
+        #[test]
+        fn $test_name() {
+            let (snd, ivals, fvals) = load_test_file($fname);
+            assert!(validate(&snd).is_ok(), "Failed validation.");
+
+            assert!(ivals.contains_key("num dendritic zones"));
+            assert!(ivals.contains_key("num warm dry bulb aloft"));
+            assert!(ivals.contains_key("num warm wet bulb aloft"));
+            assert!(ivals.contains_key("num inversions"));
+
+            assert!(fvals.contains_key("dendritic zone pressures"));
+            assert!(fvals.contains_key("6km agl layer pressures"));
+        }
+    };
+}
+
+check_file_complete!(standard_file_complete, "standard.csv");
+
+macro_rules! test_file {
+    ($test_mod_name:ident, $fname:expr) => {
+
+        mod $test_mod_name {
+
+            use ::std::collections::{HashMap};
+            use super::*;
+            use ::sounding_base::{Sounding};
+
+            fn load_data() -> (Sounding, HashMap<String, i64>, HashMap<String, Vec<f64>>) {
+                load_test_file($fname)
+            }
+
+            #[test]
+            fn dendritic_layers() {
+                let (snd, ivals, fvals) = load_data();
+                test_dendritic_layers(&snd, &ivals, &fvals);
+            }
+
+            #[test]
+            fn warm_dry_bulb_aloft_and_cold_sfc_layers(){
+                let (snd, ivals, fvals) = load_data();
+                test_warm_dry_bulb_aloft_and_cold_sfc_layers(&snd, &ivals, &fvals);
+            }
+
+            #[test]
+            fn warm_wet_bulb_aloft(){
+                let (snd, ivals, fvals) = load_data();
+                test_warm_wet_bulb_aloft(&snd, &ivals, &fvals);
+            }
+
+            #[test]
+            fn layer_agl(){
+                let (snd, _, fvals) = load_data();
+                test_layer_agl(&snd, &fvals);
+            }
+
+        }
+    };
+}
+
+test_file!(standard, "standard.csv");
+
+#[test]
+fn test_load_test_csv_sounding() {
+    let (_, ivals, fvals) = load_test_file("standard.csv");
+    
+    assert!(Some(&1) == ivals.get("num dendritic zones"));
+    assert!(Some(&0) == ivals.get("num warm dry bulb aloft"));
+    assert!(Some(&0) == ivals.get("num warm wet bulb aloft"));
+    assert!(Some(&0) == ivals.get("num inversions"));
+
+    assert!(Some(&vec![604.2, 534.7]) == fvals.get("dendritic zone pressures"));
+    assert!(Some(&vec![1080.0, 508.5]) == fvals.get("6km agl layer pressures"));
+}
+
+fn approx_equal(tgt: f64, guess: f64, tol: f64) -> bool {
     use std::f64;
 
     assert!(tol > 0.0);
 
     f64::abs(tgt - guess) <= tol
-}
-
-// Load a sounding file, and assert the target values in the file match the values analyzed.
-pub fn test_sounding(fname: &str) {
-    let (snd, ivals, fvals) = load_test_file(fname);
-    assert!(validate(&snd).is_ok(), "Failed validation.");
-
-    test_layers(&snd, &ivals, &fvals);
 }
 
 fn load_test_file(fname: &str) -> (Sounding, HashMap<String, i64>, HashMap<String, Vec<f64>>) {
@@ -188,17 +256,6 @@ fn load_test_csv_sounding(
     (snd, target_int_vals, target_float_vals)
 }
 
-fn test_layers(
-    snd: &Sounding,
-    tgt_int_vals: &HashMap<String, i64>,
-    tgt_float_vals: &HashMap<String, Vec<f64>>,
-) {
-    test_dendritic_layers(snd, tgt_int_vals, tgt_float_vals);
-    test_warm_dry_bulb_aloft_and_cold_sfc_layers(snd, tgt_int_vals, tgt_float_vals);
-    test_warm_wet_bulb_aloft(snd, tgt_int_vals, tgt_float_vals);
-    test_layer_agl(snd, tgt_float_vals);
-}
-
 fn test_dendritic_layers(
     snd: &Sounding,
     tgt_int_vals: &HashMap<String, i64>,
@@ -349,30 +406,4 @@ fn test_layer_agl(
         } else {
             panic!("No pressure levels given for agl layers.");
         }
-}
-
-#[test]
-fn test_load_test_csv_sounding() {
-    let (snd, ivals, fvals) = load_test_file("standard.csv");
-    assert!(validate(&snd).is_ok(), "Failed validation.");
-
-    assert!(ivals.contains_key("num dendritic zones"));
-    assert!(Some(&1) == ivals.get("num dendritic zones"));
-    assert!(ivals.contains_key("num warm dry bulb aloft"));
-    assert!(Some(&0) == ivals.get("num warm dry bulb aloft"));
-    assert!(ivals.contains_key("num warm wet bulb aloft"));
-    assert!(Some(&0) == ivals.get("num warm wet bulb aloft"));
-    assert!(ivals.contains_key("num inversions"));
-    assert!(Some(&0) == ivals.get("num inversions"));
-
-    assert!(fvals.contains_key("dendritic zone pressures"));
-    assert!(Some(&vec![604.2, 534.7]) == fvals.get("dendritic zone pressures"));
-    assert!(fvals.contains_key("6km agl layer pressures"));
-    assert!(Some(&vec![1080.0, 508.5]) == fvals.get("6km agl layer pressures"));
-
-}
-
-#[test]
-fn test_standard() {
-    test_sounding("standard.csv");
 }
