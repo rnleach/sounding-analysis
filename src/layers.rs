@@ -30,6 +30,7 @@ impl Layer {
     }
 
     /// Get the height thickness in meters
+    #[cfg_attr(feature = "cargo-clippy", allow(float_cmp))]
     pub fn height_thickness(&self) -> Result<f64> {
         let top = self.top.height.ok_or(MissingValue)?;
         let bottom = self.bottom.height.ok_or(MissingValue)?;
@@ -41,6 +42,7 @@ impl Layer {
     }
 
     /// Get the pressure thickness.
+    #[cfg_attr(feature = "cargo-clippy", allow(float_cmp))]
     pub fn pressure_thickness(&self) -> Result<f64> {
         let bottom_p = self.bottom.pressure.ok_or(MissingValue)?;
         let top_p = self.top.pressure.ok_or(MissingValue)?;

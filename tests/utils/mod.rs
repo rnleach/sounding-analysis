@@ -1,5 +1,3 @@
-//! Data used in tests.
-
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -8,14 +6,14 @@ use std::str::FromStr;
 
 use metfor;
 use sounding_base::{Profile, Sounding, StationInfo, Surface};
-use sounding_validate::validate;
 
+#[allow(unused_macros)] // False alarm
 macro_rules! check_file_complete {
     ($test_name:ident, $fname:expr) => {
         #[test]
         fn $test_name() {
-            let (snd, ivals, fvals) = load_test_file($fname);
-            assert!(validate(&snd).is_ok(), "Failed validation.");
+            let (snd, ivals, fvals) = utils::load_test_file($fname);
+            assert!(sounding_validate::validate(&snd).is_ok(), "Failed validation.");
 
             assert!(ivals.contains_key("num dendritic zones"));
             assert!(ivals.contains_key("num warm dry bulb aloft"));
@@ -28,64 +26,49 @@ macro_rules! check_file_complete {
     };
 }
 
-check_file_complete!(standard_file_complete, "standard.csv");
-
+#[allow(unused_macros)] // False alarm
 macro_rules! test_file {
     ($test_mod_name:ident, $fname:expr) => {
 
         mod $test_mod_name {
 
             use ::std::collections::{HashMap};
-            use super::*;
+            use ::utils;
             use ::sounding_base::{Sounding};
 
             fn load_data() -> (Sounding, HashMap<String, i64>, HashMap<String, Vec<f64>>) {
-                load_test_file($fname)
+                utils::load_test_file($fname)
             }
 
             #[test]
             fn dendritic_layers() {
                 let (snd, ivals, fvals) = load_data();
-                test_dendritic_layers(&snd, &ivals, &fvals);
+                utils::test_dendritic_layers(&snd, &ivals, &fvals);
             }
 
             #[test]
             fn warm_dry_bulb_aloft_and_cold_sfc_layers(){
                 let (snd, ivals, fvals) = load_data();
-                test_warm_dry_bulb_aloft_and_cold_sfc_layers(&snd, &ivals, &fvals);
+                utils::test_warm_dry_bulb_aloft_and_cold_sfc_layers(&snd, &ivals, &fvals);
             }
 
             #[test]
             fn warm_wet_bulb_aloft(){
                 let (snd, ivals, fvals) = load_data();
-                test_warm_wet_bulb_aloft(&snd, &ivals, &fvals);
+                utils::test_warm_wet_bulb_aloft(&snd, &ivals, &fvals);
             }
 
             #[test]
             fn layer_agl(){
                 let (snd, _, fvals) = load_data();
-                test_layer_agl(&snd, &fvals);
+                utils::test_layer_agl(&snd, &fvals);
             }
 
         }
     };
 }
 
-test_file!(standard, "standard.csv");
-
-#[test]
-fn test_load_test_csv_sounding() {
-    let (_, ivals, fvals) = load_test_file("standard.csv");
-    
-    assert!(Some(&1) == ivals.get("num dendritic zones"));
-    assert!(Some(&0) == ivals.get("num warm dry bulb aloft"));
-    assert!(Some(&0) == ivals.get("num warm wet bulb aloft"));
-    assert!(Some(&0) == ivals.get("num inversions"));
-
-    assert!(Some(&vec![604.2, 534.7]) == fvals.get("dendritic zone pressures"));
-    assert!(Some(&vec![1080.0, 508.5]) == fvals.get("6km agl layer pressures"));
-}
-
+#[allow(dead_code)] // False alarm
 fn approx_equal(tgt: f64, guess: f64, tol: f64) -> bool {
     use std::f64;
 
@@ -94,7 +77,7 @@ fn approx_equal(tgt: f64, guess: f64, tol: f64) -> bool {
     f64::abs(tgt - guess) <= tol
 }
 
-fn load_test_file(fname: &str) -> (Sounding, HashMap<String, i64>, HashMap<String, Vec<f64>>) {
+pub fn load_test_file(fname: &str) -> (Sounding, HashMap<String, i64>, HashMap<String, Vec<f64>>) {
     let mut test_path = PathBuf::new();
     test_path.push("test_data");
     test_path.push(fname);
@@ -256,12 +239,13 @@ fn load_test_csv_sounding(
     (snd, target_int_vals, target_float_vals)
 }
 
-fn test_dendritic_layers(
+#[allow(dead_code)] // False alarm
+pub fn test_dendritic_layers(
     snd: &Sounding,
     tgt_int_vals: &HashMap<String, i64>,
     tgt_float_vals: &HashMap<String, Vec<f64>>,
 ) {
-    use layers::dendritic_snow_zone;
+    use sounding_analysis::layers::dendritic_snow_zone;
 
     if let Some(num_dendritic_layers) = tgt_int_vals.get("num dendritic zones") {
         let num_dendritic_layers = *num_dendritic_layers as usize;
@@ -291,12 +275,13 @@ fn test_dendritic_layers(
     }
 }
 
-fn test_warm_dry_bulb_aloft_and_cold_sfc_layers(
+#[allow(dead_code)] // False alarm
+pub fn test_warm_dry_bulb_aloft_and_cold_sfc_layers(
     snd: &Sounding,
     tgt_int_vals: &HashMap<String, i64>,
     tgt_float_vals: &HashMap<String, Vec<f64>>,
 ) {
-    use layers::{cold_surface_temperature_layer, warm_temperature_layer_aloft};
+    use sounding_analysis::layers::{cold_surface_temperature_layer, warm_temperature_layer_aloft};
 
     if let Some(num_warm_layers) = tgt_int_vals.get("num warm dry bulb aloft") {
         let num_warm_layers = *num_warm_layers as usize;
@@ -347,12 +332,13 @@ fn test_warm_dry_bulb_aloft_and_cold_sfc_layers(
     }
 }
 
-fn test_warm_wet_bulb_aloft(
+#[allow(dead_code)] // False alarm
+pub fn test_warm_wet_bulb_aloft(
     snd: &Sounding,
     tgt_int_vals: &HashMap<String, i64>,
     tgt_float_vals: &HashMap<String, Vec<f64>>,
 ) {
-    use layers::warm_wet_bulb_layer_aloft;
+    use sounding_analysis::layers::warm_wet_bulb_layer_aloft;
 
     if let Some(num_warm_layers) = tgt_int_vals.get("num warm wet bulb aloft") {
         let num_warm_layers = *num_warm_layers as usize;
@@ -382,11 +368,12 @@ fn test_warm_wet_bulb_aloft(
     }
 }
 
-fn test_layer_agl(
+#[allow(dead_code)] // False alarm
+pub fn test_layer_agl(
     snd: &Sounding,
     tgt_float_vals: &HashMap<String, Vec<f64>>,
 ){
-    use ::layers::layer_agl;
+    use sounding_analysis::layers::layer_agl;
 
     let analysis = layer_agl(snd, 6000.0).unwrap();
     println!("6km AGL layer: {:?}", analysis);

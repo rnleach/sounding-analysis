@@ -50,7 +50,5 @@ extern crate sounding_validate;
 // Modules
 mod interpolation;
 mod analysis;
-#[cfg(test)]
-mod test_tools;
 
 pub(crate) const VEC_SIZE: usize = 2;
