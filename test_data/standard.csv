@@ -180,4 +180,9 @@ num inversions,0
 
 ### Analysis Float Section ###
 dendritic zone pressures,604.2,534.7
+warm dry bulb layer pressures
+cold surface layer pressures
+warm wet bulb layer pressures
+inversion layer pressures
 6km agl layer pressures,1080,508.5
+700-500 hPa layer heights,3013,5575

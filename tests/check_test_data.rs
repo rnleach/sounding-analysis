@@ -1,7 +1,7 @@
 extern crate metfor;
+extern crate sounding_analysis;
 extern crate sounding_base;
 extern crate sounding_validate;
-extern crate sounding_analysis;
 
 #[macro_use]
 mod utils;
@@ -9,7 +9,7 @@ mod utils;
 #[test]
 fn test_load_test_csv_sounding() {
     let (_, ivals, fvals) = utils::load_test_file("standard.csv");
-    
+
     assert!(Some(&1) == ivals.get("num dendritic zones"));
     assert!(Some(&0) == ivals.get("num warm dry bulb aloft"));
     assert!(Some(&0) == ivals.get("num warm wet bulb aloft"));
