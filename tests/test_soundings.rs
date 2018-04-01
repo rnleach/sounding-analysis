@@ -7,3 +7,4 @@ extern crate sounding_validate;
 mod utils;
 
 test_file!(standard, "standard.csv");
+test_file!(complex_dendritic, "complex_dendritic.csv");

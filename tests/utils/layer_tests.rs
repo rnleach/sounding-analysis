@@ -26,6 +26,7 @@ fn test_layers<F: FnOnce(&Sounding) -> Result<SmallVec<[Layer; VEC_SIZE]>>>(
         // Check the pressure levels of these layers.
         if num_layers > 0 {
             if let Some(layer_pressures) = tgt_float_vals.get(levels_key) {
+                assert!(layer_pressures.len() >= 2);
                 let layer_pressures = layer_pressures.chunks(2);
                 for (lyr, it) in analysis.iter().zip(layer_pressures) {
                     println!(

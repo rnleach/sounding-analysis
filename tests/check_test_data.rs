@@ -20,3 +20,4 @@ fn test_load_test_csv_sounding() {
 }
 
 check_file_complete!(standard_file_complete, "standard.csv");
+check_file_complete!(complex_dendritic_file_complete, "complex_dendritic.csv");

@@ -90,6 +90,9 @@ impl Layer {
 /// is returned in the result. Otherwise, if no dendritic layers are found, an empty vector is
 /// returned in the `Result`
 pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+    // FIXME: Use the iterators in sounding to calculate this from the bottom up. Surface based
+    // dendritic layers cause too many difficulties otherwise, and the code is more straight forward.
+    // This is causing the complex_dendritic layer test to fail.
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
 
     // Dendritic snow growth zone temperature range in C
@@ -115,12 +118,18 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
     // Initialize the bottom of the sounding
     let mut last_t: f64;
     let mut last_press: f64;
-    loop {
-        if let Some((t, press)) = profile.by_ref().next() {
-            if let (Some(t), Some(press)) = (*t, *press) {
-                last_t = t;
-                last_press = press;
-                break;
+    let sfc_data = snd.surface_as_data_row();
+    if let (Some(p), Some(t)) = (sfc_data.pressure, sfc_data.temperature) {
+        last_press = p;
+        last_t = t;
+    } else {
+        loop {
+            if let Some((t, press)) = profile.by_ref().next() {
+                if let (Some(t), Some(press)) = (*t, *press) {
+                    last_t = t;
+                    last_press = press;
+                    break;
+                }
             }
         } else {
             return Err(AnalysisError::NoDataProfile);
