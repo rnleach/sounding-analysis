@@ -51,4 +51,5 @@ extern crate sounding_validate;
 mod interpolation;
 mod analysis;
 
-pub(crate) const VEC_SIZE: usize = 2;
+#[allow(missing_docs)] // Make pub for use with integration tests.
+pub const VEC_SIZE: usize = 2;
