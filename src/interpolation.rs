@@ -90,6 +90,12 @@ pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> Result<DataRow> {
     }
 }
 
+/// Interpolate linearly between these two data rows.
+pub fn linear_interp_rows(target_p: f64, point1: &DataRow, point2: &DataRow) -> Result<DataRow> {
+    // FIXME:
+    unimplemented!()
+}
+
 fn eval_linear_interp(
     blw_idx: usize,
     abv_idx: usize,
