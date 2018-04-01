@@ -86,7 +86,7 @@ pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> Result<DataRow> {
         Ok(result)
     } else {
         // Target pressure was above or below actual pressures in the sounding.
-        Err(InvalidInput)
+        Err(InvalidInput.tag(file!(), line!()))
     }
 }
 
