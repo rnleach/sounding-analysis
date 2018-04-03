@@ -220,9 +220,7 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<SmallVec<[Layer; ::V
             }
         } else {
             match var {
-                Temperature | WetBulb => {
-                    return Err(AnalysisError::NoDataProfile)
-                }
+                Temperature | WetBulb => return Err(AnalysisError::NoDataProfile),
                 _ => unreachable!(),
             }
         }
@@ -399,7 +397,6 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Result<Layer
 
 /// Get all inversion layers up to 500 mb.
 pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
-    // FIXME: Check for surface based inversions. Switch to using iterators on sounding.
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
 
     let t_profile = snd.get_profile(Temperature);
@@ -473,16 +470,16 @@ pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
 }
 
 fn push_layer(
-        bottom_press: f64,
-        top_press: f64,
-        snd: &Sounding,
-        target_vec: &mut SmallVec<[Layer; ::VEC_SIZE]>,
-    ) -> Result<()> {
-        let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
-        let top = ::interpolation::linear_interpolate(snd, top_press)?;
-        target_vec.push(Layer { bottom, top });
-        Ok(())
-    }
+    bottom_press: f64,
+    top_press: f64,
+    snd: &Sounding,
+    target_vec: &mut SmallVec<[Layer; ::VEC_SIZE]>,
+) -> Result<()> {
+    let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
+    let top = ::interpolation::linear_interpolate(snd, top_press)?;
+    target_vec.push(Layer { bottom, top });
+    Ok(())
+}
 
 const WINDOW_SIZE: usize = 3;
 struct Window<T, I> {
@@ -492,22 +489,22 @@ struct Window<T, I> {
 
 impl<T, I> Window<T, I>
 where
-    T: Copy,
+    T: Copy + ::std::fmt::Debug,
     I: Iterator<Item = T>,
 {
     fn new_with_iterator(seed: T, mut iter: I) -> Option<Self> {
         let mut window = [seed; WINDOW_SIZE];
-        let mut count = 0;
+        let mut count = 1;
 
         while let Some(val) = iter.by_ref().next() {
             window[count] = val;
             count += 1;
-            if count == WINDOW_SIZE - 1 {
+            if count == WINDOW_SIZE {
                 break;
             }
         }
 
-        if count == WINDOW_SIZE - 1 {
+        if count == WINDOW_SIZE {
             Some(Window { window, iter })
         } else {
             None

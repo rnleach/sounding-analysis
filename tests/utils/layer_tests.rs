@@ -18,7 +18,11 @@ fn test_layers<F: FnOnce(&Sounding) -> Result<SmallVec<[Layer; VEC_SIZE]>>>(
     if let Some(num_layers) = tgt_int_vals.get(num_key) {
         let num_layers = *num_layers as usize;
         let analysis = anal_func(&snd).unwrap();
-        println!("\nanalysis = {:#?}", analysis);
+        println!("\nanalysis = [");
+        for lyr in &analysis {
+            println!("{:#?}", lyr);
+        }
+        println!("]");
 
         let analyzed_num = analysis.len();
         assert_eq!(num_layers, analyzed_num);
@@ -35,10 +39,10 @@ fn test_layers<F: FnOnce(&Sounding) -> Result<SmallVec<[Layer; VEC_SIZE]>>>(
                         lyr.bottom.pressure.unwrap(),
                         it[0]
                     );
-                    assert!(approx_equal(lyr.bottom.pressure.unwrap(), it[0], 0.1));
+                    assert!(approx_equal(lyr.bottom.pressure.unwrap(), it[0], 1.0));
 
                     println!("top {:#?}  ---  {:#?}", lyr.top.pressure.unwrap(), it[1]);
-                    assert!(approx_equal(lyr.top.pressure.unwrap(), it[1], 0.1));
+                    assert!(approx_equal(lyr.top.pressure.unwrap(), it[1], 1.0));
                     count_layers_compared += 1;
                 }
                 assert_eq!(count_layers_compared, num_layers);
@@ -92,13 +96,21 @@ pub fn test_warm_dry_bulb_aloft_and_cold_sfc_layers(
         let num_warm_layers = *num_warm_layers as usize;
         let analysis = warm_temperature_layer_aloft(&snd).unwrap();
 
+        println!("num_warm_layers = {}", num_warm_layers);
+
         // Check the pressure levels of those warm layers.
         if num_warm_layers > 0 {
             // Check out the cold surface layer
             if let Some(cold_surface_layer_pressures) =
                 tgt_float_vals.get("cold surface layer pressures")
             {
+                let num_cold_surface_layer_pressures = cold_surface_layer_pressures.len();
+                assert_eq!(num_cold_surface_layer_pressures, 2);
+
                 let cold_sfc_analysis = cold_surface_temperature_layer(&snd, &analysis).unwrap();
+
+                println!("cold_sfc_analysis: {:#?}", cold_sfc_analysis);
+
                 let cold_surface_layer_pressures = cold_surface_layer_pressures.chunks(2);
                 for (lyr, it) in [cold_sfc_analysis].iter().zip(cold_surface_layer_pressures) {
                     println!(
@@ -106,10 +118,10 @@ pub fn test_warm_dry_bulb_aloft_and_cold_sfc_layers(
                         lyr.bottom.pressure.unwrap(),
                         it[0]
                     );
-                    assert!(approx_equal(lyr.bottom.pressure.unwrap(), it[0], 0.1));
+                    assert!(approx_equal(lyr.bottom.pressure.unwrap(), it[0], 1.0));
 
                     println!("top {:#?}  ---  {:#?}", lyr.top.pressure.unwrap(), it[1]);
-                    assert!(approx_equal(lyr.top.pressure.unwrap(), it[1], 0.1));
+                    assert!(approx_equal(lyr.top.pressure.unwrap(), it[1], 1.0));
                 }
             } else {
                 panic!("No pressure levels given for cold surface layer.");
