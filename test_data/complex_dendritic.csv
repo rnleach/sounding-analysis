@@ -167,7 +167,7 @@ Altitude (m),Temperature ( C ),Dew Point ( C ),Pressure (hPa),wind speed (kt),Wi
 49000,-2.5,-114.75,0.861623,0.767219087,135
 
 ### Surface Data ###
--550,19,11,1080,0.5,350
+-550,-16,-18,1080,0.5,350
 
 ### Analysis Int Section ###
 num dendritic zones,2
@@ -176,7 +176,7 @@ num warm wet bulb aloft,0
 num inversions,1
 
 ### Analysis Float Section ###
-dendritic zone pressures,604.2,534.7
+dendritic zone pressures,1080.0,994.2,604.2,534.7
 warm dry bulb layer pressures
 cold surface layer pressures
 warm wet bulb layer pressures

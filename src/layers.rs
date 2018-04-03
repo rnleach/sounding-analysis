@@ -35,7 +35,7 @@ impl Layer {
         let top = self.top.height.ok_or(MissingValue)?;
         let bottom = self.bottom.height.ok_or(MissingValue)?;
         if top == bottom {
-            Err(InvalidInput.tag(file!(), line!()))
+            Err(InvalidInput)
         } else {
             Ok(top - bottom)
         }
@@ -47,7 +47,7 @@ impl Layer {
         let bottom_p = self.bottom.pressure.ok_or(MissingValue)?;
         let top_p = self.top.pressure.ok_or(MissingValue)?;
         if bottom_p == top_p {
-            Err(InvalidInput.tag(file!(), line!()))
+            Err(InvalidInput)
         } else {
             Ok(bottom_p - top_p)
         }
@@ -85,14 +85,8 @@ impl Layer {
 /// Find the dendtritic growth zones throughout the profile. It is unusual, but possible there is
 /// more than one.
 ///
-/// # Errors
-/// If the sounding is missing a temperature or pressure profile, `error::ErrorKind::MissingProfile`
-/// is returned in the result. Otherwise, if no dendritic layers are found, an empty vector is
-/// returned in the `Result`
+/// If there are none, then an empty vector is returned.
 pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
-    // FIXME: Use the iterators in sounding to calculate this from the bottom up. Surface based
-    // dendritic layers cause too many difficulties otherwise, and the code is more straight forward.
-    // This is causing the complex_dendritic layer test to fail.
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
 
     // Dendritic snow growth zone temperature range in C
@@ -104,53 +98,36 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
     let p_profile = snd.get_profile(Pressure);
 
     if t_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile.tag(file!(), line!()));
+        return Err(AnalysisError::MissingProfile);
     }
     if p_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile.tag(file!(), line!()));
+        return Err(AnalysisError::MissingProfile);
     }
 
     let mut profile = t_profile.iter().zip(p_profile);
 
-    let mut bottom_press = ::std::f64::MAX; // Only init because compiler can't tell value not used
+    let mut bottom_press = ::std::f64::MAX;
     let mut top_press: f64;
 
     // Initialize the bottom of the sounding
     let mut last_t: f64;
     let mut last_press: f64;
-    let sfc_data = snd.surface_as_data_row();
-    if let (Some(p), Some(t)) = (sfc_data.pressure, sfc_data.temperature) {
-        last_press = p;
-        last_t = t;
-    } else {
-        loop {
-            if let Some((t, press)) = profile.by_ref().next() {
-                if let (Some(t), Some(press)) = (*t, *press) {
-                    last_t = t;
-                    last_press = press;
-                    break;
-                }
-            } else {
-                return Err(AnalysisError::NoDataProfile.tag(file!(), line!()));
+
+    loop {
+        if let Some((t, press)) = profile.by_ref().next() {
+            if let (Some(t), Some(press)) = (*t, *press) {
+                last_t = t;
+                last_press = press;
+                break;
             }
+        } else {
+            return Err(AnalysisError::NoDataProfile);
         }
     }
 
     // Check to see if we are already in the dendtritic zone
     if last_t <= WARM_SIDE && last_t >= COLD_SIDE {
         bottom_press = last_press;
-    }
-
-    fn push_layer(
-        bottom_press: f64,
-        top_press: f64,
-        snd: &Sounding,
-        target_vec: &mut SmallVec<[Layer; ::VEC_SIZE]>,
-    ) -> Result<()> {
-        let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
-        let top = ::interpolation::linear_interpolate(snd, top_press)?;
-        target_vec.push(Layer { bottom, top });
-        Ok(())
     }
 
     for (t, press) in profile {
@@ -220,10 +197,10 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<SmallVec<[Layer; ::V
     let p_profile = snd.get_profile(Pressure);
 
     if t_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile.tag(file!(), line!()));
+        return Err(AnalysisError::MissingProfile);
     }
     if p_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile.tag(file!(), line!()));
+        return Err(AnalysisError::MissingProfile);
     }
 
     let mut profile = t_profile.iter().zip(p_profile);
@@ -244,7 +221,7 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<SmallVec<[Layer; ::V
         } else {
             match var {
                 Temperature | WetBulb => {
-                    return Err(AnalysisError::NoDataProfile.tag(file!(), line!()))
+                    return Err(AnalysisError::NoDataProfile)
                 }
                 _ => unreachable!(),
             }
@@ -305,14 +282,14 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Re
     const FREEZING: f64 = 0.0;
 
     if warm_layers.is_empty() {
-        return Err(InvalidInput.tag(file!(), line!()));
+        return Err(InvalidInput);
     }
 
     let t_profile = snd.get_profile(var);
     let p_profile = snd.get_profile(Pressure);
 
     if t_profile.is_empty() || p_profile.is_empty() {
-        return Err(MissingProfile.tag(file!(), line!())); // Should not happen since we already used these to get warm layer
+        return Err(MissingProfile); // Should not happen since we already used these to get warm layer
     }
 
     let mut profile = t_profile.iter().zip(p_profile);
@@ -327,13 +304,13 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Re
                 break;
             }
         } else {
-            return Err(NoDataProfile.tag(file!(), line!()));
+            return Err(NoDataProfile);
         }
     }
 
     // Check to see if we are below freezing at the bottom
     if last_t > FREEZING {
-        return Err(InvalidInput.tag(file!(), line!()));
+        return Err(InvalidInput);
     }
 
     let bottom = ::interpolation::linear_interpolate(snd, last_press)?;
@@ -349,17 +326,17 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
     let tgt_elev = if let Some(elev) = snd.get_station_info().elevation() {
         elev + meters_agl
     } else {
-        return Err(MissingValue.tag(file!(), line!()));
+        return Err(MissingValue);
     };
 
     let h_profile = snd.get_profile(GeopotentialHeight);
     let p_profile = snd.get_profile(Pressure);
 
     if h_profile.is_empty() {
-        return Err(MissingProfile.tag(file!(), line!()));
+        return Err(MissingProfile);
     }
     if p_profile.is_empty() {
-        return Err(MissingProfile.tag(file!(), line!()));
+        return Err(MissingProfile);
     }
 
     let mut profile = h_profile.iter().zip(p_profile).filter_map(|pair| {
@@ -384,11 +361,11 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
         last_h = h;
         last_press = press;
     } else {
-        return Err(AnalysisError::NoDataProfile.tag(file!(), line!()));
+        return Err(AnalysisError::NoDataProfile);
     }
 
     if last_h > tgt_elev {
-        return Err(AnalysisError::NotEnoughData.tag(file!(), line!()));
+        return Err(AnalysisError::NotEnoughData);
     }
 
     for (h, press) in profile {
@@ -403,7 +380,7 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
         last_press = press;
     }
 
-    Err(AnalysisError::NotEnoughData.tag(file!(), line!()))
+    Err(AnalysisError::NotEnoughData)
 }
 
 /// Get a layer defined by two pressure levels. `bottom_p` > `top_p`
@@ -411,7 +388,7 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Result<Layer
     let sfc_pressure = snd.surface_as_data_row().pressure;
 
     if sfc_pressure.is_some() && sfc_pressure.unwrap() < bottom_p {
-        return Err(InvalidInput.tag(file!(), line!()));
+        return Err(InvalidInput);
     }
 
     let bottom = ::interpolation::linear_interpolate(snd, bottom_p)?;
@@ -429,10 +406,10 @@ pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     let p_profile = snd.get_profile(Pressure);
 
     if t_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile.tag(file!(), line!()));
+        return Err(AnalysisError::MissingProfile);
     }
     if p_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile.tag(file!(), line!()));
+        return Err(AnalysisError::MissingProfile);
     }
 
     let profile = t_profile
@@ -450,7 +427,7 @@ pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     let mut window = if let Some(window) = Window::new_with_iterator((0usize, 0.0f64), profile) {
         window
     } else {
-        return Err(AnalysisError::NotEnoughData.tag(file!(), line!()));
+        return Err(AnalysisError::NotEnoughData);
     };
 
     let mut bottom_idx = 0usize; // Only init because compiler can't tell value not used
@@ -494,6 +471,18 @@ pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
 
     Ok(to_return)
 }
+
+fn push_layer(
+        bottom_press: f64,
+        top_press: f64,
+        snd: &Sounding,
+        target_vec: &mut SmallVec<[Layer; ::VEC_SIZE]>,
+    ) -> Result<()> {
+        let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
+        let top = ::interpolation::linear_interpolate(snd, top_press)?;
+        target_vec.push(Layer { bottom, top });
+        Ok(())
+    }
 
 const WINDOW_SIZE: usize = 3;
 struct Window<T, I> {

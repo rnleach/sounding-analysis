@@ -34,6 +34,8 @@ pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> Result<DataRow> {
             } else if p < target_p && found_bottom {
                 above_idx = i;
                 break;
+            } else if p == target_p {
+                return snd.get_data_row(i).ok_or(AnalysisError::InvalidInput);
             } else {
                 break; // leave above_idx = 0 to signal error
             }
@@ -86,14 +88,8 @@ pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> Result<DataRow> {
         Ok(result)
     } else {
         // Target pressure was above or below actual pressures in the sounding.
-        Err(InvalidInput.tag(file!(), line!()))
+        Err(InvalidInput)
     }
-}
-
-/// Interpolate linearly between these two data rows.
-pub fn linear_interp_rows(target_p: f64, point1: &DataRow, point2: &DataRow) -> Result<DataRow> {
-    // FIXME:
-    unimplemented!()
 }
 
 fn eval_linear_interp(
