@@ -28,6 +28,7 @@ fn test_layers<F: FnOnce(&Sounding) -> Result<SmallVec<[Layer; VEC_SIZE]>>>(
             if let Some(layer_pressures) = tgt_float_vals.get(levels_key) {
                 assert!(layer_pressures.len() >= 2);
                 let layer_pressures = layer_pressures.chunks(2);
+                let mut count_layers_compared = 0;
                 for (lyr, it) in analysis.iter().zip(layer_pressures) {
                     println!(
                         "\nbottom {:#?}  ---  {:#?}",
@@ -38,7 +39,9 @@ fn test_layers<F: FnOnce(&Sounding) -> Result<SmallVec<[Layer; VEC_SIZE]>>>(
 
                     println!("top {:#?}  ---  {:#?}", lyr.top.pressure.unwrap(), it[1]);
                     assert!(approx_equal(lyr.top.pressure.unwrap(), it[1], 0.1));
+                    count_layers_compared += 1;
                 }
+                assert_eq!(count_layers_compared, num_layers);
             } else {
                 panic!("No pressure levels given for analysis target.");
             }
