@@ -56,9 +56,9 @@ impl Layer {
     /// Get the bulk wind shear (spd kts, direction degrees)
     pub fn wind_shear(&self) -> Result<(f64, f64)> {
         let top_spd = self.top.speed.ok_or(MissingValue)?;
-        let top_dir = self.top.direction.ok_or(MissingValue)?;
+        let top_dir = -(90.0 + self.top.direction.ok_or(MissingValue)?);
         let bottom_spd = self.bottom.speed.ok_or(MissingValue)?;
-        let bottom_dir = self.bottom.direction.ok_or(MissingValue)?;
+        let bottom_dir = -(90.0 + self.bottom.direction.ok_or(MissingValue)?);
 
         let top_u = top_dir.to_radians().cos() * top_spd;
         let top_v = top_dir.to_radians().sin() * top_spd;
@@ -69,7 +69,7 @@ impl Layer {
         let dv = top_v - bottom_v;
 
         let shear_spd = du.hypot(dv);
-        let mut shear_dir = dv.atan2(du).to_degrees();
+        let mut shear_dir = -(90.0 + dv.atan2(du).to_degrees());
 
         while shear_dir < 0.0 {
             shear_dir += 360.0;
@@ -79,6 +79,80 @@ impl Layer {
         }
 
         Ok((shear_spd, shear_dir))
+    }
+}
+
+#[cfg(test)]
+mod layer_tests {
+    use super::*;
+    use sounding_base::DataRow;
+
+    fn make_test_layer() -> Layer {
+        let mut bottom = DataRow::default();
+        bottom.pressure = Some(1000.0);
+        bottom.temperature = Some(20.0);
+        bottom.height = Some(5.0);
+        bottom.speed = Some(1.0);
+        bottom.direction = Some(180.0);
+
+        let mut top = DataRow::default();
+        top.pressure = Some(700.0);
+        top.temperature = Some(-2.0);
+        top.height = Some(3012.0);
+        top.speed = Some(1.0);
+        top.direction = Some(90.0);
+
+        Layer { bottom, top }
+    }
+
+    fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
+        (a - b).abs() <= tol
+    }
+
+    #[test]
+    fn test_height_thickness() {
+        let lyr = make_test_layer();
+        println!("{:#?}", lyr);
+        assert!(approx_eq(
+            lyr.height_thickness().unwrap(),
+            3007.0,
+            ::std::f64::EPSILON
+        ));
+    }
+
+    #[test]
+    fn test_pressure_thickness() {
+        let lyr = make_test_layer();
+        println!("{:#?}", lyr);
+        assert!(approx_eq(
+            lyr.pressure_thickness().unwrap(),
+            300.0,
+            ::std::f64::EPSILON
+        ));
+    }
+
+    #[test]
+    fn test_lapse_rate() {
+        let lyr = make_test_layer();
+        println!(
+            "{:#?}\n\n -- \n\n {} \n\n --",
+            lyr,
+            lyr.lapse_rate().unwrap()
+        );
+        assert!(approx_eq(lyr.lapse_rate().unwrap(), -7.31626, 1.0e-5));
+    }
+
+    #[test]
+    fn test_wind_shear() {
+        let lyr = make_test_layer();
+        println!(
+            "{:#?}\n\n -- \n\n {:#?} \n\n --",
+            lyr,
+            lyr.wind_shear().unwrap()
+        );
+        let (speed_shear, direction_shear) = lyr.wind_shear().unwrap();
+        assert!(approx_eq(speed_shear, ::std::f64::consts::SQRT_2, 1.0e-5));
+        assert!(approx_eq(direction_shear, 45.0, 1.0e-5));
     }
 }
 
