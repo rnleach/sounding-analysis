@@ -34,7 +34,7 @@ pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> Result<DataRow> {
             } else if p < target_p && found_bottom {
                 above_idx = i;
                 break;
-            } else if p == target_p {
+            } else if (p - target_p).abs() <= ::std::f64::EPSILON {
                 return snd.get_data_row(i).ok_or(AnalysisError::InvalidInput);
             } else {
                 break; // leave above_idx = 0 to signal error
