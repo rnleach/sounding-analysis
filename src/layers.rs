@@ -474,7 +474,7 @@ pub fn inversions(snd: &Sounding) -> Result<Layers> {
         return Err(AnalysisError::MissingProfile);
     }
 
-    let (_, _, _, levels) = p_profile
+    p_profile
         .iter()
         .zip(t_profile)
         .enumerate()
@@ -486,30 +486,32 @@ pub fn inversions(snd: &Sounding) -> Result<Layers> {
                 None
             }
         })
-        // Capture the levels where the lapse rate flips signs
-        .fold((false, 0,::std::f64::MAX, SmallVec::<[DataRow; 8]>::new()),
-            |(mut in_inversion, last_i, last_t, mut res), (i,t)|{
+        // Capture the inversion layers
+        .fold((0,::std::f64::MAX, None),
+            |(last_i, last_t, mut lyr), (i,t)|{
 
-                if (!in_inversion && last_t < t) || (in_inversion && last_t > t) {
-                    if let Some(row) = snd.get_data_row(last_i) {
-                        res.push(row);
-                        in_inversion = !in_inversion;
+                if lyr.is_none() && last_t < t {
+                    // Coming into an inversion
+                    if let Some(dr) = snd.get_data_row(last_i){
+                        lyr = Some(Layer{bottom: dr, top: DataRow::default()});
+                    } else {
+                        unreachable!();
+                    }
+                } else if lyr.is_some() && last_t > t {
+                    // Leaving an inversion
+                    if let Some(dr) = snd.get_data_row(last_i){
+                        if let Some(Layer{bottom: btm, ..}) = lyr {
+                            to_return.push(Layer{bottom: btm, top: dr});
+                            lyr = None;
+                        } else {
+                            unreachable!();
+                        }
                     } else {
                         unreachable!();
                     }
                 }
-                (in_inversion, i, t, res)
+                (i, t, lyr)
             });
-
-    if !levels.is_empty() {
-        for lvls in levels.chunks(2) {
-            if lvls.len() == 2 {
-                let bottom = lvls[0];
-                let top = lvls[1];
-                to_return.push(Layer { bottom, top });
-            }
-        }
-    }
 
     Ok(to_return)
 }
