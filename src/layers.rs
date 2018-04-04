@@ -30,6 +30,7 @@ impl Layer {
     }
 
     /// Get the height thickness in meters
+    #[cfg_attr(feature = "cargo-clippy", allow(float_cmp))]
     pub fn height_thickness(&self) -> Result<f64> {
         let top = self.top.height.ok_or(MissingValue)?;
         let bottom = self.bottom.height.ok_or(MissingValue)?;
@@ -41,6 +42,7 @@ impl Layer {
     }
 
     /// Get the pressure thickness.
+    #[cfg_attr(feature = "cargo-clippy", allow(float_cmp))]
     pub fn pressure_thickness(&self) -> Result<f64> {
         let bottom_p = self.bottom.pressure.ok_or(MissingValue)?;
         let top_p = self.top.pressure.ok_or(MissingValue)?;
@@ -83,10 +85,7 @@ impl Layer {
 /// Find the dendtritic growth zones throughout the profile. It is unusual, but possible there is
 /// more than one.
 ///
-/// # Errors
-/// If the sounding is missing a temperature or pressure profile, `error::ErrorKind::MissingProfile`
-/// is returned in the result. Otherwise, if no dendritic layers are found, an empty vector is
-/// returned in the `Result`
+/// If there are none, then an empty vector is returned.
 pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
 
@@ -107,12 +106,13 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
 
     let mut profile = t_profile.iter().zip(p_profile);
 
-    let mut bottom_press = ::std::f64::MAX; // Only init because compiler can't tell value not used
+    let mut bottom_press = ::std::f64::MAX;
     let mut top_press: f64;
 
     // Initialize the bottom of the sounding
     let mut last_t: f64;
     let mut last_press: f64;
+
     loop {
         if let Some((t, press)) = profile.by_ref().next() {
             if let (Some(t), Some(press)) = (*t, *press) {
@@ -128,18 +128,6 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
     // Check to see if we are already in the dendtritic zone
     if last_t <= WARM_SIDE && last_t >= COLD_SIDE {
         bottom_press = last_press;
-    }
-
-    fn push_layer(
-        bottom_press: f64,
-        top_press: f64,
-        snd: &Sounding,
-        target_vec: &mut SmallVec<[Layer; ::VEC_SIZE]>,
-    ) -> Result<()> {
-        let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
-        let top = ::interpolation::linear_interpolate(snd, top_press)?;
-        target_vec.push(Layer { bottom, top });
-        Ok(())
     }
 
     for (t, press) in profile {
@@ -407,7 +395,7 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Result<Layer
     Ok(Layer { bottom, top })
 }
 
-/// Get all inversion layers up 500 mb.
+/// Get all inversion layers up to 500 mb.
 pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
 
@@ -481,6 +469,18 @@ pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
     Ok(to_return)
 }
 
+fn push_layer(
+    bottom_press: f64,
+    top_press: f64,
+    snd: &Sounding,
+    target_vec: &mut SmallVec<[Layer; ::VEC_SIZE]>,
+) -> Result<()> {
+    let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
+    let top = ::interpolation::linear_interpolate(snd, top_press)?;
+    target_vec.push(Layer { bottom, top });
+    Ok(())
+}
+
 const WINDOW_SIZE: usize = 3;
 struct Window<T, I> {
     window: [T; WINDOW_SIZE],
@@ -489,22 +489,22 @@ struct Window<T, I> {
 
 impl<T, I> Window<T, I>
 where
-    T: Copy,
+    T: Copy + ::std::fmt::Debug,
     I: Iterator<Item = T>,
 {
     fn new_with_iterator(seed: T, mut iter: I) -> Option<Self> {
         let mut window = [seed; WINDOW_SIZE];
-        let mut count = 0;
+        let mut count = 1;
 
         while let Some(val) = iter.by_ref().next() {
             window[count] = val;
             count += 1;
-            if count == WINDOW_SIZE - 1 {
+            if count == WINDOW_SIZE {
                 break;
             }
         }
 
-        if count == WINDOW_SIZE - 1 {
+        if count == WINDOW_SIZE {
             Some(Window { window, iter })
         } else {
             None
@@ -530,76 +530,4 @@ where
     fn view(&self) -> &[T] {
         &self.window
     }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use test_data;
-
-    #[test]
-    fn simple_dendritic_layer() {
-        let (snd, tgt_float_vals, tgt_int_vals) = test_data::load_test_file("standard.csv");
-
-        // Check for number of dendritic growth zones.
-        if let Some(num_dendritic_layers) = tgt_int_vals.get("num dendritic zones") {
-            let num_dendritic_layers = *num_dendritic_layers as usize;
-            let analyzed_num = dendritic_snow_zone(&snd).unwrap().len();
-            assert!(num_dendritic_layers == analyzed_num);
-        } else {
-            panic!("No dendritic zones in test file.")
-        }
-
-        // Check the pressure levels of those growth zones.
-        if let Some(dendritic_zone_pressures) = tgt_float_vals.get("dendritic zone pressures") {
-            let dendritic_zone_pressures = dendritic_zone_pressures.chunks(2);
-            let analyzed_layers = dendritic_snow_zone(&snd).unwrap();
-            let analyzed_layers = analyzed_layers.iter();
-            for (lyr, it) in analyzed_layers.zip(dendritic_zone_pressures) {
-                println!(
-                    "\nbottom {:?}  ---  {:?}",
-                    lyr.bottom.pressure.unwrap(),
-                    it[0]
-                );
-                assert!(test_data::approx_equal(
-                    lyr.bottom.pressure.unwrap(),
-                    it[0],
-                    0.1
-                ));
-                println!("top {:?}  ---  {:?}", lyr.top.pressure.unwrap(), it[1]);
-                assert!(test_data::approx_equal(
-                    lyr.top.pressure.unwrap(),
-                    it[1],
-                    0.1
-                ));
-            }
-        }
-    }
-
-    // TODO: Test complex dendritic layer.
-
-    #[test]
-    fn test_warm_layer_aloft() {
-        let (snd, _tgt_float_vals, tgt_int_vals) = test_data::load_test_file("standard.csv");
-
-        // Check for number of warm layers aloft.
-        if let Some(num_warm_layers) = tgt_int_vals.get("num warm dry bulb aloft") {
-            let num_warm_layers = *num_warm_layers as usize;
-            let analyzed_num = warm_temperature_layer_aloft(&snd).unwrap().len();
-            assert!(num_warm_layers == analyzed_num);
-        } else {
-            panic!("No warm dry bulb layer info in test file.")
-        }
-
-        // Check for number of warm layers aloft.
-        if let Some(num_warm_layers) = tgt_int_vals.get("num warm wet bulb aloft") {
-            let num_warm_layers = *num_warm_layers as usize;
-            let analyzed_num = warm_wet_bulb_layer_aloft(&snd).unwrap().len();
-            assert!(num_warm_layers == analyzed_num);
-        } else {
-            panic!("No warm wet bulb layer info in test file.")
-        }
-    }
-
-    // TODO: test with actual frozen surface and warm layer.
 }
