@@ -1,12 +1,12 @@
 //! This module finds significant layers such as the dendritic snow growth zone, the hail growth
 //! zone, and inversions.
-
-use error::*;
-use error::AnalysisError::*;
 use smallvec::SmallVec;
 
 use sounding_base::{DataRow, Profile, Sounding};
 use sounding_base::Profile::*;
+
+use error::*;
+use error::AnalysisError::*;
 
 const FREEZING: f64 = 0.0;
 
@@ -166,7 +166,7 @@ mod layer_tests {
 ///
 /// If there are none, then an empty vector is returned.
 pub fn dendritic_snow_zone(snd: &Sounding) -> Result<Layers> {
-    let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
+    let mut to_return: Layers = Layers::new();
 
     // Dendritic snow growth zone temperature range in C
     const WARM_SIDE: f64 = -12.0;
@@ -276,9 +276,7 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<Layers> {
         return Err(AnalysisError::MissingProfile);
     }
 
-    p_profile
-        .iter()
-        .zip(t_profile)
+    izip!(p_profile, t_profile)
         // Remove levels without pressure AND temperature data
         .filter_map(|pair|{
             if let (&Some(p), &Some(t)) = pair {
@@ -290,7 +288,7 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<Layers> {
         // Ignore anything above 500 hPa, extremely unlikely for a warm layer up there.
         .take_while(|&(p,_)| p > 500.0 )
         // Find the warm layers!
-        .fold(Ok((MAX, MAX, None)), |last_iter_res: Result<(f64,f64, Option<_>)>, (p,t)|{
+        .fold(Ok((MAX, MAX, None)), |last_iter_res: Result<(_,_,_)>, (p,t)|{
             let (last_p, last_t, mut bottom) = last_iter_res?;
             if last_t <= FREEZING && t > FREEZING && bottom.is_none() {
                 // Entering a warm layer.
@@ -329,40 +327,41 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Re
     let p_profile = snd.get_profile(Pressure);
 
     if t_profile.is_empty() || p_profile.is_empty() {
-        return Err(MissingProfile); // Should not happen since we already used these to get warm layer
+        // Should not happen since we SHOULD HAVE already used these to get the warm layers
+        return Err(MissingProfile);
     }
 
-    let mut profile = t_profile.iter().zip(p_profile);
-
-    let last_t: f64;
-    let last_press: f64;
-    loop {
-        if let Some((t, press)) = profile.next() {
-            if let (Some(t), Some(press)) = (*t, *press) {
-                last_t = t;
-                last_press = press;
-                break;
+    izip!(0usize.., p_profile, t_profile)
+        // Remove levels with missing data
+        .filter_map(|triplet| {
+            if let (i, &Some(_), &Some(t)) = triplet {
+                Some((i,t))
+            } else {
+                None
             }
-        } else {
-            return Err(NoDataProfile);
-        }
-    }
-
-    // Check to see if we are below freezing at the bottom
-    if last_t > FREEZING {
-        return Err(InvalidInput);
-    }
-
-    let bottom = ::interpolation::linear_interpolate(snd, last_press)?;
-
-    Ok(Layer {
-        bottom,
-        top: warm_layers[0].bottom,
-    })
+        })
+        // Map it to an error if the temperature is above freezing.
+        .map(|(i,t)| {
+            if t > FREEZING {
+                Err(InvalidInput)
+            } else {
+                Ok(i)
+            }
+        })
+        // Only take the first one, we want the surface layer, or the lowest layer available
+        .next()
+        // If there is nothing to get, there was no valid data in the profile.
+        .unwrap_or(Err(NoDataProfile))
+        // Map the result into a data row!
+        .and_then(|index| snd.get_data_row(index).ok_or(InvalidInput))
+        // Package it up in a layer
+        .map(|bottom| Layer{bottom, top:warm_layers[0].bottom})
 }
 
 /// Get a layer that has a certain thickness, like 3km or 6km.
 pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
+    use std::f64::MAX;
+
     let tgt_elev = if let Some(elev) = snd.get_station_info().elevation() {
         elev + meters_agl
     } else {
@@ -376,48 +375,45 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
         return Err(MissingProfile);
     }
 
-    let mut profile = h_profile.iter().zip(p_profile).filter_map(|pair| {
-        if let (&Some(h), &Some(p)) = pair {
-            Some((h, p))
-        } else {
-            None
-        }
-    });
-
     let bottom = snd.surface_as_data_row();
 
-    // Initialize the bottom of the sounding
-    let mut last_h: f64;
-    let mut last_press: f64;
-    // Try surface data
-    if let (Some(h), Some(p)) = (bottom.height, bottom.pressure) {
-        last_h = h;
-        last_press = p;
-    } else if let Some((h, press)) = profile.by_ref().next() {
-        // Find lowest level in sounding
-        last_h = h;
-        last_press = press;
-    } else {
-        return Err(AnalysisError::NoDataProfile);
-    }
-
-    if last_h > tgt_elev {
-        return Err(AnalysisError::NotEnoughData);
-    }
-
-    for (h, press) in profile {
-        if last_h <= tgt_elev && h > tgt_elev {
-            let top_press = ::interpolation::linear_interp(tgt_elev, last_h, h, last_press, press);
-
-            let top = ::interpolation::linear_interpolate(snd, top_press)?;
-
-            return Ok(Layer { bottom, top });
-        }
-        last_h = h;
-        last_press = press;
-    }
-
-    Err(AnalysisError::NotEnoughData)
+    izip!(p_profile, h_profile)
+        // filter out levels with missing data
+        .filter_map(|pair| {
+            if let (&Some(p), &Some(h)) = pair {
+                Some((p, h))
+            } else {
+                None
+            }
+        })
+        // find the pressure at the target geopotential height, to be used later for interpolation.
+        .fold(Ok((MAX, 0.0f64, None)), |acc: Result<(f64,f64,Option<f64>)>, (p, h)|{
+            match acc {
+                // We have not yet found the target pressure to interpolate everything to, so
+                // check the current values.
+                Ok((last_p, last_h, None)) => {
+                    if h > tgt_elev {
+                        // If we finally jumped above our target, we have it bracketed, interpolate
+                        // and find target pressure.
+                        let tgt_p = ::interpolation::linear_interp(tgt_elev, last_h, h, last_p, p);
+                        Ok((MAX,MAX,Some(tgt_p)))
+                    } else {
+                        // Keep climbing up the profile.
+                        Ok((p,h,None))
+                    }
+                },
+                // We have found the target pressure on the last iteration, pass it through
+                ok@Ok((_,_,Some(_))) => ok,
+                // There was an error, keep passing it through.
+                e@Err(_) => e,
+            }
+        })
+        // Extract the target pressure
+        .and_then(|(_,_,opt)| opt.ok_or(NotEnoughData))
+        // Do the interpolation.
+        .and_then(|target_p| ::interpolation::linear_interpolate(snd, target_p))
+        // Compose into a layer
+        .map(|top| Layer{bottom, top})
 }
 
 /// Get a layer defined by two pressure levels. `bottom_p` > `top_p`
@@ -436,6 +432,8 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Result<Layer
 
 /// Get all inversion layers up to 500 mb.
 pub fn inversions(snd: &Sounding) -> Result<Layers> {
+    use std::f64::MAX;
+
     let mut to_return: Layers = Layers::new();
 
     let t_profile = snd.get_profile(Temperature);
@@ -445,43 +443,33 @@ pub fn inversions(snd: &Sounding) -> Result<Layers> {
         return Err(AnalysisError::MissingProfile);
     }
 
-    p_profile
-        .iter()
-        .zip(t_profile)
-        .enumerate()
+    izip!(0usize.., p_profile, t_profile)
         // Filter out rows without both temperature and pressure.
         .filter_map(|triple| {
-            if let (i, (&Some(_), &Some(t))) = triple {
+            if let (i, &Some(_), &Some(t)) = triple {
                 Some((i,t))
             } else {
                 None
             }
         })
         // Capture the inversion layers
-        .fold((0,::std::f64::MAX, None),
-            |(last_i, last_t, mut lyr), (i,t)|{
+        .fold((0, MAX, None), |(last_i, last_t, mut bottom_opt), (i,t)|{
 
-                if lyr.is_none() && last_t < t {
+                if bottom_opt.is_none() && last_t < t {
                     // Coming into an inversion
-                    if let Some(dr) = snd.get_data_row(last_i){
-                        lyr = Some(Layer{bottom: dr, top: DataRow::default()});
-                    } else {
-                        unreachable!();
-                    }
-                } else if lyr.is_some() && last_t > t {
+                    bottom_opt = snd.get_data_row(last_i);
+                } else if bottom_opt.is_some() && last_t > t {
                     // Leaving an inversion
-                    if let Some(dr) = snd.get_data_row(last_i){
-                        if let Some(Layer{bottom: btm, ..}) = lyr {
-                            to_return.push(Layer{bottom: btm, top: dr});
-                            lyr = None;
-                        } else {
-                            unreachable!();
-                        }
-                    } else {
-                        unreachable!();
+                    if let Some(layer) = bottom_opt.and_then(|bottom|{
+                        snd.get_data_row(last_i).and_then(|top| {
+                            Some(Layer{bottom, top})
+                        })
+                    }){
+                        to_return.push(layer);
+                        bottom_opt = None;
                     }
                 }
-                (i, t, lyr)
+                (i, t, bottom_opt)
             });
 
     Ok(to_return)
