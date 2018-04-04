@@ -8,6 +8,8 @@ use smallvec::SmallVec;
 use sounding_base::{DataRow, Profile, Sounding};
 use sounding_base::Profile::*;
 
+const FREEZING: f64 = 0.0;
+
 /// A layer in the atmosphere described by the values at the top and bottom.
 #[derive(Debug, Clone, Copy)]
 pub struct Layer {
@@ -261,11 +263,11 @@ pub fn warm_wet_bulb_layer_aloft(snd: &Sounding) -> Result<Layers> {
 }
 
 fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<Layers> {
+    use std::f64::MAX;
+
     assert!(var == Temperature || var == WetBulb);
 
-    let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
-
-    const FREEZING: f64 = 0.0;
+    let mut to_return: Layers = Layers::new();
 
     let t_profile = snd.get_profile(var);
     let p_profile = snd.get_profile(Pressure);
@@ -274,68 +276,39 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<Layers> {
         return Err(AnalysisError::MissingProfile);
     }
 
-    let mut profile = t_profile.iter().zip(p_profile);
-
-    let mut bottom_press = ::std::f64::MAX; // Only init because compiler can't tell value not used
-    let mut top_press: f64;
-
-    // Initialize the bottom of the sounding
-    let mut last_t: f64;
-    let mut last_press: f64;
-    loop {
-        if let Some((t, press)) = profile.by_ref().next() {
-            if let (Some(t), Some(press)) = (*t, *press) {
-                last_t = t;
-                last_press = press;
-                break;
+    p_profile
+        .iter()
+        .zip(t_profile)
+        // Remove levels without pressure AND temperature data
+        .filter_map(|pair|{
+            if let (&Some(p), &Some(t)) = pair {
+                Some((p,t))
+            } else {
+                None
             }
-        } else {
-            match var {
-                Temperature | WetBulb => return Err(AnalysisError::NoDataProfile),
-                _ => unreachable!(),
+        })
+        // Ignore anything above 500 hPa, extremely unlikely for a warm layer up there.
+        .take_while(|&(p,_)| p > 500.0 )
+        // Find the warm layers!
+        .fold(Ok((MAX, MAX, None)), |last_iter_res: Result<(f64,f64, Option<_>)>, (p,t)|{
+            let (last_p, last_t, mut bottom) = last_iter_res?;
+            if last_t <= FREEZING && t > FREEZING && bottom.is_none() {
+                // Entering a warm layer.
+                let bottom_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
+                bottom = Some(::interpolation::linear_interpolate(snd, bottom_p)?);
             }
-        }
-    }
-
-    // Check to see if we are below freezing at the bottom
-    if last_t > FREEZING {
-        return Ok(to_return);
-    }
-
-    let mut in_warm_zone = false;
-
-    for (t, press) in profile {
-        if let (Some(t), Some(press)) = (*t, *press) {
-            if press < 500.0 {
-                break;
+            if bottom.is_some() && last_t > FREEZING && t <= FREEZING {
+                // Crossed out of a warm layer
+                let top_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
+                let top = ::interpolation::linear_interpolate(snd, top_p)?;
+                {
+                let bottom = bottom.unwrap();
+                to_return.push(Layer{bottom, top});}
+                bottom = None;
             }
 
-            if last_t <= FREEZING && t > FREEZING {
-                bottom_press =
-                    ::interpolation::linear_interp(FREEZING, last_t, t, last_press, press);
-                in_warm_zone = true;
-            }
-            // Crossed out of zone to warm side
-            if last_t > FREEZING && t <= FREEZING {
-                top_press = ::interpolation::linear_interp(FREEZING, last_t, t, last_press, press);
-
-                let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
-                let top = ::interpolation::linear_interpolate(snd, top_press)?;
-                to_return.push(Layer { bottom, top });
-                in_warm_zone = false;
-            }
-            last_t = t;
-            last_press = press;
-        }
-    }
-
-    // Check to see if we ended in a warm layer aloft
-    if last_t > FREEZING && in_warm_zone {
-        top_press = last_press;
-        let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
-        let top = ::interpolation::linear_interpolate(snd, top_press)?;
-        to_return.push(Layer { bottom, top });
-    }
+            Ok((p,t,bottom))
+        })?;
 
     Ok(to_return)
 }
@@ -346,9 +319,7 @@ pub fn cold_surface_temperature_layer(snd: &Sounding, warm_layers: &[Layer]) -> 
 }
 
 fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Result<Layer> {
-    assert!(var == Temperature || var == WetBulb);
-
-    const FREEZING: f64 = 0.0;
+    debug_assert!(var == Temperature || var == WetBulb);
 
     if warm_layers.is_empty() {
         return Err(InvalidInput);
