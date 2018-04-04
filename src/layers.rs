@@ -166,6 +166,7 @@ mod layer_tests {
 ///
 /// If there are none, then an empty vector is returned.
 pub fn dendritic_snow_zone(snd: &Sounding) -> Result<Layers> {
+    use interpolation::{linear_interp, linear_interpolate};
     let mut to_return: Layers = Layers::new();
 
     // Dendritic snow growth zone temperature range in C
@@ -180,74 +181,88 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<Layers> {
         return Err(AnalysisError::MissingProfile);
     }
 
-    let mut profile = t_profile.iter().zip(p_profile);
-
-    let mut bottom_press = ::std::f64::MAX;
-    let mut top_press: f64;
-
-    // Initialize the bottom of the sounding
-    let mut last_t: f64;
-    let mut last_press: f64;
-
-    loop {
-        if let Some((t, press)) = profile.by_ref().next() {
-            if let (Some(t), Some(press)) = (*t, *press) {
-                last_t = t;
-                last_press = press;
-                break;
+    izip!(p_profile, t_profile)
+        // remove levels with missing values
+        .filter_map(|pair| {
+            if let (&Some(p), &Some(t)) = pair {
+                Some((p,t))
+            } else {
+                None
             }
-        } else {
-            return Err(AnalysisError::NoDataProfile);
-        }
-    }
+        })
+        // Stop above a certain level
+        .take_while(|&(p,_)| p > TOP_PRESSURE)
+        // find dendritic layers
+        .fold(Ok((None,None,None)), |acc: Result<(Option<f64>, Option<f64>, Option<_>)>, (p,t)|{
+            match acc {
+                // We're not in a dendritic layer currently
+                Ok((Some(last_p), Some(last_t), None)) => {
+                    if last_t < COLD_SIDE && t >= COLD_SIDE && t <= WARM_SIDE{
+                        // We crossed into a dendritic layer from the cold side
+                        let target_p = linear_interp(COLD_SIDE, last_t, t, last_p, p);
+                        let bottom = linear_interpolate(snd, target_p)?;
+                        Ok((Some(p), Some(t), Some(bottom)))
+                    } else if last_t > WARM_SIDE && t >= COLD_SIDE && t <= WARM_SIDE{
+                        // We crossed into a dendritic layer from the warm side
+                        let target_p = linear_interp(WARM_SIDE, last_t, t, last_p, p);
+                        let bottom = linear_interpolate(snd, target_p)?;
+                        Ok((Some(p), Some(t), Some(bottom)))
+                    } else if (last_t < COLD_SIDE && t >= WARM_SIDE)
+                        || (last_t > WARM_SIDE && t <= COLD_SIDE){
+                        // We crossed completely through a dendritic layer
+                        let warm_p = linear_interp(WARM_SIDE, last_t, t, last_p, p);
+                        let cold_p = linear_interp(COLD_SIDE, last_t, t, last_p, p);
+                        let bottom = linear_interpolate(snd, warm_p.max(cold_p))?;
+                        let top = linear_interpolate(snd, warm_p.min(cold_p))?;
+                        to_return.push(Layer{bottom, top});
+                        Ok((Some(p), Some(t), None))
+                    } else {
+                        // We weren't in a dendritic layer
+                        Ok((Some(p), Some(t), None))
+                    }
+                },
 
-    // Check to see if we are already in the dendtritic zone
-    if last_t <= WARM_SIDE && last_t >= COLD_SIDE {
-        bottom_press = last_press;
-    }
+                // We're in a dendritic layer, let's see if we passed out
+                Ok((Some(last_p), Some(last_t), Some(bottom))) => {
+                    if t < COLD_SIDE {
+                        // We crossed out of a dendritic layer on the cold side
+                        let target_p = linear_interp(COLD_SIDE, last_t, t, last_p, p);
+                        let top = linear_interpolate(snd, target_p)?;
+                        to_return.push(Layer{bottom, top});
+                        Ok((Some(p), Some(t), None))
+                    } else if t > WARM_SIDE {
+                        // We crossed out of a dendritic layer on the warm side
+                        let target_p = linear_interp(WARM_SIDE, last_t, t, last_p, p);
+                        let top = linear_interpolate(snd, target_p)?;
+                        to_return.push(Layer{bottom, top});
+                        Ok((Some(p), Some(t), None))
+                    } else {
+                        // We're still in a dendritic layer
+                        Ok((Some(p), Some(t), Some(bottom)))
+                    }
+                },
 
-    for (t, press) in profile {
-        if let (Some(t), Some(press)) = (*t, *press) {
-            // Do not use if-else or continue statements because a layer might be so thin that
-            // you cross into and out of it between levels.
+                // Propagate errors
+                e@Err(_) => e,
 
-            if press < TOP_PRESSURE {
-                break;
+                // First row, lets get started
+                Ok((None,None,None)) => {
+                    if t <= WARM_SIDE && t >= COLD_SIDE {
+                        // Starting out in a dendritic layer
+                        let dr = linear_interpolate(snd, p)?;
+                        Ok((Some(p),Some(t),Some(dr)))
+                    } else {
+                        // Not starting out in a dendritic layer
+                        Ok((Some(p),Some(t),None))
+                    }
+                },
+
+                // No other combinations are possible
+                _ => unreachable!(),
             }
-
-            // Crossed into zone from warm side
-            if last_t > WARM_SIDE && t <= WARM_SIDE {
-                bottom_press =
-                    ::interpolation::linear_interp(WARM_SIDE, last_t, t, last_press, press);
-            }
-            // Crossed into zone from cold side
-            if last_t < COLD_SIDE && t >= COLD_SIDE {
-                bottom_press =
-                    ::interpolation::linear_interp(COLD_SIDE, last_t, t, last_press, press);
-            }
-            // Crossed out of zone to warm side
-            if last_t <= WARM_SIDE && t > WARM_SIDE {
-                top_press = ::interpolation::linear_interp(WARM_SIDE, last_t, t, last_press, press);
-                push_layer(bottom_press, top_press, snd, &mut to_return)?;
-            }
-            // Crossed out of zone to cold side
-            if last_t >= COLD_SIDE && t < COLD_SIDE {
-                top_press = ::interpolation::linear_interp(COLD_SIDE, last_t, t, last_press, press);
-                push_layer(bottom_press, top_press, snd, &mut to_return)?;
-            }
-            last_t = t;
-            last_press = press;
-        }
-    }
-
-    // Check to see if we ended in a dendtritic zone
-    if last_t <= WARM_SIDE && last_t >= COLD_SIDE {
-        top_press = last_press;
-
-        push_layer(bottom_press, top_press, snd, &mut to_return)?;
-    }
-
-    Ok(to_return)
+        })
+        // Swap my list into the result.
+        .and_then(|_| Ok(to_return))
 }
 
 /// Assuming it is below freezing at the surface, this will find the warm layers aloft using the
@@ -387,7 +402,7 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
             }
         })
         // find the pressure at the target geopotential height, to be used later for interpolation.
-        .fold(Ok((MAX, 0.0f64, None)), |acc: Result<(f64,f64,Option<f64>)>, (p, h)|{
+        .fold(Ok((MAX, 0.0f64, None)), |acc: Result<(_,_,Option<_>)>, (p, h)|{
             match acc {
                 // We have not yet found the target pressure to interpolate everything to, so
                 // check the current values.
@@ -473,16 +488,4 @@ pub fn inversions(snd: &Sounding) -> Result<Layers> {
             });
 
     Ok(to_return)
-}
-
-fn push_layer(
-    bottom_press: f64,
-    top_press: f64,
-    snd: &Sounding,
-    target_vec: &mut SmallVec<[Layer; ::VEC_SIZE]>,
-) -> Result<()> {
-    let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
-    let top = ::interpolation::linear_interpolate(snd, top_press)?;
-    target_vec.push(Layer { bottom, top });
-    Ok(())
 }
