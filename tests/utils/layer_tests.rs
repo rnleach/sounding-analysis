@@ -1,14 +1,11 @@
 use std::collections::HashMap;
 
 use sounding_analysis::error::*;
-use sounding_analysis::{Layer, VEC_SIZE};
+use sounding_analysis::Layers;
 use sounding_base::Sounding;
 use super::*;
 
-extern crate smallvec;
-use self::smallvec::SmallVec;
-
-fn test_layers<F: FnOnce(&Sounding) -> Result<SmallVec<[Layer; VEC_SIZE]>>>(
+fn test_layers<F: FnOnce(&Sounding) -> Result<Layers>>(
     snd: &Sounding,
     tgt_int_vals: &HashMap<String, i64>,
     tgt_float_vals: &HashMap<String, Vec<f64>>,

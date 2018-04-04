@@ -20,7 +20,7 @@ pub use error::*;
 pub use interpolation::linear_interpolate;
 
 pub mod layers;
-pub use layers::Layer;
+pub use layers::{Layer, Layers};
 
 pub mod levels;
 
@@ -51,5 +51,4 @@ extern crate sounding_validate;
 mod interpolation;
 mod analysis;
 
-#[allow(missing_docs)] // Make pub for use with integration tests.
-pub const VEC_SIZE: usize = 2;
+pub(crate) const VEC_SIZE: usize = 2;

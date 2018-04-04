@@ -17,6 +17,9 @@ pub struct Layer {
     pub top: DataRow,
 }
 
+/// A list of layers.
+pub type Layers = SmallVec<[Layer; ::VEC_SIZE]>;
+
 impl Layer {
     /// Get the average lapse rate in C/km
     pub fn lapse_rate(&self) -> Result<f64> {
@@ -160,7 +163,7 @@ mod layer_tests {
 /// more than one.
 ///
 /// If there are none, then an empty vector is returned.
-pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+pub fn dendritic_snow_zone(snd: &Sounding) -> Result<Layers> {
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
 
     // Dendritic snow growth zone temperature range in C
@@ -171,10 +174,7 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
     let t_profile = snd.get_profile(Temperature);
     let p_profile = snd.get_profile(Pressure);
 
-    if t_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile);
-    }
-    if p_profile.is_empty() {
+    if t_profile.is_empty() || p_profile.is_empty() {
         return Err(AnalysisError::MissingProfile);
     }
 
@@ -250,17 +250,17 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
 
 /// Assuming it is below freezing at the surface, this will find the warm layers aloft using the
 /// dry bulb temperature. Does not look above 500 hPa.
-pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<Layers> {
     warm_layer_aloft(snd, Temperature)
 }
 
 /// Assuming the wet bulb temperature is below freezing at the surface, this will find the warm
 /// layers aloft using the wet bulb temperature. Does not look above 500 hPa.
-pub fn warm_wet_bulb_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+pub fn warm_wet_bulb_layer_aloft(snd: &Sounding) -> Result<Layers> {
     warm_layer_aloft(snd, WetBulb)
 }
 
-fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<Layers> {
     assert!(var == Temperature || var == WetBulb);
 
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
@@ -270,10 +270,7 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<SmallVec<[Layer; ::V
     let t_profile = snd.get_profile(var);
     let p_profile = snd.get_profile(Pressure);
 
-    if t_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile);
-    }
-    if p_profile.is_empty() {
+    if t_profile.is_empty() || p_profile.is_empty() {
         return Err(AnalysisError::MissingProfile);
     }
 
@@ -404,10 +401,7 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
     let h_profile = snd.get_profile(GeopotentialHeight);
     let p_profile = snd.get_profile(Pressure);
 
-    if h_profile.is_empty() {
-        return Err(MissingProfile);
-    }
-    if p_profile.is_empty() {
+    if h_profile.is_empty() || p_profile.is_empty() {
         return Err(MissingProfile);
     }
 
@@ -470,16 +464,13 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Result<Layer
 }
 
 /// Get all inversion layers up to 500 mb.
-pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+pub fn inversions(snd: &Sounding) -> Result<Layers> {
     let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
 
     let t_profile = snd.get_profile(Temperature);
     let p_profile = snd.get_profile(Pressure);
 
-    if t_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile);
-    }
-    if p_profile.is_empty() {
+    if t_profile.is_empty() || p_profile.is_empty() {
         return Err(AnalysisError::MissingProfile);
     }
 
