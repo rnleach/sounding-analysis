@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
+use sounding_analysis::error::*;
+use sounding_analysis::{Layer, VEC_SIZE};
 use sounding_base::Sounding;
-use sounding_analysis::{Layer, error::*, VEC_SIZE};
 use super::*;
 
 extern crate smallvec;
