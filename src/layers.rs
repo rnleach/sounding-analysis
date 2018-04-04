@@ -465,7 +465,7 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Result<Layer
 
 /// Get all inversion layers up to 500 mb.
 pub fn inversions(snd: &Sounding) -> Result<Layers> {
-    let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
+    let mut to_return: Layers = Layers::new();
 
     let t_profile = snd.get_profile(Temperature);
     let p_profile = snd.get_profile(Pressure);
@@ -474,59 +474,39 @@ pub fn inversions(snd: &Sounding) -> Result<Layers> {
         return Err(AnalysisError::MissingProfile);
     }
 
-    let profile = t_profile
+    let (_, _, _, levels) = p_profile
         .iter()
-        .zip(p_profile)
+        .zip(t_profile)
         .enumerate()
-        .filter_map(|triplet| {
-            if let (i, (&Some(t), &Some(_))) = triplet {
-                Some((i, t))
+        // Filter out rows without both temperature and pressure.
+        .filter_map(|triple| {
+            if let (i, (&Some(_), &Some(t))) = triple {
+                Some((i,t))
             } else {
                 None
             }
-        });
+        })
+        // Capture the levels where the lapse rate flips signs
+        .fold((false, 0,::std::f64::MAX, SmallVec::<[DataRow; 8]>::new()),
+            |(mut in_inversion, last_i, last_t, mut res), (i,t)|{
 
-    let mut window = if let Some(window) = Window::new_with_iterator((0usize, 0.0f64), profile) {
-        window
-    } else {
-        return Err(AnalysisError::NotEnoughData);
-    };
-
-    let mut bottom_idx = 0usize; // Only init because compiler can't tell value not used
-    let mut top_idx: usize;
-    let mut in_inversion = false;
-
-    while window.slide() {
-        let data = window.view();
-        if !in_inversion {
-            let mut all_increasing = true;
-            let mut last_t = -::std::f64::MAX;
-            for &(_, t) in data {
-                all_increasing = all_increasing && t > last_t;
-                last_t = t;
-            }
-
-            if all_increasing {
-                bottom_idx = data[0].0;
-                in_inversion = true;
-            }
-        } else {
-            let mut all_decreasing = true;
-            let mut last_t = ::std::f64::MAX;
-            for &(_, t) in data {
-                all_decreasing = all_decreasing && t < last_t;
-                last_t = t;
-            }
-
-            if all_decreasing {
-                top_idx = data[0].0;
-                in_inversion = false;
-
-                if let Some(bottom) = snd.get_data_row(bottom_idx) {
-                    if let Some(top) = snd.get_data_row(top_idx) {
-                        to_return.push(Layer { bottom, top });
+                if (!in_inversion && last_t < t) || (in_inversion && last_t > t) {
+                    if let Some(row) = snd.get_data_row(last_i) {
+                        res.push(row);
+                        in_inversion = !in_inversion;
+                    } else {
+                        unreachable!();
                     }
                 }
+                (in_inversion, i, t, res)
+            });
+
+    if !levels.is_empty() {
+        for lvls in levels.chunks(2) {
+            if lvls.len() == 2 {
+                let bottom = lvls[0];
+                let top = lvls[1];
+                to_return.push(Layer { bottom, top });
             }
         }
     }
@@ -544,55 +524,4 @@ fn push_layer(
     let top = ::interpolation::linear_interpolate(snd, top_press)?;
     target_vec.push(Layer { bottom, top });
     Ok(())
-}
-
-const WINDOW_SIZE: usize = 3;
-struct Window<T, I> {
-    window: [T; WINDOW_SIZE],
-    iter: I,
-}
-
-impl<T, I> Window<T, I>
-where
-    T: Copy + ::std::fmt::Debug,
-    I: Iterator<Item = T>,
-{
-    fn new_with_iterator(seed: T, mut iter: I) -> Option<Self> {
-        let mut window = [seed; WINDOW_SIZE];
-        let mut count = 1;
-
-        while let Some(val) = iter.by_ref().next() {
-            window[count] = val;
-            count += 1;
-            if count == WINDOW_SIZE {
-                break;
-            }
-        }
-
-        if count == WINDOW_SIZE {
-            Some(Window { window, iter })
-        } else {
-            None
-        }
-    }
-
-    fn slide(&mut self) -> bool
-    where
-        I: Iterator<Item = T>,
-    {
-        for i in 0..(WINDOW_SIZE - 1) {
-            self.window[i] = self.window[i + 1];
-        }
-
-        if let Some(val) = self.iter.next() {
-            self.window[WINDOW_SIZE - 1] = val;
-            true
-        } else {
-            false
-        }
-    }
-
-    fn view(&self) -> &[T] {
-        &self.window
-    }
 }
