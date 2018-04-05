@@ -15,20 +15,44 @@ macro_rules! check_file_complete {
         #[test]
         fn $test_name() {
             let (snd, ivals, fvals) = utils::load_test_file($fname);
+
             assert!(sounding_validate::validate(&snd).is_ok(), "Failed validation.");
 
-            assert!(ivals.contains_key("num dendritic zones"));
-            assert!(ivals.contains_key("num warm dry bulb aloft"));
-            assert!(ivals.contains_key("num warm wet bulb aloft"));
-            assert!(ivals.contains_key("num inversions"));
+            let ival_keys = [
+                "num dendritic zones",
+                "num warm dry bulb aloft",
+                "num warm wet bulb aloft",
+                "num inversions"
+            ];
 
-            assert!(fvals.contains_key("dendritic zone pressures"));
-            assert!(fvals.contains_key("warm dry bulb layer pressures"));
-            assert!(fvals.contains_key("cold surface layer pressures"));
-            assert!(fvals.contains_key("warm wet bulb layer pressures"));
-            assert!(fvals.contains_key("6km agl layer pressures"));
-            assert!(fvals.contains_key("700-500 hPa layer heights"));
-            assert!(fvals.contains_key("inversion layer pressures"));
+            let fval_keys = [
+                "dendritic zone pressures",
+                "warm dry bulb layer pressures",
+                "cold surface layer pressures",
+                "warm wet bulb layer pressures",
+                "6km agl layer pressures",
+                "700-500 hPa layer heights",
+                "inversion layer pressures"
+            ];
+
+            // Make sure all of these keys are in the hashmaps
+            for key in ival_keys.iter() {
+                assert!(ivals.contains_key(*key), *key);
+            }
+
+            for key in fval_keys.iter() {
+                assert!(fvals.contains_key(*key), *key);
+            }
+
+            // Make sure there are no extra keys in there being ignored.
+            for key in ivals.keys() {
+                assert!(ival_keys.contains(&key.as_str()), "extra ival key found");
+            }
+
+            // Make sure there are no extra keys in there being ignored.
+            for key in fvals.keys() {
+                assert!(fval_keys.contains(&key.as_str()), "extra fval key found");
+            }
         }
     };
 }
