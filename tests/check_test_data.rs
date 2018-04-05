@@ -25,3 +25,4 @@ check_file_complete!(
     multiplie_warm_layers_aloft,
     "multiple_warm_layers_aloft.csv"
 );
+check_file_complete!(multiple_inversions_aloft, "multiple_inversions_aloft.csv");
