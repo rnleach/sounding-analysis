@@ -5,7 +5,7 @@
 
 use smallvec::SmallVec;
 
-use sounding_base::{Sounding, DataRow, Profile};
+use sounding_base::{DataRow, Profile, Sounding};
 use sounding_base::Profile::*;
 
 use error::*;
@@ -40,19 +40,18 @@ fn find_temperature_levels(snd: &Sounding, var: Profile, target_t: f64) -> Resul
 
     let p_profile = snd.get_profile(Pressure);
     let t_profile = snd.get_profile(var);
-    
+
     if t_profile.is_empty() || p_profile.is_empty() {
         return Err(AnalysisError::MissingProfile);
     }
 
-    let mut iter = izip!(p_profile, t_profile)
-        .filter_map(|pair| {
-            if let (&Some(p), &Some(t)) = pair {
-                Some((p,t))
-            } else {
-                None
-            }
-        });
+    let mut iter = izip!(p_profile, t_profile).filter_map(|pair| {
+        if let (&Some(p), &Some(t)) = pair {
+            Some((p, t))
+        } else {
+            None
+        }
+    });
 
     let (bottom_p, bottom_t) = iter.by_ref().next().ok_or(NoDataProfile)?;
 
@@ -82,7 +81,7 @@ pub fn max_wet_bulb_aloft(snd: &Sounding) -> Result<Level> {
 
     let p_profile = snd.get_profile(Pressure);
     let t_profile = snd.get_profile(WetBulb);
-    
+
     if t_profile.is_empty() || p_profile.is_empty() {
         return Err(AnalysisError::MissingProfile);
     }
@@ -115,4 +114,3 @@ pub fn max_wet_bulb_aloft(snd: &Sounding) -> Result<Level> {
         // Retrive the row
         .and_then(|(idx,_)| snd.get_data_row(idx).ok_or(InvalidInput))
 }
-
