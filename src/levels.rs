@@ -61,7 +61,7 @@ fn find_temperature_levels(snd: &Sounding, var: Profile, target_t: f64) -> Resul
         // Reduce to get the temperature levels
         .fold(Ok((bottom_p,bottom_t)), |acc:Result<(f64,f64)>, (p,t)|{
             if let Ok((last_p, last_t)) = acc {
-                if (last_t <= target_t && t > target_t) || (last_t > target_t && t <= target_t) {
+                if last_t <= target_t && t > target_t || last_t > target_t && t <= target_t {
                     let target_p = linear_interp(target_t, last_t, t, last_p, p);
                     to_return.push(linear_interpolate(snd, target_p)?);
                 }

@@ -23,6 +23,7 @@ pub mod layers;
 pub use layers::{Layer, Layers};
 
 pub mod levels;
+pub use levels::{Level, Levels};
 
 pub mod parcel;
 pub use parcel::Parcel;

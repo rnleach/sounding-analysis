@@ -8,6 +8,7 @@ use metfor;
 use sounding_base::{Profile, Sounding, StationInfo, Surface};
 
 pub mod layer_tests;
+pub mod level_tests;
 
 #[allow(unused_macros)] // False alarm
 macro_rules! check_file_complete {
@@ -22,7 +23,9 @@ macro_rules! check_file_complete {
                 "num dendritic zones",
                 "num warm dry bulb aloft",
                 "num warm wet bulb aloft",
-                "num inversions"
+                "num inversions",
+                "num freezing level",
+                "num wet bulb zeros",
             ];
 
             let fval_keys = [
@@ -32,7 +35,11 @@ macro_rules! check_file_complete {
                 "warm wet bulb layer pressures",
                 "6km agl layer pressures",
                 "700-500 hPa layer heights",
-                "inversion layer pressures"
+                "inversion layer pressures",
+                "freezing level pressures",
+                "wet bulb zero pressures",
+                "max wet bulb aloft",
+                "max wet bulb pressure",
             ];
 
             // Make sure all of these keys are in the hashmaps
@@ -70,6 +77,29 @@ macro_rules! test_file {
 
             fn load_data() -> (Sounding, HashMap<String, i64>, HashMap<String, Vec<f64>>) {
                 utils::load_test_file($fname)
+            }
+
+            mod levels {
+                use ::$test_mod_name::load_data;
+                use ::utils::level_tests;
+
+                #[test]
+                fn freezing_level() {
+                    let (snd, ivals, fvals) = load_data();
+                    level_tests::test_freezing_levels(&snd, &ivals, &fvals);
+                }
+
+                #[test]
+                fn wet_bulb_zero(){
+                    let (snd, ivals, fvals) = load_data();
+                    level_tests::test_wet_bulb_zero_levels(&snd, &ivals, &fvals);
+                }
+
+                #[test]
+                fn max_wet_bulb_aloft(){
+                    let (snd, _, fvals) = load_data();
+                    level_tests::test_max_wet_bulb_aloft(&snd, &fvals);
+                }
             }
 
             mod layers {

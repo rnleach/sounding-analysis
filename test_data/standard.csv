@@ -188,5 +188,7 @@ warm wet bulb layer pressures
 inversion layer pressures
 6km agl layer pressures,1080,508.5
 700-500 hPa layer heights,3013,5575
-freezing level pressures
-wet bulb zero pressures
+freezing level pressures,765
+wet bulb zero pressures,852
+max wet bulb aloft,15
+max wet bulb pressure,1080
