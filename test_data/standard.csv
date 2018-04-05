@@ -177,6 +177,8 @@ num dendritic zones,1
 num warm dry bulb aloft,0
 num warm wet bulb aloft,0
 num inversions,0
+num freezing level,1
+num wet bulb zeros,1
 
 ### Analysis Float Section ###
 dendritic zone pressures,604.2,534.7
@@ -186,3 +188,5 @@ warm wet bulb layer pressures
 inversion layer pressures
 6km agl layer pressures,1080,508.5
 700-500 hPa layer heights,3013,5575
+freezing level pressures
+wet bulb zero pressures

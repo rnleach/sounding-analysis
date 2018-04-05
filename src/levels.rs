@@ -3,12 +3,116 @@
 //! temperature aloft.  It does not include functions for finding levels related to parcel analysis
 //! and convection, those are found in the `parcel` module.
 
-// use error::*;
-// use smallvec::SmallVec;
+use smallvec::SmallVec;
 
-// use sounding_base::Sounding;
-// use sounding_base::Profile::*;
+use sounding_base::{Sounding, DataRow, Profile};
+use sounding_base::Profile::*;
 
-// TODO: Wet bulb zero height Return multiple if needed.
-// TODO: Freezing. Return multiple if needed.
-// TODO: Max Tw aloft.
+use error::*;
+use error::AnalysisError::*;
+
+const FREEZING: f64 = 0.0;
+
+/// A level in the atmosphere is described by a `DataRow` from a sounding.
+pub type Level = DataRow;
+
+/// A list of levels.
+pub type Levels = SmallVec<[Level; ::VEC_SIZE]>;
+
+/// Find the freezing/melting levels below 500 hPa.
+pub fn freezing_melting_levels(snd: &Sounding) -> Result<Levels> {
+    find_temperature_levels(snd, Temperature, FREEZING)
+}
+
+/// Find the wet bulb zero levels
+pub fn wet_bulb_zero_levels(snd: &Sounding) -> Result<Levels> {
+    find_temperature_levels(snd, WetBulb, FREEZING)
+}
+
+fn find_temperature_levels(snd: &Sounding, var: Profile, target_t: f64) -> Result<Levels> {
+    use interpolation::{linear_interp, linear_interpolate};
+
+    debug_assert!(var == Temperature || var == WetBulb);
+
+    let mut to_return: Levels = Levels::new();
+
+    const TOP_PRESSURE: f64 = 500.0; // don't look above here.
+
+    let p_profile = snd.get_profile(Pressure);
+    let t_profile = snd.get_profile(var);
+    
+    if t_profile.is_empty() || p_profile.is_empty() {
+        return Err(AnalysisError::MissingProfile);
+    }
+
+    let mut iter = izip!(p_profile, t_profile)
+        .filter_map(|pair| {
+            if let (&Some(p), &Some(t)) = pair {
+                Some((p,t))
+            } else {
+                None
+            }
+        });
+
+    let (bottom_p, bottom_t) = iter.by_ref().next().ok_or(NoDataProfile)?;
+
+    iter
+        // Don't bother looking above a certain level
+        .take_while(|&(p,_)| p >= TOP_PRESSURE)
+        // Reduce to get the temperature levels
+        .fold(Ok((bottom_p,bottom_t)), |acc:Result<(f64,f64)>, (p,t)|{
+            if let Ok((last_p, last_t)) = acc {
+                if (last_t <= target_t && t > target_t) || (last_t > target_t && t <= target_t) {
+                    let target_p = linear_interp(target_t, last_t, t, last_p, p);
+                    to_return.push(linear_interpolate(snd, target_p)?);
+                }
+                Ok((p,t))
+            } else {
+                // Pass the error through
+                acc
+            }
+        })
+        // Swap my vector into the result
+        .map(|_| to_return)
+}
+
+/// Maximum wet bulb temperature aloft.
+pub fn max_wet_bulb_aloft(snd: &Sounding) -> Result<Level> {
+    const TOP_PRESSURE: f64 = 500.0; // don't look above here.
+
+    let p_profile = snd.get_profile(Pressure);
+    let t_profile = snd.get_profile(WetBulb);
+    
+    if t_profile.is_empty() || p_profile.is_empty() {
+        return Err(AnalysisError::MissingProfile);
+    }
+
+    izip!(0usize.., p_profile, t_profile)
+        .filter_map(|triple| {
+            if let (i, &Some(p), &Some(t)) = triple {
+                if p >= TOP_PRESSURE {
+                    Some((i,t))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .fold(Ok((0, ::std::f64::MIN)), |acc: Result<_>, (i,t)| {
+            if let Ok((_, mx_t)) = acc{
+                if t > mx_t {
+                    Ok((i,t))
+                } else {
+                    // Propagate most recent result through
+                    acc
+                }
+            } else {
+                // Propagate errors
+                acc
+            }
+        })
+        // Retrive the row
+        .and_then(|(idx,_)| snd.get_data_row(idx).ok_or(InvalidInput))
+}
+
