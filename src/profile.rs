@@ -112,9 +112,99 @@ pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Option<f64>> {
         .collect()
 }
 
+/// Get a profile of the lapse rate between layers in &deg;C / km.
+pub fn temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
+    let t_profile = snd.get_profile(Temperature).iter().cloned();
+    lapse_rate(snd, t_profile)
+}
+
+/// Get the lapse rate of equivalent potential temperature in &deg;K / km.
+pub fn theta_e_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
+    let theta_e = snd.get_profile(ThetaE).iter().cloned();
+    lapse_rate(snd, theta_e)
+}
+
+fn lapse_rate<I: Iterator<Item=Option<f64>>>(snd: &Sounding, v_profile: I) -> Vec<Option<f64>> {
+    let z_profile = snd.get_profile(GeopotentialHeight);
+
+    izip!(z_profile,v_profile)
+        .scan((None,None), |prev_pair, pair|{
+            let &mut (ref mut prev_z, ref mut prev_v) = prev_pair;
+            let (&z, v) = pair;
+
+            let lapse_rate = if let (Some(ref prev_z), Some(ref prev_v), Some(ref z), Some(ref v)) = (*prev_z, *prev_v, z,v) {
+                Some((v - prev_v) / (z - prev_z) * 1000.0)
+            } else {
+                None
+            };
+
+            *prev_z = z;
+            *prev_v = v;
+
+            Some(lapse_rate)
+            
+        })
+        .collect()
+}
+
+/// Get the hydrolapse in (kg/kg)/km
+// pub fn hydrolapse(snd: &Sounding) -> Vec<Option<f64>> {
+//     let z_profile = snd.get_profile(GeopotentialHeight);
+//     let dp_profile = snd.get_profile(DewPoint);
+//     let p_profile = snd.get_profile(Pressure);
+
+//     izip!(p_profile, z_profile, dp_profile)
+//         .scan((None,None), |prev_pair: &mut (Option<f64>, Option<f64>), triple|{
+//             let &mut (ref mut prev_z, ref mut prev_mw) = prev_pair;
+//             let (&p, &z, &dp) = triple;
+
+//             let mw_lapse_rate = if let (Some(p_z), Some(p_mw), Some(p), Some(z), Some(dp)) = (*prev_z, *prev_mw, p, z, dp) {
+//                 if let Some(mw) = ::metfor::mixing_ratio(dp, p).ok() {
+//                    let to_ret = Some((mw - p_mw) / (z - p_z) * 1000.0);
+//                    *prev_mw = Some(mw);
+//                    to_ret
+//                 } else {
+//                     *prev_mw = None;
+//                     None
+//                 }
+//             } else {
+//                 None
+//             };
+
+//             *prev_z = z;
+
+//             Some(lapse_rate)
+            
+//         })
+//         .collect()
+// }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn make_test_sounding() -> Sounding {
+        Sounding::new()
+            .set_profile(Temperature, vec![Some(9.8),Some(0.0),Some(-5.0)])
+            .set_profile(GeopotentialHeight, vec![Some(1000.0),Some(2000.0),Some(3000.0)])
+    }
+
+    #[test]
+    fn test_temperature_lapse_rate(){
+        let snd = make_test_sounding();
+
+        let lapse_rate = temperature_lapse_rate(&snd);
+        println!("{:#?}", lapse_rate);
+        assert!(lapse_rate.contains(&Some(-9.8)));
+        assert!(lapse_rate.contains(&Some(-5.0)));
+    }
+}
+
+
+
 
 // TODO: Richardson Number
-// TODO: lapse rate
+
 // TODO: theta-e lapse rate
 
 // TODO: Dry adiabat
