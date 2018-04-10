@@ -1,6 +1,6 @@
 //! Create profiles.
 //!
-//! There are three kinds of profiles:
+//! There are two kinds of profiles:
 //!   - Those created from a sounding, the output will be at the same levels as the sounding and
 //!     these are suitable to be set as a profile in the sounding. For example, calculating a
 //!     wet bulb or relative humidity profile from a sounding with temperature and dew point. If one
@@ -8,9 +8,6 @@
 //!     calculated and an empty vector is returned.
 //!   - Those created for parcel analysis on a sounding. These require an initial parcel and a
 //!     sounding. They are useful doing parcel analysis for variables such CAPE.
-//!   - Those created for reference or perhaps drawing. These require a top and bottom pressure,
-//!     constant value (e.g. potential temperature for a dry adiabat), and a buffer (or slice) to
-//!     fill.
 //!
 // TODO: EXAMPLES HERE.
 
@@ -208,8 +205,7 @@ mod test {
     }
 }
 
-// TODO: Richardson Number
-
-// TODO: Dry adiabat
-// TODO: Moist adiabat
-// TODO: Constant MW
+// TODO: Parcel analysis profiles take a parcel and a sounding.
+// TODO: lift parcel (dry adiabatically, then moist adiabatically)
+// TODO: descend parcel dry adiabatically
+// TODO: descend parcel moist adiabatically
