@@ -114,3 +114,36 @@ pub fn test_max_wet_bulb_in_profile(snd: &Sounding, tgt_float_vals: &HashMap<Str
         panic!("Missing max wet bulb aloft level or value.");
     }
 }
+
+#[allow(dead_code)] // False alarm - lint is done before macro expansion.
+pub fn test_max_temperature_in_profile(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>) {
+    use sounding_analysis::levels::max_temperature_in_profile;
+
+    let analysis = max_temperature_in_profile(snd).unwrap();
+
+    println!("\nanalysis = {:#?}", analysis);
+
+    if let (Some(mt_pressures), Some(mt)) = (
+        tgt_float_vals.get("max temperature pressure"),
+        tgt_float_vals.get("max temperature aloft"),
+    ) {
+        assert_eq!(mt_pressures.len(), 1);
+        assert_eq!(mt.len(), 1);
+
+        for (lvl, it) in [analysis].iter().zip(mt_pressures) {
+            println!("\nLevel {:#?}  ---  {:#?}", lvl.pressure.unwrap(), it,);
+            assert!(approx_equal(lvl.pressure.unwrap(), *it, 1.0));
+        }
+
+        for (lvl, it) in [analysis].iter().zip(mt) {
+            println!(
+                "\nMax Temperature {:#?}  ---  {:#?}",
+                lvl.temperature.unwrap(),
+                it,
+            );
+            assert!(approx_equal(lvl.temperature.unwrap(), *it, 1.0));
+        }
+    } else {
+        panic!("Missing max temperature level or value.");
+    }
+}
