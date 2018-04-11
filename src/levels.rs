@@ -76,11 +76,25 @@ fn find_temperature_levels(snd: &Sounding, var: Profile, target_t: f64) -> Resul
 }
 
 /// Maximum wet bulb temperature aloft.
-pub fn max_wet_bulb_aloft(snd: &Sounding) -> Result<Level> {
+pub fn max_wet_bulb_in_profile(snd: &Sounding) -> Result<Level> {
+    max_t_aloft(snd, Profile::WetBulb)
+}
+
+/// Maximum temperature aloft.
+pub fn max_temperature_in_profile(snd: &Sounding) -> Result<Level> {
+    max_t_aloft(snd, Profile::WetBulb)
+}
+
+// Only searches up to 500 hPa
+fn max_t_aloft(snd: &Sounding, var: Profile) -> Result<Level> {
+    use sounding_base::Profile::*;
+
+     debug_assert!(var == Temperature || var == WetBulb);
+
     const TOP_PRESSURE: f64 = 500.0; // don't look above here.
 
     let p_profile = snd.get_profile(Pressure);
-    let t_profile = snd.get_profile(WetBulb);
+    let t_profile = snd.get_profile(var);
 
     if t_profile.is_empty() || p_profile.is_empty() {
         return Err(AnalysisError::MissingProfile);

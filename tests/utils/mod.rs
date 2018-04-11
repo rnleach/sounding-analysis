@@ -96,9 +96,9 @@ macro_rules! test_file {
                 }
 
                 #[test]
-                fn max_wet_bulb_aloft(){
+                fn max_wet_bulb_in_profile(){
                     let (snd, _, fvals) = load_data();
-                    level_tests::test_max_wet_bulb_aloft(&snd, &fvals);
+                    level_tests::test_max_wet_bulb_in_profile(&snd, &fvals);
                 }
             }
 

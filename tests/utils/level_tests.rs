@@ -83,10 +83,10 @@ pub fn test_wet_bulb_zero_levels(
 }
 
 #[allow(dead_code)] // False alarm - lint is done before macro expansion.
-pub fn test_max_wet_bulb_aloft(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>) {
-    use sounding_analysis::levels::max_wet_bulb_aloft;
+pub fn test_max_wet_bulb_in_profile(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>) {
+    use sounding_analysis::levels::max_wet_bulb_in_profile;
 
-    let analysis = max_wet_bulb_aloft(snd).unwrap();
+    let analysis = max_wet_bulb_in_profile(snd).unwrap();
 
     println!("\nanalysis = {:#?}", analysis);
 
