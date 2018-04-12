@@ -1,12 +1,14 @@
 //! This module finds significant layers such as the dendritic snow growth zone, the hail growth
 //! zone, and inversions.
-
-use error::*;
-use error::AnalysisError::*;
 use smallvec::SmallVec;
 
 use sounding_base::{DataRow, Profile, Sounding};
 use sounding_base::Profile::*;
+
+use error::*;
+use error::AnalysisError::*;
+
+const FREEZING: f64 = 0.0;
 
 /// A layer in the atmosphere described by the values at the top and bottom.
 #[derive(Debug, Clone, Copy)]
@@ -16,6 +18,9 @@ pub struct Layer {
     /// Pressure at the top of the layer.
     pub top: DataRow,
 }
+
+/// A list of layers.
+pub type Layers = SmallVec<[Layer; ::VEC_SIZE]>;
 
 impl Layer {
     /// Get the average lapse rate in C/km
@@ -56,9 +61,9 @@ impl Layer {
     /// Get the bulk wind shear (spd kts, direction degrees)
     pub fn wind_shear(&self) -> Result<(f64, f64)> {
         let top_spd = self.top.speed.ok_or(MissingValue)?;
-        let top_dir = self.top.direction.ok_or(MissingValue)?;
+        let top_dir = -(90.0 + self.top.direction.ok_or(MissingValue)?);
         let bottom_spd = self.bottom.speed.ok_or(MissingValue)?;
-        let bottom_dir = self.bottom.direction.ok_or(MissingValue)?;
+        let bottom_dir = -(90.0 + self.bottom.direction.ok_or(MissingValue)?);
 
         let top_u = top_dir.to_radians().cos() * top_spd;
         let top_v = top_dir.to_radians().sin() * top_spd;
@@ -69,7 +74,7 @@ impl Layer {
         let dv = top_v - bottom_v;
 
         let shear_spd = du.hypot(dv);
-        let mut shear_dir = dv.atan2(du).to_degrees();
+        let mut shear_dir = -(90.0 + dv.atan2(du).to_degrees());
 
         while shear_dir < 0.0 {
             shear_dir += 360.0;
@@ -82,12 +87,87 @@ impl Layer {
     }
 }
 
+#[cfg(test)]
+mod layer_tests {
+    use super::*;
+    use sounding_base::DataRow;
+
+    fn make_test_layer() -> Layer {
+        let mut bottom = DataRow::default();
+        bottom.pressure = Some(1000.0);
+        bottom.temperature = Some(20.0);
+        bottom.height = Some(5.0);
+        bottom.speed = Some(1.0);
+        bottom.direction = Some(180.0);
+
+        let mut top = DataRow::default();
+        top.pressure = Some(700.0);
+        top.temperature = Some(-2.0);
+        top.height = Some(3012.0);
+        top.speed = Some(1.0);
+        top.direction = Some(90.0);
+
+        Layer { bottom, top }
+    }
+
+    fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
+        (a - b).abs() <= tol
+    }
+
+    #[test]
+    fn test_height_thickness() {
+        let lyr = make_test_layer();
+        println!("{:#?}", lyr);
+        assert!(approx_eq(
+            lyr.height_thickness().unwrap(),
+            3007.0,
+            ::std::f64::EPSILON
+        ));
+    }
+
+    #[test]
+    fn test_pressure_thickness() {
+        let lyr = make_test_layer();
+        println!("{:#?}", lyr);
+        assert!(approx_eq(
+            lyr.pressure_thickness().unwrap(),
+            300.0,
+            ::std::f64::EPSILON
+        ));
+    }
+
+    #[test]
+    fn test_lapse_rate() {
+        let lyr = make_test_layer();
+        println!(
+            "{:#?}\n\n -- \n\n {} \n\n --",
+            lyr,
+            lyr.lapse_rate().unwrap()
+        );
+        assert!(approx_eq(lyr.lapse_rate().unwrap(), -7.31626, 1.0e-5));
+    }
+
+    #[test]
+    fn test_wind_shear() {
+        let lyr = make_test_layer();
+        println!(
+            "{:#?}\n\n -- \n\n {:#?} \n\n --",
+            lyr,
+            lyr.wind_shear().unwrap()
+        );
+        let (speed_shear, direction_shear) = lyr.wind_shear().unwrap();
+        assert!(approx_eq(speed_shear, ::std::f64::consts::SQRT_2, 1.0e-5));
+        assert!(approx_eq(direction_shear, 45.0, 1.0e-5));
+    }
+}
+
 /// Find the dendtritic growth zones throughout the profile. It is unusual, but possible there is
 /// more than one.
 ///
 /// If there are none, then an empty vector is returned.
-pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
-    let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
+pub fn dendritic_snow_zone(snd: &Sounding) -> Result<Layers> {
+    use interpolation::{linear_interp, linear_interpolate};
+    let mut to_return: Layers = Layers::new();
 
     // Dendritic snow growth zone temperature range in C
     const WARM_SIDE: f64 = -12.0;
@@ -97,174 +177,151 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE
     let t_profile = snd.get_profile(Temperature);
     let p_profile = snd.get_profile(Pressure);
 
-    if t_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile);
-    }
-    if p_profile.is_empty() {
+    if t_profile.is_empty() || p_profile.is_empty() {
         return Err(AnalysisError::MissingProfile);
     }
 
-    let mut profile = t_profile.iter().zip(p_profile);
-
-    let mut bottom_press = ::std::f64::MAX;
-    let mut top_press: f64;
-
-    // Initialize the bottom of the sounding
-    let mut last_t: f64;
-    let mut last_press: f64;
-
-    loop {
-        if let Some((t, press)) = profile.by_ref().next() {
-            if let (Some(t), Some(press)) = (*t, *press) {
-                last_t = t;
-                last_press = press;
-                break;
+    izip!(p_profile, t_profile)
+        // remove levels with missing values
+        .filter_map(|pair| {
+            if let (&Some(p), &Some(t)) = pair {
+                Some((p,t))
+            } else {
+                None
             }
-        } else {
-            return Err(AnalysisError::NoDataProfile);
-        }
-    }
+        })
+        // Stop above a certain level
+        .take_while(|&(p,_)| p > TOP_PRESSURE)
+        // find dendritic layers
+        .fold(Ok((None,None,None)), |acc: Result<(Option<f64>, Option<f64>, Option<_>)>, (p,t)|{
+            match acc {
+                // We're not in a dendritic layer currently
+                Ok((Some(last_p), Some(last_t), None)) => {
+                    if last_t < COLD_SIDE && t >= COLD_SIDE && t <= WARM_SIDE{
+                        // We crossed into a dendritic layer from the cold side
+                        let target_p = linear_interp(COLD_SIDE, last_t, t, last_p, p);
+                        let bottom = linear_interpolate(snd, target_p)?;
+                        Ok((Some(p), Some(t), Some(bottom)))
+                    } else if last_t > WARM_SIDE && t >= COLD_SIDE && t <= WARM_SIDE{
+                        // We crossed into a dendritic layer from the warm side
+                        let target_p = linear_interp(WARM_SIDE, last_t, t, last_p, p);
+                        let bottom = linear_interpolate(snd, target_p)?;
+                        Ok((Some(p), Some(t), Some(bottom)))
+                    } else if (last_t < COLD_SIDE && t >= WARM_SIDE)
+                        || (last_t > WARM_SIDE && t <= COLD_SIDE){
+                        // We crossed completely through a dendritic layer
+                        let warm_p = linear_interp(WARM_SIDE, last_t, t, last_p, p);
+                        let cold_p = linear_interp(COLD_SIDE, last_t, t, last_p, p);
+                        let bottom = linear_interpolate(snd, warm_p.max(cold_p))?;
+                        let top = linear_interpolate(snd, warm_p.min(cold_p))?;
+                        to_return.push(Layer{bottom, top});
+                        Ok((Some(p), Some(t), None))
+                    } else {
+                        // We weren't in a dendritic layer
+                        Ok((Some(p), Some(t), None))
+                    }
+                },
 
-    // Check to see if we are already in the dendtritic zone
-    if last_t <= WARM_SIDE && last_t >= COLD_SIDE {
-        bottom_press = last_press;
-    }
+                // We're in a dendritic layer, let's see if we passed out
+                Ok((Some(last_p), Some(last_t), Some(bottom))) => {
+                    if t < COLD_SIDE {
+                        // We crossed out of a dendritic layer on the cold side
+                        let target_p = linear_interp(COLD_SIDE, last_t, t, last_p, p);
+                        let top = linear_interpolate(snd, target_p)?;
+                        to_return.push(Layer{bottom, top});
+                        Ok((Some(p), Some(t), None))
+                    } else if t > WARM_SIDE {
+                        // We crossed out of a dendritic layer on the warm side
+                        let target_p = linear_interp(WARM_SIDE, last_t, t, last_p, p);
+                        let top = linear_interpolate(snd, target_p)?;
+                        to_return.push(Layer{bottom, top});
+                        Ok((Some(p), Some(t), None))
+                    } else {
+                        // We're still in a dendritic layer
+                        Ok((Some(p), Some(t), Some(bottom)))
+                    }
+                },
 
-    for (t, press) in profile {
-        if let (Some(t), Some(press)) = (*t, *press) {
-            // Do not use if-else or continue statements because a layer might be so thin that
-            // you cross into and out of it between levels.
+                // Propagate errors
+                e@Err(_) => e,
 
-            if press < TOP_PRESSURE {
-                break;
+                // First row, lets get started
+                Ok((None,None,None)) => {
+                    if t <= WARM_SIDE && t >= COLD_SIDE {
+                        // Starting out in a dendritic layer
+                        let dr = linear_interpolate(snd, p)?;
+                        Ok((Some(p),Some(t),Some(dr)))
+                    } else {
+                        // Not starting out in a dendritic layer
+                        Ok((Some(p),Some(t),None))
+                    }
+                },
+
+                // No other combinations are possible
+                _ => unreachable!(),
             }
-
-            // Crossed into zone from warm side
-            if last_t > WARM_SIDE && t <= WARM_SIDE {
-                bottom_press =
-                    ::interpolation::linear_interp(WARM_SIDE, last_t, t, last_press, press);
-            }
-            // Crossed into zone from cold side
-            if last_t < COLD_SIDE && t >= COLD_SIDE {
-                bottom_press =
-                    ::interpolation::linear_interp(COLD_SIDE, last_t, t, last_press, press);
-            }
-            // Crossed out of zone to warm side
-            if last_t <= WARM_SIDE && t > WARM_SIDE {
-                top_press = ::interpolation::linear_interp(WARM_SIDE, last_t, t, last_press, press);
-                push_layer(bottom_press, top_press, snd, &mut to_return)?;
-            }
-            // Crossed out of zone to cold side
-            if last_t >= COLD_SIDE && t < COLD_SIDE {
-                top_press = ::interpolation::linear_interp(COLD_SIDE, last_t, t, last_press, press);
-                push_layer(bottom_press, top_press, snd, &mut to_return)?;
-            }
-            last_t = t;
-            last_press = press;
-        }
-    }
-
-    // Check to see if we ended in a dendtritic zone
-    if last_t <= WARM_SIDE && last_t >= COLD_SIDE {
-        top_press = last_press;
-
-        push_layer(bottom_press, top_press, snd, &mut to_return)?;
-    }
-
-    Ok(to_return)
+        })
+        // Swap my list into the result.
+        .and_then(|_| Ok(to_return))
 }
 
 /// Assuming it is below freezing at the surface, this will find the warm layers aloft using the
 /// dry bulb temperature. Does not look above 500 hPa.
-pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<Layers> {
     warm_layer_aloft(snd, Temperature)
 }
 
 /// Assuming the wet bulb temperature is below freezing at the surface, this will find the warm
 /// layers aloft using the wet bulb temperature. Does not look above 500 hPa.
-pub fn warm_wet_bulb_layer_aloft(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+pub fn warm_wet_bulb_layer_aloft(snd: &Sounding) -> Result<Layers> {
     warm_layer_aloft(snd, WetBulb)
 }
 
-fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
+fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<Layers> {
+    use std::f64::MAX;
+
     assert!(var == Temperature || var == WetBulb);
 
-    let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
-
-    const FREEZING: f64 = 0.0;
+    let mut to_return: Layers = Layers::new();
 
     let t_profile = snd.get_profile(var);
     let p_profile = snd.get_profile(Pressure);
 
-    if t_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile);
-    }
-    if p_profile.is_empty() {
+    if t_profile.is_empty() || p_profile.is_empty() {
         return Err(AnalysisError::MissingProfile);
     }
 
-    let mut profile = t_profile.iter().zip(p_profile);
-
-    let mut bottom_press = ::std::f64::MAX; // Only init because compiler can't tell value not used
-    let mut top_press: f64;
-
-    // Initialize the bottom of the sounding
-    let mut last_t: f64;
-    let mut last_press: f64;
-    loop {
-        if let Some((t, press)) = profile.by_ref().next() {
-            if let (Some(t), Some(press)) = (*t, *press) {
-                last_t = t;
-                last_press = press;
-                break;
+    izip!(p_profile, t_profile)
+        // Remove levels without pressure AND temperature data
+        .filter_map(|pair|{
+            if let (&Some(p), &Some(t)) = pair {
+                Some((p,t))
+            } else {
+                None
             }
-        } else {
-            match var {
-                Temperature | WetBulb => return Err(AnalysisError::NoDataProfile),
-                _ => unreachable!(),
+        })
+        // Ignore anything above 500 hPa, extremely unlikely for a warm layer up there.
+        .take_while(|&(p,_)| p > 500.0 )
+        // Find the warm layers!
+        .fold(Ok((MAX, MAX, None)), |last_iter_res: Result<(_,_,_)>, (p,t)|{
+            let (last_p, last_t, mut bottom) = last_iter_res?;
+            if last_t <= FREEZING && t > FREEZING && bottom.is_none() {
+                // Entering a warm layer.
+                let bottom_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
+                bottom = Some(::interpolation::linear_interpolate(snd, bottom_p)?);
             }
-        }
-    }
-
-    // Check to see if we are below freezing at the bottom
-    if last_t > FREEZING {
-        return Ok(to_return);
-    }
-
-    let mut in_warm_zone = false;
-
-    for (t, press) in profile {
-        if let (Some(t), Some(press)) = (*t, *press) {
-            if press < 500.0 {
-                break;
+            if bottom.is_some() && last_t > FREEZING && t <= FREEZING {
+                // Crossed out of a warm layer
+                let top_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
+                let top = ::interpolation::linear_interpolate(snd, top_p)?;
+                {
+                let bottom = bottom.unwrap();
+                to_return.push(Layer{bottom, top});}
+                bottom = None;
             }
 
-            if last_t <= FREEZING && t > FREEZING {
-                bottom_press =
-                    ::interpolation::linear_interp(FREEZING, last_t, t, last_press, press);
-                in_warm_zone = true;
-            }
-            // Crossed out of zone to warm side
-            if last_t > FREEZING && t <= FREEZING {
-                top_press = ::interpolation::linear_interp(FREEZING, last_t, t, last_press, press);
-
-                let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
-                let top = ::interpolation::linear_interpolate(snd, top_press)?;
-                to_return.push(Layer { bottom, top });
-                in_warm_zone = false;
-            }
-            last_t = t;
-            last_press = press;
-        }
-    }
-
-    // Check to see if we ended in a warm layer aloft
-    if last_t > FREEZING && in_warm_zone {
-        top_press = last_press;
-        let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
-        let top = ::interpolation::linear_interpolate(snd, top_press)?;
-        to_return.push(Layer { bottom, top });
-    }
+            Ok((p,t,bottom))
+        })?;
 
     Ok(to_return)
 }
@@ -275,9 +332,7 @@ pub fn cold_surface_temperature_layer(snd: &Sounding, warm_layers: &[Layer]) -> 
 }
 
 fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Result<Layer> {
-    assert!(var == Temperature || var == WetBulb);
-
-    const FREEZING: f64 = 0.0;
+    debug_assert!(var == Temperature || var == WetBulb);
 
     if warm_layers.is_empty() {
         return Err(InvalidInput);
@@ -287,40 +342,41 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Re
     let p_profile = snd.get_profile(Pressure);
 
     if t_profile.is_empty() || p_profile.is_empty() {
-        return Err(MissingProfile); // Should not happen since we already used these to get warm layer
+        // Should not happen since we SHOULD HAVE already used these to get the warm layers
+        return Err(MissingProfile);
     }
 
-    let mut profile = t_profile.iter().zip(p_profile);
-
-    let last_t: f64;
-    let last_press: f64;
-    loop {
-        if let Some((t, press)) = profile.next() {
-            if let (Some(t), Some(press)) = (*t, *press) {
-                last_t = t;
-                last_press = press;
-                break;
+    izip!(0usize.., p_profile, t_profile)
+        // Remove levels with missing data
+        .filter_map(|triplet| {
+            if let (i, &Some(_), &Some(t)) = triplet {
+                Some((i,t))
+            } else {
+                None
             }
-        } else {
-            return Err(NoDataProfile);
-        }
-    }
-
-    // Check to see if we are below freezing at the bottom
-    if last_t > FREEZING {
-        return Err(InvalidInput);
-    }
-
-    let bottom = ::interpolation::linear_interpolate(snd, last_press)?;
-
-    Ok(Layer {
-        bottom,
-        top: warm_layers[0].bottom,
-    })
+        })
+        // Map it to an error if the temperature is above freezing.
+        .map(|(i,t)| {
+            if t > FREEZING {
+                Err(InvalidInput)
+            } else {
+                Ok(i)
+            }
+        })
+        // Only take the first one, we want the surface layer, or the lowest layer available
+        .next()
+        // If there is nothing to get, there was no valid data in the profile.
+        .unwrap_or(Err(NoDataProfile))
+        // Map the result into a data row!
+        .and_then(|index| snd.get_data_row(index).ok_or(InvalidInput))
+        // Package it up in a layer
+        .map(|bottom| Layer{bottom, top:warm_layers[0].bottom})
 }
 
 /// Get a layer that has a certain thickness, like 3km or 6km.
 pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
+    use std::f64::MAX;
+
     let tgt_elev = if let Some(elev) = snd.get_station_info().elevation() {
         elev + meters_agl
     } else {
@@ -330,55 +386,49 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
     let h_profile = snd.get_profile(GeopotentialHeight);
     let p_profile = snd.get_profile(Pressure);
 
-    if h_profile.is_empty() {
+    if h_profile.is_empty() || p_profile.is_empty() {
         return Err(MissingProfile);
     }
-    if p_profile.is_empty() {
-        return Err(MissingProfile);
-    }
-
-    let mut profile = h_profile.iter().zip(p_profile).filter_map(|pair| {
-        if let (&Some(h), &Some(p)) = pair {
-            Some((h, p))
-        } else {
-            None
-        }
-    });
 
     let bottom = snd.surface_as_data_row();
 
-    // Initialize the bottom of the sounding
-    let mut last_h: f64;
-    let mut last_press: f64;
-    // Try surface data
-    if let (Some(h), Some(p)) = (bottom.height, bottom.pressure) {
-        last_h = h;
-        last_press = p;
-    } else if let Some((h, press)) = profile.by_ref().next() {
-        // Find lowest level in sounding
-        last_h = h;
-        last_press = press;
-    } else {
-        return Err(AnalysisError::NoDataProfile);
-    }
-
-    if last_h > tgt_elev {
-        return Err(AnalysisError::NotEnoughData);
-    }
-
-    for (h, press) in profile {
-        if last_h <= tgt_elev && h > tgt_elev {
-            let top_press = ::interpolation::linear_interp(tgt_elev, last_h, h, last_press, press);
-
-            let top = ::interpolation::linear_interpolate(snd, top_press)?;
-
-            return Ok(Layer { bottom, top });
-        }
-        last_h = h;
-        last_press = press;
-    }
-
-    Err(AnalysisError::NotEnoughData)
+    izip!(p_profile, h_profile)
+        // filter out levels with missing data
+        .filter_map(|pair| {
+            if let (&Some(p), &Some(h)) = pair {
+                Some((p, h))
+            } else {
+                None
+            }
+        })
+        // find the pressure at the target geopotential height, to be used later for interpolation.
+        .fold(Ok((MAX, 0.0f64, None)), |acc: Result<(_,_,Option<_>)>, (p, h)|{
+            match acc {
+                // We have not yet found the target pressure to interpolate everything to, so
+                // check the current values.
+                Ok((last_p, last_h, None)) => {
+                    if h > tgt_elev {
+                        // If we finally jumped above our target, we have it bracketed, interpolate
+                        // and find target pressure.
+                        let tgt_p = ::interpolation::linear_interp(tgt_elev, last_h, h, last_p, p);
+                        Ok((MAX,MAX,Some(tgt_p)))
+                    } else {
+                        // Keep climbing up the profile.
+                        Ok((p,h,None))
+                    }
+                },
+                // We have found the target pressure on the last iteration, pass it through
+                ok@Ok((_,_,Some(_))) => ok,
+                // There was an error, keep passing it through.
+                e@Err(_) => e,
+            }
+        })
+        // Extract the target pressure
+        .and_then(|(_,_,opt)| opt.ok_or(NotEnoughData))
+        // Do the interpolation.
+        .and_then(|target_p| ::interpolation::linear_interpolate(snd, target_p))
+        // Compose into a layer
+        .map(|top| Layer{bottom, top})
 }
 
 /// Get a layer defined by two pressure levels. `bottom_p` > `top_p`
@@ -396,138 +446,46 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Result<Layer
 }
 
 /// Get all inversion layers up to 500 mb.
-pub fn inversions(snd: &Sounding) -> Result<SmallVec<[Layer; ::VEC_SIZE]>> {
-    let mut to_return: SmallVec<[Layer; ::VEC_SIZE]> = SmallVec::new();
+pub fn inversions(snd: &Sounding) -> Result<Layers> {
+    use std::f64::MAX;
+
+    let mut to_return: Layers = Layers::new();
 
     let t_profile = snd.get_profile(Temperature);
     let p_profile = snd.get_profile(Pressure);
 
-    if t_profile.is_empty() {
-        return Err(AnalysisError::MissingProfile);
-    }
-    if p_profile.is_empty() {
+    if t_profile.is_empty() || p_profile.is_empty() {
         return Err(AnalysisError::MissingProfile);
     }
 
-    let profile = t_profile
-        .iter()
-        .zip(p_profile)
-        .enumerate()
-        .filter_map(|triplet| {
-            if let (i, (&Some(t), &Some(_))) = triplet {
-                Some((i, t))
+    izip!(0usize.., p_profile, t_profile)
+        // Filter out rows without both temperature and pressure.
+        .filter_map(|triple| {
+            if let (i, &Some(_), &Some(t)) = triple {
+                Some((i,t))
             } else {
                 None
             }
-        });
+        })
+        // Capture the inversion layers
+        .fold((0, MAX, None), |(last_i, last_t, mut bottom_opt), (i,t)|{
 
-    let mut window = if let Some(window) = Window::new_with_iterator((0usize, 0.0f64), profile) {
-        window
-    } else {
-        return Err(AnalysisError::NotEnoughData);
-    };
-
-    let mut bottom_idx = 0usize; // Only init because compiler can't tell value not used
-    let mut top_idx: usize;
-    let mut in_inversion = false;
-
-    while window.slide() {
-        let data = window.view();
-        if !in_inversion {
-            let mut all_increasing = true;
-            let mut last_t = -::std::f64::MAX;
-            for &(_, t) in data {
-                all_increasing = all_increasing && t > last_t;
-                last_t = t;
-            }
-
-            if all_increasing {
-                bottom_idx = data[0].0;
-                in_inversion = true;
-            }
-        } else {
-            let mut all_decreasing = true;
-            let mut last_t = ::std::f64::MAX;
-            for &(_, t) in data {
-                all_decreasing = all_decreasing && t < last_t;
-                last_t = t;
-            }
-
-            if all_decreasing {
-                top_idx = data[0].0;
-                in_inversion = false;
-
-                if let Some(bottom) = snd.get_data_row(bottom_idx) {
-                    if let Some(top) = snd.get_data_row(top_idx) {
-                        to_return.push(Layer { bottom, top });
+                if bottom_opt.is_none() && last_t < t {
+                    // Coming into an inversion
+                    bottom_opt = snd.get_data_row(last_i);
+                } else if bottom_opt.is_some() && last_t > t {
+                    // Leaving an inversion
+                    if let Some(layer) = bottom_opt.and_then(|bottom|{
+                        snd.get_data_row(last_i).and_then(|top| {
+                            Some(Layer{bottom, top})
+                        })
+                    }){
+                        to_return.push(layer);
+                        bottom_opt = None;
                     }
                 }
-            }
-        }
-    }
+                (i, t, bottom_opt)
+            });
 
     Ok(to_return)
-}
-
-fn push_layer(
-    bottom_press: f64,
-    top_press: f64,
-    snd: &Sounding,
-    target_vec: &mut SmallVec<[Layer; ::VEC_SIZE]>,
-) -> Result<()> {
-    let bottom = ::interpolation::linear_interpolate(snd, bottom_press)?;
-    let top = ::interpolation::linear_interpolate(snd, top_press)?;
-    target_vec.push(Layer { bottom, top });
-    Ok(())
-}
-
-const WINDOW_SIZE: usize = 3;
-struct Window<T, I> {
-    window: [T; WINDOW_SIZE],
-    iter: I,
-}
-
-impl<T, I> Window<T, I>
-where
-    T: Copy + ::std::fmt::Debug,
-    I: Iterator<Item = T>,
-{
-    fn new_with_iterator(seed: T, mut iter: I) -> Option<Self> {
-        let mut window = [seed; WINDOW_SIZE];
-        let mut count = 1;
-
-        while let Some(val) = iter.by_ref().next() {
-            window[count] = val;
-            count += 1;
-            if count == WINDOW_SIZE {
-                break;
-            }
-        }
-
-        if count == WINDOW_SIZE {
-            Some(Window { window, iter })
-        } else {
-            None
-        }
-    }
-
-    fn slide(&mut self) -> bool
-    where
-        I: Iterator<Item = T>,
-    {
-        for i in 0..(WINDOW_SIZE - 1) {
-            self.window[i] = self.window[i + 1];
-        }
-
-        if let Some(val) = self.iter.next() {
-            self.window[WINDOW_SIZE - 1] = val;
-            true
-        } else {
-            false
-        }
-    }
-
-    fn view(&self) -> &[T] {
-        &self.window
-    }
 }

@@ -21,3 +21,8 @@ fn test_load_test_csv_sounding() {
 
 check_file_complete!(standard_file_complete, "standard.csv");
 check_file_complete!(complex_dendritic_file_complete, "complex_dendritic.csv");
+check_file_complete!(
+    multiplie_warm_layers_aloft,
+    "multiple_warm_layers_aloft.csv"
+);
+check_file_complete!(multiple_inversions_aloft, "multiple_inversions_aloft.csv");

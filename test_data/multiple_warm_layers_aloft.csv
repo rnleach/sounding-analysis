@@ -1,12 +1,12 @@
 Altitude (m),Temperature ( C ),Dew Point ( C ),Pressure (hPa),wind speed (kt),Wind Direction
--500,18.25,10,1074.78,1,0
--200,16.3,7.05,1037.51,2.05,3
-100,14.35,4.1,1001.29,3.1525,6
-400,12.4,1.15,966.111,4.310125,9
-700,10.45,-1.8,931.936,5.52563125,12
-1000,8.5,-4.75,898.746,6.801912813,15
-1300,6.55,-7.7,866.519,8.142008453,18
-1600,4.6,-10.65,835.235,9.549108876,21
+-500,-2,-10,1074.78,1,0
+-200,-1,-7.05,1037.51,2.05,3
+100,1,-4.1,1001.29,3.1525,6
+400,5.4,1.15,966.111,4.310125,9
+700,10.45,1.8,931.936,5.52563125,12
+1000,5,4.75,898.746,6.801912813,15
+1300,1,-7.7,866.519,8.142008453,18
+1600,-1,-10.65,835.235,9.549108876,21
 1900,2.65,-13.6,804.872,11.02656432,24
 2200,0.7,-16.55,775.409,12.57789254,27
 2500,-1.25,-19.5,746.825,14.20678716,30
@@ -170,28 +170,28 @@ Altitude (m),Temperature ( C ),Dew Point ( C ),Pressure (hPa),wind speed (kt),Wi
 elevation, -550
 
 ### Surface Data ###
--550,19,11,1080,0.5,350
+-550,-5,-6,1080,0.5,350
 
 ### Analysis Int Section ###
 num dendritic zones,1
-num warm dry bulb aloft,0
-num warm wet bulb aloft,0
-num inversions,0
-num freezing level,1
-num wet bulb zeros,1
+num warm dry bulb aloft,2
+num warm wet bulb aloft,1
+num inversions,2
+num freezing level,4
+num wet bulb zeros,2
 
 ### Analysis Float Section ###
 dendritic zone pressures,604.2,534.7
-warm dry bulb layer pressures
-cold surface layer pressures
-warm wet bulb layer pressures
-inversion layer pressures
+warm dry bulb layer pressures,1019,850,826,765
+cold surface layer pressures,1080,1019
+warm wet bulb layer pressures,994,876
+inversion layer pressures,1080,932,835,805
 6km agl layer pressures,1080,508.5
 700-500 hPa layer heights,3013,5575
-freezing level pressures,765
-wet bulb zero pressures,852
-max wet bulb aloft,15
-max wet bulb pressure,1080
-max temperature aloft,19
-max temperature pressure,1080
-warm layer max t
+freezing level pressures,1019,851,827,765
+wet bulb zero pressures,994,877
+max wet bulb aloft,6.5
+max wet bulb pressure,932
+max temperature aloft,10
+max temperature pressure,932
+warm layer max t,10,3

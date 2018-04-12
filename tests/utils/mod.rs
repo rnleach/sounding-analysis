@@ -8,6 +8,7 @@ use metfor;
 use sounding_base::{Profile, Sounding, StationInfo, Surface};
 
 pub mod layer_tests;
+pub mod level_tests;
 
 #[allow(unused_macros)] // False alarm
 macro_rules! check_file_complete {
@@ -15,20 +16,53 @@ macro_rules! check_file_complete {
         #[test]
         fn $test_name() {
             let (snd, ivals, fvals) = utils::load_test_file($fname);
+
             assert!(sounding_validate::validate(&snd).is_ok(), "Failed validation.");
 
-            assert!(ivals.contains_key("num dendritic zones"));
-            assert!(ivals.contains_key("num warm dry bulb aloft"));
-            assert!(ivals.contains_key("num warm wet bulb aloft"));
-            assert!(ivals.contains_key("num inversions"));
+            let ival_keys = [
+                "num dendritic zones",
+                "num warm dry bulb aloft",
+                "num warm wet bulb aloft",
+                "num inversions",
+                "num freezing level",
+                "num wet bulb zeros",
+            ];
 
-            assert!(fvals.contains_key("dendritic zone pressures"));
-            assert!(fvals.contains_key("warm dry bulb layer pressures"));
-            assert!(fvals.contains_key("cold surface layer pressures"));
-            assert!(fvals.contains_key("warm wet bulb layer pressures"));
-            assert!(fvals.contains_key("6km agl layer pressures"));
-            assert!(fvals.contains_key("700-500 hPa layer heights"));
-            assert!(fvals.contains_key("inversion layer pressures"));
+            let fval_keys = [
+                "dendritic zone pressures",
+                "warm dry bulb layer pressures",
+                "cold surface layer pressures",
+                "warm wet bulb layer pressures",
+                "6km agl layer pressures",
+                "700-500 hPa layer heights",
+                "inversion layer pressures",
+                "freezing level pressures",
+                "wet bulb zero pressures",
+                "max wet bulb aloft",
+                "max wet bulb pressure",
+                "max temperature aloft",
+                "max temperature pressure",
+                "warm layer max t",
+            ];
+
+            // Make sure all of these keys are in the hashmaps
+            for key in ival_keys.iter() {
+                assert!(ivals.contains_key(*key), *key);
+            }
+
+            for key in fval_keys.iter() {
+                assert!(fvals.contains_key(*key), *key);
+            }
+
+            // Make sure there are no extra keys in there being ignored.
+            for key in ivals.keys() {
+                assert!(ival_keys.contains(&key.as_str()), "extra ival key found");
+            }
+
+            // Make sure there are no extra keys in there being ignored.
+            for key in fvals.keys() {
+                assert!(fval_keys.contains(&key.as_str()), "extra fval key found");
+            }
         }
     };
 }
@@ -46,6 +80,35 @@ macro_rules! test_file {
 
             fn load_data() -> (Sounding, HashMap<String, i64>, HashMap<String, Vec<f64>>) {
                 utils::load_test_file($fname)
+            }
+
+            mod levels {
+                use ::$test_mod_name::load_data;
+                use ::utils::level_tests;
+
+                #[test]
+                fn freezing_level() {
+                    let (snd, ivals, fvals) = load_data();
+                    level_tests::test_freezing_levels(&snd, &ivals, &fvals);
+                }
+
+                #[test]
+                fn wet_bulb_zero(){
+                    let (snd, ivals, fvals) = load_data();
+                    level_tests::test_wet_bulb_zero_levels(&snd, &ivals, &fvals);
+                }
+
+                #[test]
+                fn max_wet_bulb_in_profile(){
+                    let (snd, _, fvals) = load_data();
+                    level_tests::test_max_wet_bulb_in_profile(&snd, &fvals);
+                }
+
+                #[test]
+                fn max_temperature_in_profile(){
+                    let (snd, _, fvals) = load_data();
+                    level_tests::test_max_temperature(&snd, &fvals);
+                }
             }
 
             mod layers {
