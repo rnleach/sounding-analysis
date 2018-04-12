@@ -11,7 +11,7 @@ use sounding_base::Profile::*;
 use error::*;
 use error::AnalysisError::*;
 
-use ::layers::Layer;
+use layers::Layer;
 
 const FREEZING: f64 = 0.0;
 
@@ -91,7 +91,7 @@ pub fn max_temperature_in_profile(snd: &Sounding) -> Result<Level> {
 fn max_t_aloft(snd: &Sounding, var: Profile) -> Result<Level> {
     use sounding_base::Profile::*;
 
-     debug_assert!(var == Temperature || var == WetBulb);
+    debug_assert!(var == Temperature || var == WetBulb);
 
     const TOP_PRESSURE: f64 = 500.0; // don't look above here.
 
@@ -146,11 +146,12 @@ fn max_t_in_layer(snd: &Sounding, var: Profile, lyr: &Layer) -> Result<Level> {
 
     debug_assert!(var == Temperature || var == WetBulb);
 
-    let (bottom_p, top_p) = if let (Some(bottom_p), Some(top_p)) = (lyr.bottom.pressure, lyr.top.pressure) {
-        (bottom_p, top_p)
-    } else {
-        return Err(AnalysisError::InvalidInput);
-    };
+    let (bottom_p, top_p) =
+        if let (Some(bottom_p), Some(top_p)) = (lyr.bottom.pressure, lyr.top.pressure) {
+            (bottom_p, top_p)
+        } else {
+            return Err(AnalysisError::InvalidInput);
+        };
 
     let p_profile = snd.get_profile(Pressure);
     let t_profile = snd.get_profile(var);
