@@ -42,6 +42,7 @@ macro_rules! check_file_complete {
                 "max wet bulb pressure",
                 "max temperature aloft",
                 "max temperature pressure",
+                "warm layer max t",
             ];
 
             // Make sure all of these keys are in the hashmaps
@@ -106,7 +107,7 @@ macro_rules! test_file {
                 #[test]
                 fn max_temperature_in_profile(){
                     let (snd, _, fvals) = load_data();
-                    level_tests::test_max_temperature_in_profile(&snd, &fvals);
+                    level_tests::test_max_temperature(&snd, &fvals);
                 }
             }
 

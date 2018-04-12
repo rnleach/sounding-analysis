@@ -116,8 +116,9 @@ pub fn test_max_wet_bulb_in_profile(snd: &Sounding, tgt_float_vals: &HashMap<Str
 }
 
 #[allow(dead_code)] // False alarm - lint is done before macro expansion.
-pub fn test_max_temperature_in_profile(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>) {
-    use sounding_analysis::levels::max_temperature_in_profile;
+pub fn test_max_temperature(snd: &Sounding,
+    tgt_float_vals: &HashMap<String, Vec<f64>>) {
+    use sounding_analysis::levels::{max_temperature_in_profile, max_temperature_in_layer};
 
     let analysis = max_temperature_in_profile(snd).unwrap();
 
@@ -146,4 +147,23 @@ pub fn test_max_temperature_in_profile(snd: &Sounding, tgt_float_vals: &HashMap<
     } else {
         panic!("Missing max temperature level or value.");
     }
+
+    let warm_layers = ::sounding_analysis::layers::warm_temperature_layer_aloft(snd).unwrap();
+    let num_warm_layers = warm_layers.len();
+    if num_warm_layers > 0 {
+        if let Some(max_ts) = tgt_float_vals.get("warm layer max t") {
+            assert_eq!(max_ts.len(), num_warm_layers);
+
+            for (lyr, tgt_temp) in warm_layers.iter().zip(max_ts) {
+                let layer_anal = max_temperature_in_layer(snd, lyr).unwrap();
+                let max_t_in_this_layer = layer_anal.temperature.unwrap();
+
+                println!("tgt_temp = {} and found value = {} in layer {:#?}", tgt_temp, max_t_in_this_layer, lyr);
+                assert!(approx_equal(layer_anal.temperature.unwrap(), *tgt_temp, 0.5));
+            }
+        } else {   
+            panic!("Missing max t value in warm layers aloft.");
+        }
+    }
+
 }

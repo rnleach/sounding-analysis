@@ -194,3 +194,4 @@ max wet bulb aloft,6.5
 max wet bulb pressure,932
 max temperature aloft,10
 max temperature pressure,932
+warm layer max t,10,3

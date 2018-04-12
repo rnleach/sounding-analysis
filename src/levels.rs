@@ -11,6 +11,8 @@ use sounding_base::Profile::*;
 use error::*;
 use error::AnalysisError::*;
 
+use ::layers::Layer;
+
 const FREEZING: f64 = 0.0;
 
 /// A level in the atmosphere is described by a `DataRow` from a sounding.
@@ -104,6 +106,63 @@ fn max_t_aloft(snd: &Sounding, var: Profile) -> Result<Level> {
         .filter_map(|triple| {
             if let (i, &Some(p), &Some(t)) = triple {
                 if p >= TOP_PRESSURE {
+                    Some((i,t))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .fold(Ok((0, ::std::f64::MIN)), |acc: Result<_>, (i,t)| {
+            if let Ok((_, mx_t)) = acc{
+                if t > mx_t {
+                    Ok((i,t))
+                } else {
+                    // Propagate most recent result through
+                    acc
+                }
+            } else {
+                // Propagate errors
+                acc
+            }
+        })
+        // Retrive the row
+        .and_then(|(idx,_)| snd.get_data_row(idx).ok_or(InvalidInput))
+}
+
+/// Maximum temperature in a layer.
+pub fn max_temperature_in_layer(snd: &Sounding, lyr: &Layer) -> Result<Level> {
+    max_t_in_layer(snd, Profile::Temperature, lyr)
+}
+
+/// Maximum wet bulb temperature in a layer.
+pub fn max_wet_bulb_in_layer(snd: &Sounding, lyr: &Layer) -> Result<Level> {
+    max_t_in_layer(snd, Profile::WetBulb, lyr)
+}
+
+fn max_t_in_layer(snd: &Sounding, var: Profile, lyr: &Layer) -> Result<Level> {
+    use sounding_base::Profile::*;
+
+    debug_assert!(var == Temperature || var == WetBulb);
+
+    let (bottom_p, top_p) = if let (Some(bottom_p), Some(top_p)) = (lyr.bottom.pressure, lyr.top.pressure) {
+        (bottom_p, top_p)
+    } else {
+        return Err(AnalysisError::InvalidInput);
+    };
+
+    let p_profile = snd.get_profile(Pressure);
+    let t_profile = snd.get_profile(var);
+
+    if t_profile.is_empty() || p_profile.is_empty() {
+        return Err(AnalysisError::MissingProfile);
+    }
+
+    izip!(0usize.., p_profile, t_profile)
+        .filter_map(|triple| {
+            if let (i, &Some(p), &Some(t)) = triple {
+                if p >= top_p && p <= bottom_p {
                     Some((i,t))
                 } else {
                     None
