@@ -29,6 +29,7 @@ pub mod parcel;
 pub use parcel::Parcel;
 
 pub mod profile;
+pub use profile::ParcelProfile;
 
 //
 // Internal use only
