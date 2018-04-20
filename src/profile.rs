@@ -9,11 +9,15 @@
 //!   - Those created for parcel analysis on a sounding. These require an initial parcel and a
 //!     sounding. They are useful doing parcel analysis for variables such CAPE.
 //!
-// TODO: EXAMPLES HERE.
+
+use std::iter::once;
 
 use metfor;
 use sounding_base::Sounding;
 use sounding_base::Profile::*;
+
+use error::*;
+use parcel::Parcel;
 
 /// Given a sounding, calculate a profile of wet bulb temperature.
 pub fn wet_bulb(snd: &Sounding) -> Vec<Option<f64>> {
@@ -182,7 +186,7 @@ pub fn hydrolapse(snd: &Sounding) -> Vec<Option<f64>> {
 }
 
 #[cfg(test)]
-mod test {
+mod test_sounding_profiles {
     use super::*;
 
     fn make_test_sounding() -> Sounding {
@@ -205,7 +209,116 @@ mod test {
     }
 }
 
-// TODO: Parcel analysis profiles take a parcel and a sounding.
-// TODO: lift parcel (dry adiabatically, then moist adiabatically)
+/// Hold profiles for a parcel and it's environment.
+pub struct ParcelProfile {
+    /// Pressure profile
+    pub pressure: Vec<f64>,
+    /// Height profile
+    pub height: Vec<f64>,
+    /// Parcel temperature profile
+    pub parcel_t: Vec<f64>,
+    /// Environment temperature profile
+    pub environment_t: Vec<f64>,
+    /// The original parcel
+    pub parcel: Parcel,
+}
+
+/// Lift a parcel, make sure it has the same data points as the reference sounding.
+pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
+    let (lcl_pressure, lcl_temperature) = metfor::pressure_and_temperature_at_lcl(
+        parcel.temperature,
+        parcel.dew_point,
+        parcel.pressure,
+    ).map_err(|_| AnalysisError::InvalidInput)?;
+
+    let theta = parcel.theta()?;
+    let theta_e = parcel.theta_e()?;
+
+    let lcl_env = ::interpolation::linear_interpolate(snd, lcl_pressure)?;
+    let lcl_height = lcl_env.height.ok_or(AnalysisError::InvalidInput)?;
+    let lcl_env_temperature = lcl_env.temperature.ok_or(AnalysisError::InvalidInput)?;
+
+    let pressure = snd.get_profile(Pressure);
+    let hgt = snd.get_profile(GeopotentialHeight);
+    let env_t = snd.get_profile(Temperature);
+
+    let dry_adiabatic = izip!(pressure, hgt, env_t)
+        // Skip levels below the parcel starting point
+        .skip_while(|row| {
+            if let Some(p) = *row.0 {
+                p > parcel.pressure
+            } else {
+                true
+            }
+        })
+        // Take until we reach the lcl and become saturated
+        .take_while(|row|{
+            if let Some(p) = *row.0 {
+                p > lcl_pressure
+            } else {
+                true
+            }
+        })
+        // Remove layers with missing data and unwrap options
+        .filter_map(|(p_opt, h_opt, t_opt)|{
+            p_opt.and_then(|p| h_opt.and_then(|h| t_opt.and_then(|t| Some((p,h,t)))))
+        })
+        // Calculate the parcel temperature and add it in, if it is OK
+        .filter_map(|(p,h,env_t)|{
+            metfor::temperature_c_from_theta(theta, p)
+                .ok()
+                .and_then(|parcel_t| Some((p,h,parcel_t, env_t)))
+        });
+
+    let lcl = once((
+        lcl_pressure,
+        lcl_height,
+        lcl_temperature,
+        lcl_env_temperature,
+    ));
+
+    let moist_adiabatic = izip!(pressure, hgt, env_t)
+        // Skip levels below the parcel starting point and below the lcl
+        .skip_while(|row| {
+            if let Some(p) = *row.0 {
+                p > lcl_pressure || p > parcel.pressure
+            } else {
+                true
+            }
+        })
+        // Remove layers with missing data and unwrap options
+        .filter_map(|(p_opt, h_opt, t_opt)|{
+            p_opt.and_then(|p| h_opt.and_then(|h| t_opt.and_then(|t| Some((p,h,t)))))
+        })
+        // Calculate the parcel temperature and add it in, if it is OK
+        .filter_map(|(p,h,env_t)|{
+            metfor::temperature_c_from_theta_e_saturated_and_pressure(p, theta_e)
+                .ok()
+                .and_then(|parcel_t| Some((p,h,parcel_t, env_t)))
+        });
+
+    let full_profile = dry_adiabatic.chain(lcl).chain(moist_adiabatic);
+
+    let mut pressure = Vec::with_capacity(pressure.len() + 1);
+    let mut height = Vec::with_capacity(pressure.len() + 1);
+    let mut parcel_t = Vec::with_capacity(pressure.len() + 1);
+    let mut environment_t = Vec::with_capacity(pressure.len() + 1);
+
+    full_profile.for_each(|(p, h, p_t, e_t)| {
+        pressure.push(p);
+        height.push(h);
+        parcel_t.push(p_t);
+        environment_t.push(e_t);
+    });
+
+    Ok(ParcelProfile {
+        pressure,
+        height,
+        parcel_t,
+        environment_t,
+        parcel,
+    })
+}
+
 // TODO: descend parcel dry adiabatically
 // TODO: descend parcel moist adiabatically
