@@ -273,7 +273,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let lcl = once((
         lcl_pressure,
         lcl_height,
-        lcl_temperature,
+        metfor::temperature_c_from_theta(lcl_temperature, lcl_pressure)
+            .map_err(|_| AnalysisError::InvalidInput)?,
         lcl_env_temperature,
     ));
 
