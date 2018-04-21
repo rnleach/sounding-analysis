@@ -234,6 +234,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta()?;
     let theta_e = parcel.theta_e()?;
 
+    let parcel_start_data = ::interpolation::linear_interpolate(snd, parcel.pressure)?;
+
     let lcl_env = ::interpolation::linear_interpolate(snd, lcl_pressure)?;
     let lcl_height = lcl_env.height.ok_or(AnalysisError::InvalidInput)?;
     let lcl_env_temperature = lcl_env.temperature.ok_or(AnalysisError::InvalidInput)?;
@@ -241,6 +243,13 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let pressure = snd.get_profile(Pressure);
     let hgt = snd.get_profile(GeopotentialHeight);
     let env_t = snd.get_profile(Temperature);
+
+    let parcel_start = once((
+        parcel.pressure,
+        parcel_start_data.height.ok_or(AnalysisError::InvalidInput)?,
+        parcel.temperature,
+        parcel_start_data.temperature.ok_or(AnalysisError::InvalidInput)?,
+    ));
 
     let dry_adiabatic = izip!(pressure, hgt, env_t)
         // Skip levels below the parcel starting point
@@ -297,7 +306,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
                 .and_then(|parcel_t| Some((p,h,parcel_t, env_t)))
         });
 
-    let full_profile = dry_adiabatic.chain(lcl).chain(moist_adiabatic);
+    let full_profile = parcel_start.chain(dry_adiabatic).chain(lcl).chain(moist_adiabatic);
 
     let mut pressure = Vec::with_capacity(pressure.len() + 1);
     let mut height = Vec::with_capacity(pressure.len() + 1);
