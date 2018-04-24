@@ -243,6 +243,7 @@ impl ParcelProfile {
         }
 
         izip!(l0,l1).for_each(|(l0,l1)|{
+            println!("{:?} -> {:?}", l0, l1);
             let (_, &pt0, &et0) = l0;
             let (&p1, &pt1, &et1) = l1;
 
