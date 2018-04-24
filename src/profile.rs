@@ -230,13 +230,13 @@ impl ParcelProfile {
     pub fn lfc_el_pressure_pairs(&self) -> SmallVec<[(f64,f64); ::VEC_SIZE]> {
         let mut to_ret = SmallVec::new();
 
-        let l0 = izip!(&self.pressure, &self.parcel_t, &self.environment_t);
-        let mut l1 = izip!(&self.pressure, &self.parcel_t, &self.environment_t);
+        let mut l0 = izip!(&self.pressure, &self.parcel_t, &self.environment_t);
+        let l1 = izip!(&self.pressure, &self.parcel_t, &self.environment_t).skip(1);
 
         let mut lfc = ::std::f64::MIN;
 
         // Check if we started at/above an lfc
-        if let Some((&p1, &pt1, &et1)) = l1.by_ref().next() {
+        if let Some((&p1, &pt1, &et1)) = l0.by_ref().next() {
             if pt1 >= et1 {
                 lfc = p1;
             }
