@@ -12,6 +12,8 @@
 
 use std::iter::once;
 
+use smallvec::SmallVec;
+
 use metfor;
 use sounding_base::Sounding;
 use sounding_base::Profile::*;
@@ -221,6 +223,43 @@ pub struct ParcelProfile {
     pub environment_t: Vec<f64>,
     /// The original parcel
     pub parcel: Parcel,
+}
+
+impl ParcelProfile {
+    /// Get the lfcs and el levels for this parcel.
+    pub fn lfc_el_pressure_pairs(&self) -> SmallVec<[(f64,f64); ::VEC_SIZE]> {
+        let mut to_ret = SmallVec::new();
+
+        let l0 = izip!(&self.pressure, &self.parcel_t, &self.environment_t);
+        let mut l1 = izip!(&self.pressure, &self.parcel_t, &self.environment_t);
+
+        let mut lfc = ::std::f64::MIN;
+
+        // Check if we started at/above an lfc
+        if let Some((&p1, &pt1, &et1)) = l1.by_ref().next() {
+            if pt1 >= et1 {
+                lfc = p1;
+            }
+        }
+
+        izip!(l0,l1).for_each(|(l0,l1)|{
+            let (_, &pt0, &et0) = l0;
+            let (&p1, &pt1, &et1) = l1;
+
+            if pt0 < et0 && pt1 >= et1 {
+                lfc = p1;
+            }
+
+            if pt0 > et0 && pt1 <= et1 {
+                let el = p1;
+                to_ret.push((lfc, el))
+            }
+        });
+
+        to_ret
+    }
+
+
 }
 
 /// Lift a parcel, make sure it has the same data points as the reference sounding.
