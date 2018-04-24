@@ -244,15 +244,15 @@ impl ParcelProfile {
 
         izip!(l0,l1).for_each(|(l0,l1)|{
             println!("{:?} -> {:?}", l0, l1);
-            let (_, &pt0, &et0) = l0;
+            let (&p0, &pt0, &et0) = l0;
             let (&p1, &pt1, &et1) = l1;
 
             if pt0 < et0 && pt1 >= et1 {
                 lfc = p1;
             }
 
-            if pt0 > et0 && pt1 <= et1 {
-                let el = p1;
+            if pt0 >= et0 && pt1 < et1 {
+                let el = p0;
                 to_ret.push((lfc, el))
             }
         });
