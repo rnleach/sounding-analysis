@@ -59,7 +59,7 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
 
     let (sum_p, sum_t, sum_dp, count) = izip!(press, t, dp)
         .filter_map(|(p, t, dp)| p.and_then(|p| t.and_then(|t| dp.and_then(|dp| Some((p, t, dp))))))
-        .take_while(|&(p, _, _)| p <= bottom_p + 100.0)
+        .take_while(|&(p, _, _)| p >= bottom_p - 100.0)
         .fold((0.0f64, 0.0f64, 0.0f64, 0.0f64), |acc, (p, t, dp)| {
             let (sum_p, sum_t, sum_dp, count) = acc;
             (sum_p + p, sum_t + t, sum_dp + dp, count + 1.0)
@@ -110,11 +110,15 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
         temp_vec = equivalent_potential_temperature(snd);
         &temp_vec
     };
+    let press = snd.get_profile(Pressure);
 
-    let (idx, _) = theta_e
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, theta_e_opt)| theta_e_opt.and_then(|theta_e| Some((idx, theta_e))))
+    let (idx, _) = izip!(0.., press, theta_e)
+        .take_while(|&(_, press_opt, _)| {
+            press_opt
+                .and_then(|p| if p < 300.0 { None } else { Some(()) })
+                .is_some()
+        })
+        .filter_map(|(idx, _, theta_e_opt)| theta_e_opt.and_then(|theta_e| Some((idx, theta_e))))
         .fold(
             (::std::usize::MAX, ::std::f64::MIN),
             |(max_idx, max_val), (i, theta_e)| {

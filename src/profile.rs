@@ -275,8 +275,15 @@ impl ParcelProfile {
         let l0 = izip!(&self.pressure, &self.parcel_t, &self.environment_t);
         let l1 = izip!(&self.parcel_t, &self.environment_t).skip(1);
 
-        let mut bottom = ::std::f64::MIN;
         let mut top = ::std::f64::MAX;
+        let mut bottom = {
+            let (p, pt, et) = (self.pressure[0], self.parcel_t[0], self.environment_t[0]);
+            if pt < et {
+                p
+            } else {
+                ::std::f64::MIN
+            }
+        };
 
         izip!(l0, l1).for_each(|(l0, l1)| {
             let (&p0, &pt0, &et0) = l0;
