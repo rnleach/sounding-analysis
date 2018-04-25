@@ -10,8 +10,6 @@
 //!     sounding. They are useful doing parcel analysis for variables such CAPE.
 //!
 
-use std::iter::once;
-
 use smallvec::SmallVec;
 
 use metfor;
@@ -227,49 +225,92 @@ pub struct ParcelProfile {
 
 impl ParcelProfile {
     /// Get the lfcs and el levels for this parcel.
-    pub fn lfc_el_pressure_pairs(&self) -> SmallVec<[(f64,f64); ::VEC_SIZE]> {
+    pub fn cape_layers(&self) -> SmallVec<[(f64, f64); ::VEC_SIZE]> {
+        let mut to_ret = SmallVec::new();
+
+        let lcl_pressure = if let Ok(pres) = metfor::pressure_hpa_at_lcl(
+            self.parcel.temperature,
+            self.parcel.dew_point,
+            self.parcel.pressure,
+        ) {
+            pres
+        } else {
+            return to_ret;
+        };
+
+        let l0 = izip!(&self.pressure, &self.parcel_t, &self.environment_t);
+        let l1 = izip!(&self.parcel_t, &self.environment_t).skip(1);
+
+        let mut bottom = ::std::f64::MIN;
+        let mut top = ::std::f64::MAX;
+
+        izip!(l0, l1)
+            .skip_while(|&(l0, _)| *l0.0 > lcl_pressure)
+            .for_each(|(l0, l1)| {
+                let (&p0, &pt0, &et0) = l0;
+                let (&pt1, &et1) = l1;
+
+                if pt0 <= et0 && pt1 > et1 {
+                    bottom = p0;
+                }
+
+                if pt0 >= et0 && pt1 < et1 {
+                    top = p0;
+                }
+
+                if bottom > top {
+                    to_ret.push((bottom, top));
+                    bottom = ::std::f64::MIN;
+                    top = ::std::f64::MAX;
+                }
+            });
+
+        to_ret
+    }
+
+    /// Get the pressure layers with CIN in this profile.
+    pub fn cin_layers(&self) -> SmallVec<[(f64, f64); ::VEC_SIZE]> {
         let mut to_ret = SmallVec::new();
 
         let l0 = izip!(&self.pressure, &self.parcel_t, &self.environment_t);
-        let l1 = izip!(&self.pressure, &self.parcel_t, &self.environment_t).skip(1);
+        let l1 = izip!(&self.parcel_t, &self.environment_t).skip(1);
 
-        let mut lfc = ::std::f64::MIN;
+        let mut bottom = ::std::f64::MIN;
+        let mut top = ::std::f64::MAX;
 
-        // Check if we started at/above an lfc
-        let (p0, pt0, et0) = (self.pressure[0], self.parcel_t[0], self.environment_t[0]);
-        if pt0 >= et0 {
-            lfc = p0;
-        }
-        
-
-        izip!(l0,l1).for_each(|(l0,l1)|{
-            println!("{:?} -> {:?}", l0, l1);
+        izip!(l0, l1).for_each(|(l0, l1)| {
             let (&p0, &pt0, &et0) = l0;
-            let (&p1, &pt1, &et1) = l1;
+            let (&pt1, &et1) = l1;
 
-            if pt0 < et0 && pt1 >= et1 {
-                lfc = p1;
+            if pt0 <= et0 && pt1 > et1 {
+                top = p0;
             }
 
             if pt0 >= et0 && pt1 < et1 {
-                let el = p0;
-                to_ret.push((lfc, el))
+                bottom = p0;
+            }
+
+            if bottom > top {
+                to_ret.push((bottom, top));
+                bottom = ::std::f64::MIN;
+                top = ::std::f64::MAX;
             }
         });
 
         to_ret
     }
-
-
 }
 
-/// Lift a parcel, make sure it has the same data points as the reference sounding.
+/// Lift a parcel
 pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let (lcl_pressure, lcl_temperature) = metfor::pressure_and_temperature_at_lcl(
         parcel.temperature,
         parcel.dew_point,
         parcel.pressure,
     ).map_err(|_| AnalysisError::InvalidInput)?;
+
+    let lcl_temperature =
+        metfor::kelvin_to_celsius(lcl_temperature).map_err(|_| AnalysisError::InvalidInput)?;
 
     let theta = parcel.theta()?;
     let theta_e = parcel.theta_e()?;
@@ -280,85 +321,97 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let lcl_height = lcl_env.height.ok_or(AnalysisError::InvalidInput)?;
     let lcl_env_temperature = lcl_env.temperature.ok_or(AnalysisError::InvalidInput)?;
 
-    let pressure = snd.get_profile(Pressure);
+    let snd_pressure = snd.get_profile(Pressure);
     let hgt = snd.get_profile(GeopotentialHeight);
     let env_t = snd.get_profile(Temperature);
 
-    let parcel_start = once((
-        parcel.pressure,
-        parcel_start_data.height.ok_or(AnalysisError::InvalidInput)?,
-        parcel.temperature,
-        parcel_start_data.temperature.ok_or(AnalysisError::InvalidInput)?,
-    ));
+    let mut pressure = Vec::with_capacity(snd_pressure.len() + 5);
+    let mut height = Vec::with_capacity(snd_pressure.len() + 5);
+    let mut parcel_t = Vec::with_capacity(snd_pressure.len() + 5);
+    let mut environment_t = Vec::with_capacity(snd_pressure.len() + 5);
 
-    let dry_adiabatic = izip!(pressure, hgt, env_t)
-        // Skip levels below the parcel starting point
-        .skip_while(|row| {
-            if let Some(p) = *row.0 {
-                p > parcel.pressure
+    // Nested scope to limit closure borrows
+    {
+        // Helper function to calculate parcel temperature
+        let calc_parcel_t = |tgt_pres| {
+            if tgt_pres > lcl_pressure {
+                // Dry adiabatic lifting
+                metfor::temperature_c_from_theta(theta, tgt_pres)
+                    .map_err(|_| AnalysisError::InvalidInput)
             } else {
-                true
+                // Moist adiabatic lifting
+                metfor::temperature_c_from_theta_e_saturated_and_pressure(tgt_pres, theta_e)
+                    .map_err(|_| AnalysisError::InvalidInput)
             }
-        })
-        // Take until we reach the lcl and become saturated
-        .take_while(|row|{
-            if let Some(p) = *row.0 {
-                p > lcl_pressure
+        };
+
+        // Helper function to add row to parcel profile
+        let mut add_row = |pp, hh, pcl_tt, env_tt| {
+            pressure.push(pp);
+            height.push(hh);
+            parcel_t.push(pcl_tt);
+            environment_t.push(env_tt);
+        };
+
+        // Start by adding the parcel level
+        let mut p0 = parcel.pressure;
+        let h0 = parcel_start_data.height.ok_or(AnalysisError::InvalidInput)?;
+        let mut pcl_t0 = parcel.temperature;
+        let mut env_t0 = parcel_start_data
+            .temperature
+            .ok_or(AnalysisError::InvalidInput)?;
+
+        add_row(p0, h0, pcl_t0, env_t0);
+
+        for (p, h, env_t) in izip!(snd_pressure, hgt, env_t) {
+            // Unpack options
+            let (p, h, env_t) = if let (&Some(p), &Some(h), &Some(env_t)) = (p, h, env_t) {
+                (p, h, env_t)
             } else {
-                true
+                continue;
+            };
+
+            // Check if this level has already been added or if we are below the parcel.
+            if p0 <= p {
+                continue;
             }
-        })
-        // Remove layers with missing data and unwrap options
-        .filter_map(|(p_opt, h_opt, t_opt)|{
-            p_opt.and_then(|p| h_opt.and_then(|h| t_opt.and_then(|t| Some((p,h,t)))))
-        })
-        // Calculate the parcel temperature and add it in, if it is OK
-        .filter_map(|(p,h,env_t)|{
-            metfor::temperature_c_from_theta(theta, p)
-                .ok()
-                .and_then(|parcel_t| Some((p,h,parcel_t, env_t)))
-        });
 
-    let lcl = once((
-        lcl_pressure,
-        lcl_height,
-        metfor::kelvin_to_celsius(lcl_temperature).map_err(|_| AnalysisError::InvalidInput)?,
-        lcl_env_temperature,
-    ));
+            // Check to see if we are passing the lcl
+            if p0 > lcl_pressure && p < lcl_pressure {
+                add_row(
+                    lcl_pressure,
+                    lcl_height,
+                    lcl_temperature,
+                    lcl_env_temperature,
+                );
+            }
 
-    let moist_adiabatic = izip!(pressure, hgt, env_t)
-        // Skip levels below the parcel starting point and below the lcl
-        .skip_while(|row| {
-            if let Some(p) = *row.0 {
-                p > lcl_pressure || p > parcel.pressure
+            // Calculate the new parcel temperature
+            let pcl_t = if let Ok(new_t) = calc_parcel_t(p) {
+                new_t
             } else {
-                true
+                break;
+            };
+
+            // Check to see if the parcel and environment soundings have crossed
+            if (pcl_t0 < env_t0 && pcl_t > env_t) || (pcl_t0 > env_t0 && pcl_t < env_t) {
+                let tgt_pres =
+                    ::interpolation::linear_interp(0.0, pcl_t - env_t, pcl_t0 - env_t0, p, p0);
+                let tgt_row = ::interpolation::linear_interpolate(snd, tgt_pres)?;
+                let h2 = tgt_row.height.ok_or(AnalysisError::InvalidInput)?;
+                let env_t2 = tgt_row.temperature.ok_or(AnalysisError::InvalidInput)?;
+                add_row(tgt_pres, h2, env_t2, env_t2);
             }
-        })
-        // Remove layers with missing data and unwrap options
-        .filter_map(|(p_opt, h_opt, t_opt)|{
-            p_opt.and_then(|p| h_opt.and_then(|h| t_opt.and_then(|t| Some((p,h,t)))))
-        })
-        // Calculate the parcel temperature and add it in, if it is OK
-        .filter_map(|(p,h,env_t)|{
-            metfor::temperature_c_from_theta_e_saturated_and_pressure(p, theta_e)
-                .ok()
-                .and_then(|parcel_t| Some((p,h,parcel_t, env_t)))
-        });
 
-    let full_profile = parcel_start.chain(dry_adiabatic).chain(lcl).chain(moist_adiabatic);
+            // Add the new values to the array
+            add_row(p, h, pcl_t, env_t);
 
-    let mut pressure = Vec::with_capacity(pressure.len() + 1);
-    let mut height = Vec::with_capacity(pressure.len() + 1);
-    let mut parcel_t = Vec::with_capacity(pressure.len() + 1);
-    let mut environment_t = Vec::with_capacity(pressure.len() + 1);
-
-    full_profile.for_each(|(p, h, p_t, e_t)| {
-        pressure.push(p);
-        height.push(h);
-        parcel_t.push(p_t);
-        environment_t.push(e_t);
-    });
+            // Remember them for the next iteration
+            p0 = p;
+            pcl_t0 = pcl_t;
+            env_t0 = env_t;
+        }
+    }
 
     Ok(ParcelProfile {
         pressure,
