@@ -166,13 +166,20 @@ mod layer_tests {
 ///
 /// If there are none, then an empty vector is returned.
 pub fn dendritic_snow_zone(snd: &Sounding) -> Result<Layers> {
+    temperature_layer(snd, -12.0, -18.0, 300.0)
+}
+
+/// Find the hail growth zones throughout the profile. It is very unusual, but possible there is
+/// more than one.
+///
+/// If there are none, then an empty vector is returned.
+pub fn hail_growth_zone(snd: &Sounding) -> Result<Layers> {
+    temperature_layer(snd, -10.0, -30.0, 1.0)
+}
+
+fn temperature_layer(snd: &Sounding, warm_side: f64, cold_side: f64, top_pressure: f64) -> Result<Layers>{
     use interpolation::{linear_interp, linear_interpolate};
     let mut to_return: Layers = Layers::new();
-
-    // Dendritic snow growth zone temperature range in C
-    const WARM_SIDE: f64 = -12.0;
-    const COLD_SIDE: f64 = -18.0;
-    const TOP_PRESSURE: f64 = 300.0; // don't look above here.
 
     let t_profile = snd.get_profile(Temperature);
     let p_profile = snd.get_profile(Pressure);
@@ -191,53 +198,53 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<Layers> {
             }
         })
         // Stop above a certain level
-        .take_while(|&(p,_)| p > TOP_PRESSURE)
-        // find dendritic layers
+        .take_while(|&(p,_)| p > top_pressure)
+        // find temperature layers
         .fold(Ok((None,None,None)), |acc: Result<(Option<f64>, Option<f64>, Option<_>)>, (p,t)|{
             match acc {
-                // We're not in a dendritic layer currently
+                // We're not in a target layer currently
                 Ok((Some(last_p), Some(last_t), None)) => {
-                    if last_t < COLD_SIDE && t >= COLD_SIDE && t <= WARM_SIDE{
-                        // We crossed into a dendritic layer from the cold side
-                        let target_p = linear_interp(COLD_SIDE, last_t, t, last_p, p);
+                    if last_t < cold_side && t >= cold_side && t <= warm_side{
+                        // We crossed into a target layer from the cold side
+                        let target_p = linear_interp(cold_side, last_t, t, last_p, p);
                         let bottom = linear_interpolate(snd, target_p)?;
                         Ok((Some(p), Some(t), Some(bottom)))
-                    } else if last_t > WARM_SIDE && t >= COLD_SIDE && t <= WARM_SIDE{
-                        // We crossed into a dendritic layer from the warm side
-                        let target_p = linear_interp(WARM_SIDE, last_t, t, last_p, p);
+                    } else if last_t > warm_side && t >= cold_side && t <= warm_side{
+                        // We crossed into a target layer from the warm side
+                        let target_p = linear_interp(warm_side, last_t, t, last_p, p);
                         let bottom = linear_interpolate(snd, target_p)?;
                         Ok((Some(p), Some(t), Some(bottom)))
-                    } else if (last_t < COLD_SIDE && t >= WARM_SIDE)
-                        || (last_t > WARM_SIDE && t <= COLD_SIDE){
-                        // We crossed completely through a dendritic layer
-                        let warm_p = linear_interp(WARM_SIDE, last_t, t, last_p, p);
-                        let cold_p = linear_interp(COLD_SIDE, last_t, t, last_p, p);
+                    } else if (last_t < cold_side && t >= warm_side)
+                        || (last_t > warm_side && t <= cold_side){
+                        // We crossed completely through a target layer
+                        let warm_p = linear_interp(warm_side, last_t, t, last_p, p);
+                        let cold_p = linear_interp(cold_side, last_t, t, last_p, p);
                         let bottom = linear_interpolate(snd, warm_p.max(cold_p))?;
                         let top = linear_interpolate(snd, warm_p.min(cold_p))?;
                         to_return.push(Layer{bottom, top});
                         Ok((Some(p), Some(t), None))
                     } else {
-                        // We weren't in a dendritic layer
+                        // We weren't in a target layer
                         Ok((Some(p), Some(t), None))
                     }
                 },
 
-                // We're in a dendritic layer, let's see if we passed out
+                // We're in a target layer, let's see if we passed out
                 Ok((Some(last_p), Some(last_t), Some(bottom))) => {
-                    if t < COLD_SIDE {
-                        // We crossed out of a dendritic layer on the cold side
-                        let target_p = linear_interp(COLD_SIDE, last_t, t, last_p, p);
+                    if t < cold_side {
+                        // We crossed out of a target layer on the cold side
+                        let target_p = linear_interp(cold_side, last_t, t, last_p, p);
                         let top = linear_interpolate(snd, target_p)?;
                         to_return.push(Layer{bottom, top});
                         Ok((Some(p), Some(t), None))
-                    } else if t > WARM_SIDE {
-                        // We crossed out of a dendritic layer on the warm side
-                        let target_p = linear_interp(WARM_SIDE, last_t, t, last_p, p);
+                    } else if t > warm_side {
+                        // We crossed out of a target layer on the warm side
+                        let target_p = linear_interp(warm_side, last_t, t, last_p, p);
                         let top = linear_interpolate(snd, target_p)?;
                         to_return.push(Layer{bottom, top});
                         Ok((Some(p), Some(t), None))
                     } else {
-                        // We're still in a dendritic layer
+                        // We're still in a target layer
                         Ok((Some(p), Some(t), Some(bottom)))
                     }
                 },
@@ -247,12 +254,12 @@ pub fn dendritic_snow_zone(snd: &Sounding) -> Result<Layers> {
 
                 // First row, lets get started
                 Ok((None,None,None)) => {
-                    if t <= WARM_SIDE && t >= COLD_SIDE {
-                        // Starting out in a dendritic layer
+                    if t <= warm_side && t >= cold_side {
+                        // Starting out in a target layer
                         let dr = linear_interpolate(snd, p)?;
                         Ok((Some(p),Some(t),Some(dr)))
                     } else {
-                        // Not starting out in a dendritic layer
+                        // Not starting out in a target layer
                         Ok((Some(p),Some(t),None))
                     }
                 },
