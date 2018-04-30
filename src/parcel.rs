@@ -5,7 +5,7 @@ use metfor;
 use sounding_base::Sounding;
 
 use error::*;
-use profile::{equivalent_potential_temperature, ParcelProfile};
+use profile::{equivalent_potential_temperature};
 
 /// Variables defining a parcel as used in parcel analysis.
 #[derive(Debug, Clone, Copy)]
