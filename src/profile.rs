@@ -244,6 +244,12 @@ impl ParcelProfile {
         let mut bottom = ::std::f64::MIN;
         let mut top = ::std::f64::MAX;
 
+        if !(self.parcel_t.is_empty() || self.environment_t.is_empty() || self.pressure.is_empty()){
+            if self.parcel_t[0] > self.environment_t[0] {
+                bottom = self.pressure[0];
+            }
+        }
+
         izip!(l0, l1)
             .skip_while(|&(l0, _)| *l0.0 > lcl_pressure)
             .for_each(|(l0, l1)| {
