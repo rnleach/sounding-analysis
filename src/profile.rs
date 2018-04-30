@@ -245,7 +245,7 @@ impl ParcelProfile {
         let mut top = ::std::f64::MAX;
 
         if !(self.parcel_t.is_empty() || self.environment_t.is_empty() || self.pressure.is_empty()){
-            if self.parcel_t[0] > self.environment_t[0] {
+            if self.parcel_t[0] >= self.environment_t[0] {
                 bottom = self.pressure[0];
             }
         }
