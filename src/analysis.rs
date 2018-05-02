@@ -1,26 +1,39 @@
 //! Data type and methods for building and describing an analysis.
 //!
 //! Not every possible analysis is in this data.
+use std::collections::HashMap;
 
-/// Sounding indexes.
-///
-/// and silently fail in release mode.
+use sounding_base::Sounding;
+
+use parcel::{Parcel, ParcelProfile};
+
+/// Sounding indexes calculated from the sounding and not any particular profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Index {
+pub enum ProfileIndex {
     /// Showalter index
     Showalter,
-    /// Lifted index
-    LI,
     /// Severe Weather Threat Index
     SWeT,
     /// K-index
     K,
-    /// Lifting Condensation Level, or LCL (hPa), pressure vertical coordinate.
-    LCL,
     /// Precipitable Water (mm)
     PWAT,
     /// Total-Totals
     TotalTotals,
+    /// Bulk Richardson Number
+    BulkRichardsonNumber,
+    /// Haines index
+    Haines,
+    // TODO: DCAPE
+}
+
+/// Indexes from a parcel analysis of a sounding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParcelIndex {
+    /// Lifted index
+    LI,
+    /// Lifting Condensation Level, or LCL (hPa), pressure vertical coordinate.
+    LCL,
     /// Convective Available Potential Energy, or CAPE. (J/kg)
     CAPE,
     /// Temperature at LCL (K)
@@ -28,48 +41,65 @@ pub enum Index {
     /// Convective Inhibitive Energy, or CIN (J/kg)
     CIN,
     /// Equilibrium Level (hPa), pressure vertical coordinate
-    EquilibrimLevel,
+    EquilibriumLevel,
     /// Level of Free Convection (hPa), pressure vertical coordinate
     LFC,
-    /// Bulk Richardson Number
-    BulkRichardsonNumber,
-    /// Haines index
-    Haines,
+    // TODO: NCAPE, hail zone cape
 }
 
 /// Convenient package for commonly requested analysis values.
 ///
 /// All parcel related values are assumed to be for the 100hPa mixed layer at the surface.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Analysis {
+    // Sounding used to make the analysis
+    sounding: Sounding,
+
+    // Profile specific indicies
     showalter: Option<f64>,
-    mixed_layer_lifted_index: Option<f64>,
     swet: Option<f64>,
     k_index: Option<f64>,
     precipitable_water: Option<f64>,
     total_totals: Option<f64>,
-    mixed_layer_cape: Option<f64>,
-    mixed_layer_lcl: Option<f64>,
-    mixed_layer_lcl_temperature: Option<f64>,
-    mixed_layer_cin: Option<f64>,
-    mixed_layer_equilibrium_level: Option<f64>,
-    mixed_layer_lfc: Option<f64>,
     bulk_richardson_number: Option<f64>,
     haines: Option<f64>,
+
+    // Parcel analysis
+    mixed_layer: Option<ParcelAnalysis>,
+    surface: Option<ParcelAnalysis>,
+    most_unstable: Option<ParcelAnalysis>,
+
+    // Provider analysis
+    provider_analysis: HashMap<&'static str, f64>,
 }
 
 impl Analysis {
-    /// Create a new empty `Analysis`.
-    pub fn new() -> Analysis {
-        Analysis::default()
+    /// Create a new `Analysis`.
+    pub fn new(snd: Sounding) -> Self {
+        Analysis {
+            sounding: snd,
+            showalter: None,
+            swet: None,
+            k_index: None,
+            precipitable_water: None,
+            total_totals: None,
+            bulk_richardson_number: None,
+            haines: None,
+
+            mixed_layer: None,
+            surface: None,
+            most_unstable: None,
+
+            provider_analysis: HashMap::new(),
+        }
     }
 
     /// Set a value in the analysis
-    pub fn set<T>(self, var: Index, value: T) -> Self
+    pub fn with_profile_index<T>(self, var: ProfileIndex, value: T) -> Self
     where
         Option<f64>: From<T>,
     {
-        use Index::*;
+        use self::ProfileIndex::*;
 
         let opt = Option::from(value);
 
@@ -78,17 +108,9 @@ impl Analysis {
                 showalter: opt,
                 ..self
             },
-            LI => Analysis {
-                mixed_layer_lifted_index: opt,
-                ..self
-            },
             SWeT => Analysis { swet: opt, ..self },
             K => Analysis {
                 k_index: opt,
-                ..self
-            },
-            LCL => Analysis {
-                mixed_layer_lcl: opt,
                 ..self
             },
             PWAT => Analysis {
@@ -97,26 +119,6 @@ impl Analysis {
             },
             TotalTotals => Analysis {
                 total_totals: opt,
-                ..self
-            },
-            CAPE => Analysis {
-                mixed_layer_cape: opt,
-                ..self
-            },
-            LCLTemperature => Analysis {
-                mixed_layer_lcl_temperature: opt,
-                ..self
-            },
-            CIN => Analysis {
-                mixed_layer_cin: opt,
-                ..self
-            },
-            EquilibrimLevel => Analysis {
-                mixed_layer_equilibrium_level: opt,
-                ..self
-            },
-            LFC => Analysis {
-                mixed_layer_lfc: opt,
                 ..self
             },
             BulkRichardsonNumber => Analysis {
@@ -131,24 +133,157 @@ impl Analysis {
     }
 
     /// Method to retrieve value from analysis.
-    pub fn get(&self, var: Index) -> Option<f64> {
-        use Index::*;
+    pub fn get_profile_index(&self, var: ProfileIndex) -> Option<f64> {
+        use self::ProfileIndex::*;
 
         match var {
             Showalter => self.showalter,
-            LI => self.mixed_layer_lifted_index,
             SWeT => self.swet,
             K => self.k_index,
-            LCL => self.mixed_layer_lcl,
             PWAT => self.precipitable_water,
             TotalTotals => self.total_totals,
-            CAPE => self.mixed_layer_cape,
-            LCLTemperature => self.mixed_layer_lcl_temperature,
-            CIN => self.mixed_layer_cin,
-            EquilibrimLevel => self.mixed_layer_equilibrium_level,
-            LFC => self.mixed_layer_lfc,
             BulkRichardsonNumber => self.bulk_richardson_number,
             Haines => self.haines,
+        }
+    }
+
+    /// Set the mixed layer parcel analysis.
+    pub fn with_mixed_layer_parcel_analysis<T>(self, anal: T) -> Self
+    where
+        Option<ParcelAnalysis>: From<T>,
+    {
+        let mixed_layer = Option::from(anal);
+        Analysis {
+            mixed_layer,
+            ..self
+        }
+    }
+
+    /// Get the mixed layer parcel analysis
+    pub fn get_mixed_layer_parcel_analysis(&self) -> Option<&ParcelAnalysis> {
+        self.mixed_layer.as_ref()
+    }
+
+    /// Set the surface parcel analysis.
+    pub fn with_surface_parcel_analysis<T>(self, anal: T) -> Self
+    where
+        Option<ParcelAnalysis>: From<T>,
+    {
+        let surface = Option::from(anal);
+        Analysis { surface, ..self }
+    }
+
+    /// Get the surface parcel analysis
+    pub fn get_surface_parcel_analysis(&self) -> Option<&ParcelAnalysis> {
+        self.surface.as_ref()
+    }
+
+    /// Set the most unstable parcel analysis.
+    pub fn with_most_unstable_parcel_analysis<T>(self, anal: T) -> Self
+    where
+        Option<ParcelAnalysis>: From<T>,
+    {
+        let most_unstable = Option::from(anal);
+        Analysis {
+            most_unstable,
+            ..self
+        }
+    }
+
+    /// Get the surface parcel analysis
+    pub fn get_most_unstable_parcel_analysis(&self) -> Option<&ParcelAnalysis> {
+        self.most_unstable.as_ref()
+    }
+
+    /// Set the provider analysis.
+    ///
+    /// This is just a table of what ever values you want to store, it may be empty.
+    pub fn with_provider_analysis(self, provider_analysis: HashMap<&'static str, f64>) -> Self {
+        Analysis {
+            provider_analysis,
+            ..self
+        }
+    }
+
+    /// Get a reference to the provider analysis so you can query it.
+    pub fn provider_analysis(&self) -> &HashMap<&'static str, f64> {
+        &self.provider_analysis
+    }
+
+    /// Get a mutable reference to the provider analysis so you can modify it.
+    pub fn provider_analysis_mut(&mut self) -> &mut HashMap<&'static str, f64> {
+        &mut self.provider_analysis
+    }
+}
+
+/// Parcel analysis, this is a way to package the analysis of a parcel.
+#[derive(Debug, Clone)]
+pub struct ParcelAnalysis {
+    // The orginal parcel and profile
+    parcel: Parcel,
+    profile: ParcelProfile,
+
+    // Indicies from analysis
+    li: Option<f64>,
+    cape: Option<f64>,
+    lcl: Option<f64>,
+    lcl_temperature: Option<f64>,
+    cin: Option<f64>,
+    el: Option<f64>,
+    lfc: Option<f64>,
+}
+
+impl ParcelAnalysis {
+    /// Create a new empty `Analysis`.
+    pub fn new(parcel: Parcel, profile: ParcelProfile) -> Self {
+        ParcelAnalysis {
+            parcel,
+            profile,
+            li: None,
+            cape: None,
+            lcl: None,
+            lcl_temperature: None,
+            cin: None,
+            el: None,
+            lfc: None,
+        }
+    }
+
+    /// Set a value in the analysis
+    pub fn set_index<T>(self, var: ParcelIndex, value: T) -> Self
+    where
+        Option<f64>: From<T>,
+    {
+        use self::ParcelIndex::*;
+
+        let opt = Option::from(value);
+
+        match var {
+            LI => ParcelAnalysis { li: opt, ..self },
+            LCL => ParcelAnalysis { lcl: opt, ..self },
+            LCLTemperature => ParcelAnalysis {
+                lcl_temperature: opt,
+                ..self
+            },
+            CAPE => ParcelAnalysis { cape: opt, ..self },
+            CIN => ParcelAnalysis { cin: opt, ..self },
+            EquilibriumLevel => ParcelAnalysis { el: opt, ..self },
+            LFC => ParcelAnalysis { lfc: opt, ..self },
+        }
+    }
+
+    /// Method to retrieve value from analysis.
+    pub fn get_index(&self, var: ParcelIndex) -> Option<f64> {
+        use self::ParcelIndex::*;
+
+        match var {
+            LI => self.li,
+            LCL => self.lcl,
+            LCLTemperature => self.lcl_temperature,
+            CAPE => self.cape,
+            CIN => self.cin,
+            EquilibriumLevel => self.el,
+            LFC => self.lfc,
         }
     }
 }

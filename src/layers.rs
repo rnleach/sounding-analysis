@@ -177,7 +177,12 @@ pub fn hail_growth_zone(snd: &Sounding) -> Result<Layers> {
     temperature_layer(snd, -10.0, -30.0, 1.0)
 }
 
-fn temperature_layer(snd: &Sounding, warm_side: f64, cold_side: f64, top_pressure: f64) -> Result<Layers>{
+fn temperature_layer(
+    snd: &Sounding,
+    warm_side: f64,
+    cold_side: f64,
+    top_pressure: f64,
+) -> Result<Layers> {
     use interpolation::{linear_interp, linear_interpolate};
     let mut to_return: Layers = Layers::new();
 

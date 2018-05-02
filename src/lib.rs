@@ -12,7 +12,7 @@ crate.
 //
 // API
 //
-pub use analysis::{Analysis, Index};
+pub use analysis::{Analysis, ParcelAnalysis, ParcelIndex, ProfileIndex};
 
 pub mod error;
 pub use error::*;
@@ -26,10 +26,9 @@ pub mod levels;
 pub use levels::{Level, Levels};
 
 pub mod parcel;
-pub use parcel::Parcel;
+pub use parcel::{Parcel, ParcelProfile};
 
 pub mod profile;
-pub use profile::ParcelProfile;
 
 //
 // Internal use only
