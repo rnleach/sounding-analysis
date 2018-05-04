@@ -214,6 +214,11 @@ impl Analysis {
     pub fn provider_analysis_mut(&mut self) -> &mut HashMap<&'static str, f64> {
         &mut self.provider_analysis
     }
+
+    /// Get a reference to the sounding.
+    pub fn sounding(&self) -> &Sounding {
+        &self.sounding
+    }
 }
 
 /// Parcel analysis, this is a way to package the analysis of a parcel.
