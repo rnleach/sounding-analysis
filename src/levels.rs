@@ -32,7 +32,7 @@ pub fn wet_bulb_zero_levels(snd: &Sounding) -> Result<Levels> {
 }
 
 fn find_temperature_levels(snd: &Sounding, var: Profile, target_t: f64) -> Result<Levels> {
-    use interpolation::{linear_interp, linear_interpolate};
+    use interpolation::{linear_interp, linear_interpolate_sounding};
 
     debug_assert!(var == Temperature || var == WetBulb);
 
@@ -65,7 +65,7 @@ fn find_temperature_levels(snd: &Sounding, var: Profile, target_t: f64) -> Resul
             if let Ok((last_p, last_t)) = acc {
                 if last_t <= target_t && t > target_t || last_t > target_t && t <= target_t {
                     let target_p = linear_interp(target_t, last_t, t, last_p, p);
-                    to_return.push(linear_interpolate(snd, target_p)?);
+                    to_return.push(linear_interpolate_sounding(snd, target_p)?);
                 }
                 Ok((p,t))
             } else {

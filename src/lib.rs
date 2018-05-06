@@ -17,7 +17,7 @@ pub use analysis::{Analysis, ParcelAnalysis, ParcelIndex, ProfileIndex};
 pub mod error;
 pub use error::*;
 
-pub use interpolation::linear_interpolate;
+pub use interpolation::linear_interpolate_sounding;
 
 pub mod layers;
 pub use layers::{Layer, Layers};

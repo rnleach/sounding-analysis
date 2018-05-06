@@ -208,9 +208,9 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta()?;
     let theta_e = parcel.theta_e()?;
 
-    let parcel_start_data = ::interpolation::linear_interpolate(snd, parcel.pressure)?;
+    let parcel_start_data = ::interpolation::linear_interpolate_sounding(snd, parcel.pressure)?;
 
-    let lcl_env = ::interpolation::linear_interpolate(snd, lcl_pressure)?;
+    let lcl_env = ::interpolation::linear_interpolate_sounding(snd, lcl_pressure)?;
     let lcl_height = lcl_env.height.ok_or(AnalysisError::InvalidInput)?;
     let lcl_env_temperature = lcl_env.temperature.ok_or(AnalysisError::InvalidInput)?;
 
@@ -290,7 +290,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
             if (pcl_t0 < env_t0 && pcl_t > env_t) || (pcl_t0 > env_t0 && pcl_t < env_t) {
                 let tgt_pres =
                     ::interpolation::linear_interp(0.0, pcl_t - env_t, pcl_t0 - env_t0, p, p0);
-                let tgt_row = ::interpolation::linear_interpolate(snd, tgt_pres)?;
+                let tgt_row = ::interpolation::linear_interpolate_sounding(snd, tgt_pres)?;
                 let h2 = tgt_row.height.ok_or(AnalysisError::InvalidInput)?;
                 let env_t2 = tgt_row.temperature.ok_or(AnalysisError::InvalidInput)?;
                 add_row(tgt_pres, h2, env_t2, env_t2);

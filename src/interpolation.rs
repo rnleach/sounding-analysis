@@ -6,7 +6,7 @@ use error::AnalysisError::*;
 /// Interpolate values from the vertical sounding using pressure as the primary coordinate.
 ///
 /// Returns a `DataRow` struct with interpolated values.
-pub fn linear_interpolate(snd: &Sounding, target_p: f64) -> Result<DataRow> {
+pub fn linear_interpolate_sounding(snd: &Sounding, target_p: f64) -> Result<DataRow> {
     use sounding_base::Profile::*;
 
     let pressure = snd.get_profile(Pressure);

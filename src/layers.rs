@@ -183,7 +183,7 @@ fn temperature_layer(
     cold_side: f64,
     top_pressure: f64,
 ) -> Result<Layers> {
-    use interpolation::{linear_interp, linear_interpolate};
+    use interpolation::{linear_interp, linear_interpolate_sounding};
     let mut to_return: Layers = Layers::new();
 
     let t_profile = snd.get_profile(Temperature);
@@ -212,20 +212,20 @@ fn temperature_layer(
                     if last_t < cold_side && t >= cold_side && t <= warm_side{
                         // We crossed into a target layer from the cold side
                         let target_p = linear_interp(cold_side, last_t, t, last_p, p);
-                        let bottom = linear_interpolate(snd, target_p)?;
+                        let bottom = linear_interpolate_sounding(snd, target_p)?;
                         Ok((Some(p), Some(t), Some(bottom)))
                     } else if last_t > warm_side && t >= cold_side && t <= warm_side{
                         // We crossed into a target layer from the warm side
                         let target_p = linear_interp(warm_side, last_t, t, last_p, p);
-                        let bottom = linear_interpolate(snd, target_p)?;
+                        let bottom = linear_interpolate_sounding(snd, target_p)?;
                         Ok((Some(p), Some(t), Some(bottom)))
                     } else if (last_t < cold_side && t >= warm_side)
                         || (last_t > warm_side && t <= cold_side){
                         // We crossed completely through a target layer
                         let warm_p = linear_interp(warm_side, last_t, t, last_p, p);
                         let cold_p = linear_interp(cold_side, last_t, t, last_p, p);
-                        let bottom = linear_interpolate(snd, warm_p.max(cold_p))?;
-                        let top = linear_interpolate(snd, warm_p.min(cold_p))?;
+                        let bottom = linear_interpolate_sounding(snd, warm_p.max(cold_p))?;
+                        let top = linear_interpolate_sounding(snd, warm_p.min(cold_p))?;
                         to_return.push(Layer{bottom, top});
                         Ok((Some(p), Some(t), None))
                     } else {
@@ -239,13 +239,13 @@ fn temperature_layer(
                     if t < cold_side {
                         // We crossed out of a target layer on the cold side
                         let target_p = linear_interp(cold_side, last_t, t, last_p, p);
-                        let top = linear_interpolate(snd, target_p)?;
+                        let top = linear_interpolate_sounding(snd, target_p)?;
                         to_return.push(Layer{bottom, top});
                         Ok((Some(p), Some(t), None))
                     } else if t > warm_side {
                         // We crossed out of a target layer on the warm side
                         let target_p = linear_interp(warm_side, last_t, t, last_p, p);
-                        let top = linear_interpolate(snd, target_p)?;
+                        let top = linear_interpolate_sounding(snd, target_p)?;
                         to_return.push(Layer{bottom, top});
                         Ok((Some(p), Some(t), None))
                     } else {
@@ -261,7 +261,7 @@ fn temperature_layer(
                 Ok((None,None,None)) => {
                     if t <= warm_side && t >= cold_side {
                         // Starting out in a target layer
-                        let dr = linear_interpolate(snd, p)?;
+                        let dr = linear_interpolate_sounding(snd, p)?;
                         Ok((Some(p),Some(t),Some(dr)))
                     } else {
                         // Not starting out in a target layer
@@ -320,12 +320,12 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<Layers> {
             if last_t <= FREEZING && t > FREEZING && bottom.is_none() {
                 // Entering a warm layer.
                 let bottom_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
-                bottom = Some(::interpolation::linear_interpolate(snd, bottom_p)?);
+                bottom = Some(::interpolation::linear_interpolate_sounding(snd, bottom_p)?);
             }
             if bottom.is_some() && last_t > FREEZING && t <= FREEZING {
                 // Crossed out of a warm layer
                 let top_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
-                let top = ::interpolation::linear_interpolate(snd, top_p)?;
+                let top = ::interpolation::linear_interpolate_sounding(snd, top_p)?;
                 {
                 let bottom = bottom.unwrap();
                 to_return.push(Layer{bottom, top});}
@@ -438,7 +438,7 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
         // Extract the target pressure
         .and_then(|(_,_,opt)| opt.ok_or(NotEnoughData))
         // Do the interpolation.
-        .and_then(|target_p| ::interpolation::linear_interpolate(snd, target_p))
+        .and_then(|target_p| ::interpolation::linear_interpolate_sounding(snd, target_p))
         // Compose into a layer
         .map(|top| Layer{bottom, top})
 }
@@ -451,8 +451,8 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Result<Layer
         return Err(InvalidInput);
     }
 
-    let bottom = ::interpolation::linear_interpolate(snd, bottom_p)?;
-    let top = ::interpolation::linear_interpolate(snd, top_p)?;
+    let bottom = ::interpolation::linear_interpolate_sounding(snd, bottom_p)?;
+    let top = ::interpolation::linear_interpolate_sounding(snd, top_p)?;
 
     Ok(Layer { bottom, top })
 }
