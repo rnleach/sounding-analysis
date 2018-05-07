@@ -92,6 +92,42 @@ pub fn linear_interpolate_sounding(snd: &Sounding, target_p: f64) -> Result<Data
     }
 }
 
+/// Interpolate values given two parallel vectors of data and a target value.
+pub fn linear_interpolate(xs: &[Option<f64>], ys: &[Option<f64>], target_x: f64) -> Option<f64> {
+    debug_assert_eq!(xs.len(), ys.len());
+
+    let mut below_idx: usize = 0;
+    let mut above_idx: usize = 0;
+    let mut found_bottom: bool = false;
+    for (i, x) in xs.iter().enumerate() {
+        if let Some(x) = *x {
+            if x > target_x {
+                below_idx = i;
+                found_bottom = true;
+            } else if x < target_x && found_bottom {
+                above_idx = i;
+                break;
+            } else if (x - target_x).abs() <= ::std::f64::EPSILON {
+                return ys[i];
+            } else {
+                break; // leave above_idx = 0 to signal error
+            }
+        }
+    }
+
+    if above_idx != 0 {
+        let x_below = xs[below_idx].unwrap();
+        let x_above = xs[above_idx].unwrap();
+        let run = x_above - x_below;
+        let dx = target_x - x_below;
+
+        eval_linear_interp(below_idx, above_idx, run, dx, ys)
+
+    } else {
+        None
+    }
+}
+
 fn eval_linear_interp(
     blw_idx: usize,
     abv_idx: usize,
