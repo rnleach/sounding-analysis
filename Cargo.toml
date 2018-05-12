@@ -1,6 +1,6 @@
 [package]
 name = "sounding-analysis"
-version = "0.5.1"
+version = "0.6.0"
 authors = ["Ryan Leach <clumsycodemonkey@gmail.com>"]
 description = """Analysis capability for the sounding-base crate."""
 repository = "https://github.com/rnleach/sounding-analysis.git"
@@ -16,7 +16,7 @@ failure_derive = "^0.1.1"
 itertools = "^0.7.8"
 metfor = "^0.2.4"
 smallvec = "^0.6"
-sounding-base = "^0.5.2"
+sounding-base = "^0.6"
 
 [dev-dependencies]
-sounding-validate = "^0.5"
+sounding-validate = "^0.6"
