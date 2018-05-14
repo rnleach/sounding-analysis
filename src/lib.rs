@@ -17,7 +17,7 @@ pub use analysis::{Analysis, ParcelAnalysis, ParcelIndex, ProfileIndex};
 pub mod error;
 pub use error::*;
 
-pub use interpolation::{linear_interpolate_sounding, linear_interpolate};
+pub use interpolation::{linear_interpolate, linear_interpolate_sounding};
 
 pub mod layers;
 pub use layers::{Layer, Layers};
@@ -51,7 +51,7 @@ extern crate sounding_base;
 extern crate sounding_validate;
 
 // Modules
-mod interpolation;
 mod analysis;
+mod interpolation;
 
 pub(crate) const VEC_SIZE: usize = 2;

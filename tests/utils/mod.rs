@@ -17,7 +17,10 @@ macro_rules! check_file_complete {
         fn $test_name() {
             let (snd, ivals, fvals) = utils::load_test_file($fname);
 
-            assert!(sounding_validate::validate(&snd).is_ok(), "Failed validation.");
+            assert!(
+                sounding_validate::validate(&snd).is_ok(),
+                "Failed validation."
+            );
 
             let ival_keys = [
                 "num dendritic zones",
@@ -70,21 +73,20 @@ macro_rules! check_file_complete {
 #[allow(unused_macros)] // False alarm
 macro_rules! test_file {
     ($test_mod_name:ident, $fname:expr) => {
-
         mod $test_mod_name {
 
             use std::collections::HashMap;
 
-            use ::utils;
-            use ::sounding_base::{Sounding};
+            use sounding_base::Sounding;
+            use utils;
 
             fn load_data() -> (Sounding, HashMap<String, i64>, HashMap<String, Vec<f64>>) {
                 utils::load_test_file($fname)
             }
 
             mod levels {
-                use ::$test_mod_name::load_data;
-                use ::utils::level_tests;
+                use utils::level_tests;
+                use $test_mod_name::load_data;
 
                 #[test]
                 fn freezing_level() {
@@ -93,27 +95,27 @@ macro_rules! test_file {
                 }
 
                 #[test]
-                fn wet_bulb_zero(){
+                fn wet_bulb_zero() {
                     let (snd, ivals, fvals) = load_data();
                     level_tests::test_wet_bulb_zero_levels(&snd, &ivals, &fvals);
                 }
 
                 #[test]
-                fn max_wet_bulb_in_profile(){
+                fn max_wet_bulb_in_profile() {
                     let (snd, _, fvals) = load_data();
                     level_tests::test_max_wet_bulb_in_profile(&snd, &fvals);
                 }
 
                 #[test]
-                fn max_temperature_in_profile(){
+                fn max_temperature_in_profile() {
                     let (snd, _, fvals) = load_data();
                     level_tests::test_max_temperature(&snd, &fvals);
                 }
             }
 
             mod layers {
-                use ::$test_mod_name::load_data;
-                use ::utils::layer_tests;
+                use utils::layer_tests;
+                use $test_mod_name::load_data;
 
                 #[test]
                 fn dendritic_layers() {
@@ -122,23 +124,19 @@ macro_rules! test_file {
                 }
 
                 #[test]
-                fn warm_dry_bulb_aloft_and_cold_sfc_layers(){
+                fn warm_dry_bulb_aloft_and_cold_sfc_layers() {
                     let (snd, ivals, fvals) = load_data();
-                    layer_tests::test_warm_dry_bulb_aloft_and_cold_sfc_layers(
-                        &snd,
-                        &ivals,
-                        &fvals,
-                    );
+                    layer_tests::test_warm_dry_bulb_aloft_and_cold_sfc_layers(&snd, &ivals, &fvals);
                 }
 
                 #[test]
-                fn warm_wet_bulb_aloft(){
+                fn warm_wet_bulb_aloft() {
                     let (snd, ivals, fvals) = load_data();
                     layer_tests::test_warm_wet_bulb_aloft(&snd, &ivals, &fvals);
                 }
 
                 #[test]
-                fn layer_agl(){
+                fn layer_agl() {
                     let (snd, _, fvals) = load_data();
                     layer_tests::test_layer_agl(&snd, &fvals);
                 }
@@ -150,7 +148,7 @@ macro_rules! test_file {
                 }
 
                 #[test]
-                fn inversions(){
+                fn inversions() {
                     let (snd, ivals, fvals) = load_data();
                     layer_tests::test_inversion_layers(&snd, &ivals, &fvals);
                 }

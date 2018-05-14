@@ -7,8 +7,9 @@
 //!
 
 use metfor;
-use sounding_base::Sounding;
 use sounding_base::Profile::{DewPoint, GeopotentialHeight, Pressure, Temperature, ThetaE};
+use sounding_base::Sounding;
+use sounding_base::Surface;
 
 /// Given a sounding, calculate a profile of wet bulb temperature.
 pub fn wet_bulb(snd: &Sounding) -> Vec<Option<f64>> {
@@ -108,6 +109,35 @@ pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Option<f64>> {
 pub fn temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
     let t_profile = snd.get_profile(Temperature).iter().cloned();
     lapse_rate(snd, t_profile)
+}
+
+/// Get a profile of the average lapse rate from the surface to *, or the level on the y axis.
+pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
+    let z_profile = snd.get_profile(GeopotentialHeight);
+    let t_profile = snd.get_profile(Temperature);
+
+    let (t_sfc, z_sfc) = if let (Some(t_sfc), Some(z_sfc)) = (
+        snd.get_surface_value(Surface::Temperature),
+        snd.get_station_info().elevation(),
+    ) {
+        (t_sfc, z_sfc)
+    } else {
+        return vec![];
+    };
+
+    izip!(z_profile, t_profile)
+        .map(|pair| {
+            if let (Some(z), Some(t)) = pair {
+                if *z == z_sfc {
+                    None
+                } else {
+                    Some((*t - t_sfc) / (*z - z_sfc) * 1000.0)
+                }
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Get the lapse rate of equivalent potential temperature in &deg;K / km.

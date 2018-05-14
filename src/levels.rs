@@ -5,11 +5,11 @@
 
 use smallvec::SmallVec;
 
-use sounding_base::{DataRow, Profile, Sounding};
 use sounding_base::Profile::*;
+use sounding_base::{DataRow, Profile, Sounding};
 
-use error::*;
 use error::AnalysisError::*;
+use error::*;
 
 use layers::Layer;
 

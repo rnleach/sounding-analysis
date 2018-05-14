@@ -1,7 +1,7 @@
 use sounding_base::{DataRow, Sounding};
 
-use error::*;
 use error::AnalysisError::*;
+use error::*;
 
 /// Interpolate values from the vertical sounding using pressure as the primary coordinate.
 ///
@@ -122,7 +122,6 @@ pub fn linear_interpolate(xs: &[Option<f64>], ys: &[Option<f64>], target_x: f64)
         let dx = target_x - x_below;
 
         eval_linear_interp(below_idx, above_idx, run, dx, ys)
-
     } else {
         None
     }
