@@ -119,6 +119,25 @@ pub fn surface_parcel(snd: &Sounding) -> Result<Parcel> {
         .ok_or(AnalysisError::MissingValue)
 }
 
+/// Get the parcel at a specific pressure.
+pub fn pressure_parcel(snd: &Sounding, pressure: f64) -> Result<Parcel> {
+    let row = ::interpolation::linear_interpolate_sounding(snd, pressure)?;
+
+    row.pressure
+        .and_then(|pressure| {
+            row.temperature.and_then(|temperature| {
+                row.dew_point.and_then(|dew_point| {
+                    Some(Parcel {
+                        temperature,
+                        pressure,
+                        dew_point,
+                    })
+                })
+            })
+        })
+        .ok_or(AnalysisError::MissingValue)
+}
+
 /// Get the most unstable parcel.
 ///
 /// This is defined as the parcel in the lowest 300 hPa of the sounding with the highest equivalent
