@@ -11,6 +11,8 @@ use sounding_base::Profile::{DewPoint, GeopotentialHeight, Pressure, Temperature
 use sounding_base::Sounding;
 use sounding_base::Surface;
 
+use parcel::mixed_layer_parcel;
+
 /// Given a sounding, calculate a profile of wet bulb temperature.
 pub fn wet_bulb(snd: &Sounding) -> Vec<Option<f64>> {
     let p_profile = snd.get_profile(Pressure);
@@ -123,6 +125,37 @@ pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
         (t_sfc, z_sfc)
     } else {
         return vec![];
+    };
+
+    izip!(z_profile, t_profile)
+        .map(|pair| {
+            if let (Some(z), Some(t)) = pair {
+                if *z == z_sfc {
+                    None
+                } else {
+                    Some((*t - t_sfc) / (*z - z_sfc) * 1000.0)
+                }
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Get a profile of the average lapse rate from the surface to *, or the level on the y axis.
+pub fn ml_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
+    let z_profile = snd.get_profile(GeopotentialHeight);
+    let t_profile = snd.get_profile(Temperature);
+
+    let (t_sfc, z_sfc) = match mixed_layer_parcel(snd) {
+        Ok(parcel) => {
+            if let Some(z_sfc) = snd.get_station_info().elevation(){
+                (parcel.temperature, z_sfc)
+            } else {
+                return vec![];
+            }
+        },
+        Err(_) => return vec![],
     };
 
     izip!(z_profile, t_profile)
