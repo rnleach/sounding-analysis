@@ -130,7 +130,7 @@ pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
     izip!(z_profile, t_profile)
         .map(|pair| {
             if let (Some(z), Some(t)) = pair {
-                if *z == z_sfc {
+                if (*z - z_sfc).abs() < ::std::f64::EPSILON {
                     None
                 } else {
                     Some((*t - t_sfc) / (*z - z_sfc) * 1000.0)
@@ -149,19 +149,19 @@ pub fn ml_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
 
     let (t_sfc, z_sfc) = match mixed_layer_parcel(snd) {
         Ok(parcel) => {
-            if let Some(z_sfc) = snd.get_station_info().elevation(){
+            if let Some(z_sfc) = snd.get_station_info().elevation() {
                 (parcel.temperature, z_sfc)
             } else {
                 return vec![];
             }
-        },
+        }
         Err(_) => return vec![],
     };
 
     izip!(z_profile, t_profile)
         .map(|pair| {
             if let (Some(z), Some(t)) = pair {
-                if *z == z_sfc {
+                if (*z - z_sfc).abs() < ::std::f64::EPSILON {
                     None
                 } else {
                     Some((*t - t_sfc) / (*z - z_sfc) * 1000.0)
