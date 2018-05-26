@@ -53,22 +53,23 @@ pub fn linear_interpolate_sounding(snd: &Sounding, target_p: f64) -> Result<Data
         result.dew_point = eval_linear_interp(below_idx, above_idx, run, dp, dew_point);
         result.theta_e = eval_linear_interp(below_idx, above_idx, run, dp, theta_e);
 
-        // Special interpolation for anlges
-        if direction.len() > above_idx {
-            if let (Some(dir_below), Some(dir_above)) = (direction[below_idx], direction[above_idx])
+        // Special interpolation for vectors
+        if direction.len() > above_idx && speed.len() > above_idx {
+            if let (Some(dir_below), Some(spd_below), Some(dir_above), Some(spd_above)) = 
+                (direction[below_idx], speed[below_idx], direction[above_idx], speed[above_idx])
             {
-                let x_below = dir_below.to_radians().sin();
-                let x_above = dir_above.to_radians().sin();
-                let y_below = dir_below.to_radians().cos();
-                let y_above = dir_above.to_radians().cos();
+                let x_below = dir_below.to_radians().sin() * spd_below;
+                let x_above = dir_above.to_radians().sin() * spd_above;
+                let y_below = dir_below.to_radians().cos() * spd_below;
+                let y_above = dir_above.to_radians().cos() * spd_above;
 
                 let rise_x = x_above - x_below;
                 let rise_y = y_above - y_below;
 
-                let x_dir = x_below + dp * rise_x / run;
-                let y_dir = y_below + dp * rise_y / run;
+                let x = x_below + dp * rise_x / run;
+                let y = y_below + dp * rise_y / run;
 
-                let mut dir = x_dir.atan2(y_dir).to_degrees();
+                let mut dir = x.atan2(y).to_degrees();
 
                 while dir < 0.0 {
                     dir += 360.0;
@@ -77,11 +78,13 @@ pub fn linear_interpolate_sounding(snd: &Sounding, target_p: f64) -> Result<Data
                     dir -= 360.0;
                 }
 
+                let spd = x.hypot(y);
+
                 result.direction = dir.into();
+                result.speed = spd.into();
             }
         }
 
-        result.speed = eval_linear_interp(below_idx, above_idx, run, dp, speed);
         result.omega = eval_linear_interp(below_idx, above_idx, run, dp, omega);
         result.height = eval_linear_interp(below_idx, above_idx, run, dp, height);
         result.cloud_fraction = eval_linear_interp(below_idx, above_idx, run, dp, cloud_fraction);
