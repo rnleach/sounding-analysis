@@ -360,10 +360,9 @@ pub fn cape_layers(parcel_profile: &ParcelProfile, snd: &Sounding) -> Layers {
 
     if !(parcel_profile.parcel_t.is_empty() || parcel_profile.environment_t.is_empty()
         || parcel_profile.pressure.is_empty())
+        && (parcel_profile.parcel_t[0] >= parcel_profile.environment_t[0])
     {
-        if parcel_profile.parcel_t[0] >= parcel_profile.environment_t[0] {
-            bottom = parcel_profile.pressure[0];
-        }
+        bottom = parcel_profile.pressure[0];
     }
 
     izip!(l0, l1)

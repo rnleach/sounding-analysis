@@ -55,9 +55,12 @@ pub fn linear_interpolate_sounding(snd: &Sounding, target_p: f64) -> Result<Data
 
         // Special interpolation for vectors
         if direction.len() > above_idx && speed.len() > above_idx {
-            if let (Some(dir_below), Some(spd_below), Some(dir_above), Some(spd_above)) = 
-                (direction[below_idx], speed[below_idx], direction[above_idx], speed[above_idx])
-            {
+            if let (Some(dir_below), Some(spd_below), Some(dir_above), Some(spd_above)) = (
+                direction[below_idx],
+                speed[below_idx],
+                direction[above_idx],
+                speed[above_idx],
+            ) {
                 let x_below = dir_below.to_radians().sin() * spd_below;
                 let x_above = dir_above.to_radians().sin() * spd_above;
                 let y_below = dir_below.to_radians().cos() * spd_below;
