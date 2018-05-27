@@ -4,7 +4,7 @@
 use smallvec::SmallVec;
 
 use metfor;
-use sounding_base::{Profile::*, Sounding};
+use sounding_base::{Profile::*, Sounding, DataRow};
 
 use error::*;
 use layers::{pressure_layer, Layers};
@@ -37,6 +37,15 @@ impl Parcel {
     /// Get the mixing ratio of the parcel.AnalysisError
     pub fn mixing_ratio(&self) -> Result<f64> {
         metfor::mixing_ratio(self.dew_point, self.pressure).map_err(|_| AnalysisError::InvalidInput)
+    }
+
+    /// Try to convert a `DataRow` to a `Parcel`.
+    pub fn from_datarow(dr: DataRow) -> Option<Self> {
+        let temperature = dr.temperature?;
+        let pressure = dr.pressure?;
+        let dew_point = dr.dew_point?;
+
+        Some(Parcel{temperature, pressure, dew_point})
     }
 }
 
@@ -123,31 +132,13 @@ pub fn surface_parcel(snd: &Sounding) -> Result<Parcel> {
 pub fn pressure_parcel(snd: &Sounding, pressure: f64) -> Result<Parcel> {
     let row = ::interpolation::linear_interpolate_sounding(snd, pressure)?;
 
-    row.pressure
-        .and_then(|pressure| {
-            row.temperature.and_then(|temperature| {
-                row.dew_point.and_then(|dew_point| {
-                    Some(Parcel {
-                        temperature,
-                        pressure,
-                        dew_point,
-                    })
-                })
-            })
-        })
-        .ok_or(AnalysisError::MissingValue)
+    Parcel::from_datarow(row).ok_or(AnalysisError::MissingValue)
 }
 
 /// Get the most unstable parcel.
 ///
 /// This is defined as the parcel in the lowest 300 hPa of the sounding with the highest equivalent
 /// potential temperature.
-// TODO: Change to highest cape? Much more expensive to compute cape for every parcel.
-//       I could handle this by looking at the highest theta_e parcel in every 100 hPa layer and
-//       just calculate cape for those. That is not guaranteed to converge on the absolute most
-//       unstable parcel. But in some shallow convection situations, the highest theta_e parcel may
-//       me WAY above the layer with convection. This default case will capture the most unstable
-//       parcel in a deep, moist convection scenario.
 pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
     use sounding_base::Profile::*;
 
@@ -442,7 +433,90 @@ pub fn cin_layers(parcel_profile: &ParcelProfile, snd: &Sounding) -> Layers {
     to_ret
 }
 
-// TODO: descend parcel dry adiabatically
+/// Descend a parcel dry adiabatically.
+pub fn descend_dry_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
+
+    let theta = parcel.theta()?;
+    descend_parcel(parcel, snd, theta, ::metfor::temperature_c_from_theta)
+}
+
+/// Descend a parcel dry adiabatically
+pub fn descend_moist_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
+    let theta = parcel.theta_e()?;
+
+    let theta_func = |theta_e, press| { 
+        ::metfor::temperature_c_from_theta_e_saturated_and_pressure(press, theta_e)
+    };
+
+    descend_parcel(parcel, snd, theta, theta_func)
+}
+
+fn descend_parcel<F>(parcel: Parcel, snd: &Sounding, theta: f64, theta_func: F) -> Result<ParcelProfile>
+    where F: Fn(f64, f64)-> ::std::result::Result<f64, ::metfor::MetForErr>
+{
+    let mut pressure = Vec::new();
+    let mut height = Vec::new();
+    let mut parcel_t = Vec::new();
+    let mut environment_t = Vec::new();
+
+    // Actually start at the bottom and work up.
+    let press = snd.get_profile(Pressure);
+    let env_t = snd.get_profile(Temperature);
+    let hght = snd.get_profile(GeopotentialHeight);
+
+    // Nested scope to limit borrows
+    {
+        // Helper function to add row to parcel profile
+        let mut add_row = |pp, hh, pcl_tt, env_tt| {
+            pressure.push(pp);
+            height.push(hh);
+            parcel_t.push(pcl_tt);
+            environment_t.push(env_tt);
+        };
+
+        izip!(press, hght, env_t)
+            .take_while(|(p_opt, _, _)|{
+                match p_opt {
+                    Some(p) => {
+                        *p >= parcel.pressure
+                    },
+                    None => true,
+                }
+            })
+            .filter_map(|(p_opt, h_opt, e_t_opt)| {
+                p_opt.and_then(|p|{
+                    h_opt.and_then(|h|{
+                        e_t_opt.and_then(|et|{
+                            Some((p,h,et))
+                        })
+                    })
+                })
+            })
+            .for_each(|(p,h,et)|{
+                theta_func(theta, p)
+                    .ok()
+                    .and_then(|pt|{
+                        add_row(p,h,pt,et);
+                        Some(())
+                    });
+            });
+
+        // Add the parcel layer also
+        let parcel_level = ::interpolation::linear_interpolate_sounding(snd, parcel.pressure)?;
+        let parcel_height = parcel_level.height.ok_or(AnalysisError::MissingValue)?;
+        add_row(parcel.pressure, parcel_height, parcel.temperature, parcel.temperature);
+
+    }
+
+    Ok(ParcelProfile {
+        pressure,
+        height,
+        parcel_t,
+        environment_t,
+        parcel,
+    })
+}
+
 // TODO: descend parcel moist adiabatically
 
 // TODO: cape, cin, el, lfc, lcl, dcape, ncape, hail zone cape
