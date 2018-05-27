@@ -435,13 +435,31 @@ pub fn cin_layers(parcel_profile: &ParcelProfile, snd: &Sounding) -> Layers {
 
 /// Descend a parcel dry adiabatically.
 pub fn descend_dry_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
+
+    let theta = parcel.theta()?;
+    descend_parcel(parcel, snd, theta, ::metfor::temperature_c_from_theta)
+}
+
+/// Descend a parcel dry adiabatically
+pub fn descend_moist_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
+    let theta = parcel.theta_e()?;
+
+    let theta_func = |theta_e, press| { 
+        ::metfor::temperature_c_from_theta_e_saturated_and_pressure(press, theta_e)
+    };
+
+    descend_parcel(parcel, snd, theta, theta_func)
+}
+
+fn descend_parcel<F>(parcel: Parcel, snd: &Sounding, theta: f64, theta_func: F) -> Result<ParcelProfile>
+    where F: Fn(f64, f64)-> ::std::result::Result<f64, ::metfor::MetForErr>
+{
     let mut pressure = Vec::new();
     let mut height = Vec::new();
     let mut parcel_t = Vec::new();
     let mut environment_t = Vec::new();
 
     // Actually start at the bottom and work up.
-    let theta = parcel.theta()?;
     let press = snd.get_profile(Pressure);
     let env_t = snd.get_profile(Temperature);
     let hght = snd.get_profile(GeopotentialHeight);
@@ -475,7 +493,7 @@ pub fn descend_dry_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<Parce
                 })
             })
             .for_each(|(p,h,et)|{
-                ::metfor::temperature_c_from_theta(theta, p)
+                theta_func(theta, p)
                     .ok()
                     .and_then(|pt|{
                         add_row(p,h,pt,et);
