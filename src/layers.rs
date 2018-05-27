@@ -457,8 +457,8 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Result<Layer
     Ok(Layer { bottom, top })
 }
 
-/// Get all inversion layers up to 500 mb.
-pub fn inversions(snd: &Sounding) -> Result<Layers> {
+/// Get all inversion layers up to a specified pressure.
+pub fn inversions(snd: &Sounding, top_p: f64) -> Result<Layers> {
     use std::f64::MAX;
 
     let mut to_return: Layers = Layers::new();
@@ -473,10 +473,18 @@ pub fn inversions(snd: &Sounding) -> Result<Layers> {
     izip!(0usize.., p_profile, t_profile)
         // Filter out rows without both temperature and pressure.
         .filter_map(|triple| {
-            if let (i, &Some(_), &Some(t)) = triple {
-                Some((i,t))
+            if let (i, &Some(p), &Some(t)) = triple {
+                Some((i, p, t))
             } else {
                 None
+            }
+        })
+        // Filter out rows above the top pressure
+        .filter_map(|(i, p, t)|{
+            if p < top_p {
+                None
+            } else {
+                Some((i, t))
             }
         })
         // Capture the inversion layers

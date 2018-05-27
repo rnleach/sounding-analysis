@@ -517,6 +517,4 @@ fn descend_parcel<F>(parcel: Parcel, snd: &Sounding, theta: f64, theta_func: F) 
     })
 }
 
-// TODO: descend parcel moist adiabatically
-
 // TODO: cape, cin, el, lfc, lcl, dcape, ncape, hail zone cape
