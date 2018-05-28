@@ -4,7 +4,7 @@
 use smallvec::SmallVec;
 
 use metfor;
-use sounding_base::{Profile::*, Sounding, DataRow};
+use sounding_base::{DataRow, Profile::*, Sounding};
 
 use error::*;
 use layers::{pressure_layer, Layers};
@@ -45,7 +45,11 @@ impl Parcel {
         let pressure = dr.pressure?;
         let dew_point = dr.dew_point?;
 
-        Some(Parcel{temperature, pressure, dew_point})
+        Some(Parcel {
+            temperature,
+            pressure,
+            dew_point,
+        })
     }
 }
 
@@ -435,7 +439,6 @@ pub fn cin_layers(parcel_profile: &ParcelProfile, snd: &Sounding) -> Layers {
 
 /// Descend a parcel dry adiabatically.
 pub fn descend_dry_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
-
     let theta = parcel.theta()?;
     descend_parcel(parcel, snd, theta, ::metfor::temperature_c_from_theta)
 }
@@ -444,15 +447,21 @@ pub fn descend_dry_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<Parce
 pub fn descend_moist_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta_e()?;
 
-    let theta_func = |theta_e, press| { 
+    let theta_func = |theta_e, press| {
         ::metfor::temperature_c_from_theta_e_saturated_and_pressure(press, theta_e)
     };
 
     descend_parcel(parcel, snd, theta, theta_func)
 }
 
-fn descend_parcel<F>(parcel: Parcel, snd: &Sounding, theta: f64, theta_func: F) -> Result<ParcelProfile>
-    where F: Fn(f64, f64)-> ::std::result::Result<f64, ::metfor::MetForErr>
+fn descend_parcel<F>(
+    parcel: Parcel,
+    snd: &Sounding,
+    theta: f64,
+    theta_func: F,
+) -> Result<ParcelProfile>
+where
+    F: Fn(f64, f64) -> ::std::result::Result<f64, ::metfor::MetForErr>,
 {
     let mut pressure = Vec::new();
     let mut height = Vec::new();
@@ -475,37 +484,29 @@ fn descend_parcel<F>(parcel: Parcel, snd: &Sounding, theta: f64, theta_func: F) 
         };
 
         izip!(press, hght, env_t)
-            .take_while(|(p_opt, _, _)|{
-                match p_opt {
-                    Some(p) => {
-                        *p >= parcel.pressure
-                    },
-                    None => true,
-                }
+            .take_while(|(p_opt, _, _)| match p_opt {
+                Some(p) => *p >= parcel.pressure,
+                None => true,
             })
             .filter_map(|(p_opt, h_opt, e_t_opt)| {
-                p_opt.and_then(|p|{
-                    h_opt.and_then(|h|{
-                        e_t_opt.and_then(|et|{
-                            Some((p,h,et))
-                        })
-                    })
-                })
+                p_opt.and_then(|p| h_opt.and_then(|h| e_t_opt.and_then(|et| Some((p, h, et)))))
             })
-            .for_each(|(p,h,et)|{
-                theta_func(theta, p)
-                    .ok()
-                    .and_then(|pt|{
-                        add_row(p,h,pt,et);
-                        Some(())
-                    });
+            .for_each(|(p, h, et)| {
+                theta_func(theta, p).ok().and_then(|pt| {
+                    add_row(p, h, pt, et);
+                    Some(())
+                });
             });
 
         // Add the parcel layer also
         let parcel_level = ::interpolation::linear_interpolate_sounding(snd, parcel.pressure)?;
         let parcel_height = parcel_level.height.ok_or(AnalysisError::MissingValue)?;
-        add_row(parcel.pressure, parcel_height, parcel.temperature, parcel.temperature);
-
+        add_row(
+            parcel.pressure,
+            parcel_height,
+            parcel.temperature,
+            parcel.temperature,
+        );
     }
 
     Ok(ParcelProfile {

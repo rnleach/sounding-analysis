@@ -509,3 +509,77 @@ pub fn inversions(snd: &Sounding, top_p: f64) -> Result<Layers> {
 
     Ok(to_return)
 }
+
+/// Get a surface based inversion.
+pub fn sfc_based_inversion(snd: &Sounding) -> Result<Option<Layer>> {
+    let t_profile = snd.get_profile(Temperature);
+    let p_profile = snd.get_profile(Pressure);
+    let h_profile = snd.get_profile(GeopotentialHeight);
+
+    if t_profile.is_empty() || p_profile.is_empty() || h_profile.is_empty() {
+        return Err(AnalysisError::MissingProfile);
+    }
+
+    izip!(0usize.., p_profile, h_profile, t_profile)
+        // Remove levels with missing data
+        .filter_map(|tuple| {
+            if let (i, &Some(_), &Some(_), &Some(_)) = tuple {
+                Some(i)
+            } else {
+                None
+            }
+        })
+        // Get the first one.
+        .nth(0)
+        // Map Option to Result
+        .ok_or(AnalysisError::NotEnoughData)
+        // Map the result into a data row!
+        .and_then(|index| snd.get_data_row(index).ok_or(AnalysisError::MissingValue))
+        // Now find the top
+        .and_then(|bottom_row|{
+            if let Some(sfc_t) = bottom_row.temperature {
+                let val = izip!(0usize..,p_profile, t_profile, h_profile)
+                    // Remove levels with missing data
+                    .filter_map(|tuple| {
+                        if let (i, &Some(p), &Some(t), &Some(_)) = tuple {
+                            Some((i,p,t))
+                        } else {
+                            None
+                        }
+                    })
+                    // This is the first one!
+                    .skip(1)
+                    // Only look up to about 700 hPa
+                    .take_while(|(_,p,_)| *p > 690.0)
+                    // Remove those cooler than the surface
+                    .filter(|(_,_,t)|{
+                        *t <= sfc_t
+                    })
+                    .fold(None, |max_t_info, (i, _, t)|{
+                        if let Some((max_t, _max_t_idx)) = max_t_info {
+                            if t > max_t {
+                                Some((t,i))
+                            } else {
+                                max_t_info
+                            }
+                        } else {
+                            Some((t, i))
+                        }
+                    });
+
+                match val {
+                    Some((_,idx))=>{
+                        snd.get_data_row(idx)
+                            .ok_or(AnalysisError::MissingValue)
+                            .and_then(|top_row|
+                                Ok(Some(Layer{bottom: bottom_row, top: top_row}))
+                            )
+                    },
+                    None => Ok(None)
+                }
+                
+            } else {
+                Err(AnalysisError::MissingValue)
+            }
+        })
+}

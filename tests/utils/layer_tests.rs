@@ -204,7 +204,7 @@ pub fn test_inversion_layers(
 ) {
     use sounding_analysis::layers::inversions;
 
-    let test_inversions = |snd: &Sounding| {inversions(snd, 300.0)};
+    let test_inversions = |snd: &Sounding| inversions(snd, 300.0);
 
     test_layers(
         snd,
