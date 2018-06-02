@@ -533,7 +533,7 @@ pub fn sfc_based_inversion(snd: &Sounding) -> Result<Option<Layer>> {
         .nth(0)
         // Map Option to Result
         .ok_or(AnalysisError::NotEnoughData)
-        // Map the result into a data row!
+        // Map the result into a data row
         .and_then(|index| snd.get_data_row(index).ok_or(AnalysisError::MissingValue))
         // Now find the top
         .and_then(|bottom_row|{
@@ -553,7 +553,7 @@ pub fn sfc_based_inversion(snd: &Sounding) -> Result<Option<Layer>> {
                     .take_while(|(_,p,_)| *p > 690.0)
                     // Remove those cooler than the surface
                     .filter(|(_,_,t)|{
-                        *t <= sfc_t
+                        *t > sfc_t
                     })
                     .fold(None, |max_t_info, (i, _, t)|{
                         if let Some((max_t, _max_t_idx)) = max_t_info {
