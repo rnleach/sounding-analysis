@@ -1,6 +1,6 @@
 //! Functions for doing parcel analysis on a sounding, specifically related to convection.
 //!
-
+use optional::Optioned;
 use smallvec::SmallVec;
 
 use metfor;
@@ -40,10 +40,10 @@ impl Parcel {
     }
 
     /// Try to convert a `DataRow` to a `Parcel`.
-    pub fn from_datarow(dr: DataRow) -> Option<Self> {
-        let temperature = dr.temperature?;
-        let pressure = dr.pressure?;
-        let dew_point = dr.dew_point?;
+    pub fn from_datarow(mut dr: DataRow) -> Option<Self> {
+        let temperature = dr.temperature.take()?;
+        let pressure = dr.pressure.take()?;
+        let dew_point = dr.dew_point.take()?;
 
         Some(Parcel {
             temperature,
@@ -72,7 +72,7 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
     let bottom_p = press
         .iter()
         // Remove None values
-        .filter_map(|p| *p)
+        .filter_map(|&p| p.clone().take())
         // Get the first of the non-None values
         .nth(0)
         // Check to make sure we got one, return error if not.
@@ -80,7 +80,13 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
 
     let (sum_t, sum_mw, count) = izip!(press, t, dp)
         // remove levels with missing values
-        .filter_map(|(p, t, dp)| p.and_then(|p| t.and_then(|t| dp.and_then(|dp| Some((p, t, dp))))))
+        .filter_map(|(p, t, dp)| {
+            if p.is_some() && t.is_some() && dp.is_some() {
+                Some((p.unpack(), t.unpack(), dp.unpack()))
+            } else {
+                None
+            }
+        })
         // only go up 100 hPa above the lowest level
         .take_while(|&(p, _, _)| p >= bottom_p - 100.0)
         // convert to theta and mw, drop the pressure after this level
@@ -117,19 +123,18 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
 pub fn surface_parcel(snd: &Sounding) -> Result<Parcel> {
     use sounding_base::Surface::*;
 
-    snd.get_surface_value(StationPressure)
-        .and_then(|pressure| {
-            snd.get_surface_value(Temperature).and_then(|temperature| {
-                snd.get_surface_value(DewPoint).and_then(|dew_point| {
-                    Some(Parcel {
-                        temperature,
-                        pressure,
-                        dew_point,
-                    })
-                })
-            })
-        })
-        .ok_or(AnalysisError::MissingValue)
+    let pressure = snd.get_surface_value(StationPressure)
+        .ok_or(AnalysisError::MissingValue)?;
+    let temperature = snd.get_surface_value(Temperature)
+        .ok_or(AnalysisError::MissingValue)?;
+    let dew_point = snd.get_surface_value(DewPoint)
+        .ok_or(AnalysisError::MissingValue)?;
+
+    Ok(Parcel {
+        temperature,
+        pressure,
+        dew_point,
+    })
 }
 
 /// Get the parcel at a specific pressure.
@@ -146,7 +151,7 @@ pub fn pressure_parcel(snd: &Sounding, pressure: f64) -> Result<Parcel> {
 pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
     use sounding_base::Profile::*;
 
-    let temp_vec: Vec<Option<f64>>;
+    let temp_vec: Vec<Optioned<f64>>;
 
     let theta_e = if !snd.get_profile(ThetaE).is_empty() {
         snd.get_profile(ThetaE)
@@ -158,11 +163,23 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
 
     let (idx, _) = izip!(0.., press, theta_e)
         .take_while(|&(_, press_opt, _)| {
-            press_opt
-                .and_then(|p| if p < 300.0 { None } else { Some(()) })
-                .is_some()
+            if press_opt.is_some() {
+                if press_opt.unpack() >= 300.0 {
+                    true
+                } else {
+                    false // only stop if we are sure we are above 300.0 hPa
+                }
+            } else {
+                true // Don't stop just because one is missing or the none value
+            }
         })
-        .filter_map(|(idx, _, theta_e_opt)| theta_e_opt.and_then(|theta_e| Some((idx, theta_e))))
+        .filter_map(|(idx, _, theta_e_opt)| {
+            if theta_e_opt.is_some() {
+                Some((idx, theta_e_opt.unpack()))
+            } else {
+                None
+            }
+        })
         .fold(
             (::std::usize::MAX, ::std::f64::MIN),
             |(max_idx, max_val), (i, theta_e)| {
@@ -176,19 +193,7 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
 
     let row = snd.get_data_row(idx).ok_or(AnalysisError::NoDataProfile)?;
 
-    row.pressure
-        .and_then(|pressure| {
-            row.temperature.and_then(|temperature| {
-                row.dew_point.and_then(|dew_point| {
-                    Some(Parcel {
-                        temperature,
-                        pressure,
-                        dew_point,
-                    })
-                })
-            })
-        })
-        .ok_or(AnalysisError::MissingValue)
+    Parcel::from_datarow(row).ok_or(AnalysisError::MissingValue)
 }
 
 /// Hold profiles for a parcel and it's environment.
@@ -272,8 +277,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
 
         for (p, h, env_t) in izip!(snd_pressure, hgt, env_t) {
             // Unpack options
-            let (p, h, env_t) = if let (&Some(p), &Some(h), &Some(env_t)) = (p, h, env_t) {
-                (p, h, env_t)
+            let (p, h, env_t) = if p.is_some() && h.is_some() && env_t.is_some() {
+                (p.unpack(), h.unpack(), env_t.unpack())
             } else {
                 continue;
             };
@@ -484,12 +489,19 @@ where
         };
 
         izip!(press, hght, env_t)
-            .take_while(|(p_opt, _, _)| match p_opt {
-                Some(p) => *p >= parcel.pressure,
-                None => true,
+            .take_while(|(p_opt, _, _)| {
+                if p_opt.is_some() {
+                    p_opt.unpack() >= parcel.pressure
+                } else {
+                    true
+                }
             })
             .filter_map(|(p_opt, h_opt, e_t_opt)| {
-                p_opt.and_then(|p| h_opt.and_then(|h| e_t_opt.and_then(|et| Some((p, h, et)))))
+                if p_opt.is_some() && h_opt.is_some() && e_t_opt.is_some() {
+                    Some((p_opt.unpack(), h_opt.unpack(), e_t_opt.unpack()))
+                } else {
+                    None
+                }
             })
             .for_each(|(p, h, et)| {
                 theta_func(theta, p).ok().and_then(|pt| {

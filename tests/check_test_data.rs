@@ -1,4 +1,5 @@
 extern crate metfor;
+extern crate optional;
 extern crate sounding_analysis;
 extern crate sounding_base;
 extern crate sounding_validate;

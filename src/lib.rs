@@ -46,6 +46,7 @@ extern crate smallvec;
 
 // framework libs
 extern crate metfor;
+extern crate optional;
 extern crate sounding_base;
 
 // dev only libs

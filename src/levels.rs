@@ -48,7 +48,8 @@ fn find_temperature_levels(snd: &Sounding, var: Profile, target_t: f64) -> Resul
     }
 
     let mut iter = izip!(p_profile, t_profile).filter_map(|pair| {
-        if let (&Some(p), &Some(t)) = pair {
+        if pair.0.is_some() && pair.1.is_some() {
+            let (p, t) = (pair.0.unpack(), pair.1.unpack());
             Some((p, t))
         } else {
             None
@@ -104,7 +105,8 @@ fn max_t_aloft(snd: &Sounding, var: Profile) -> Result<Level> {
 
     izip!(0usize.., p_profile, t_profile)
         .filter_map(|triple| {
-            if let (i, &Some(p), &Some(t)) = triple {
+            if triple.1.is_some() && triple.2.is_some(){
+                let (i,p,t) = (triple.0, triple.1.unpack(), triple.2.unpack());
                 if p >= TOP_PRESSURE {
                     Some((i,t))
                 } else {
@@ -146,12 +148,11 @@ fn max_t_in_layer(snd: &Sounding, var: Profile, lyr: &Layer) -> Result<Level> {
 
     debug_assert!(var == Temperature || var == WetBulb);
 
-    let (bottom_p, top_p) =
-        if let (Some(bottom_p), Some(top_p)) = (lyr.bottom.pressure, lyr.top.pressure) {
-            (bottom_p, top_p)
-        } else {
-            return Err(AnalysisError::InvalidInput);
-        };
+    let (bottom_p, top_p) = if lyr.bottom.pressure.is_some() && lyr.top.pressure.is_some() {
+        (lyr.bottom.pressure.unpack(), lyr.top.pressure.unpack())
+    } else {
+        return Err(AnalysisError::InvalidInput);
+    };
 
     let p_profile = snd.get_profile(Pressure);
     let t_profile = snd.get_profile(var);
@@ -162,7 +163,8 @@ fn max_t_in_layer(snd: &Sounding, var: Profile, lyr: &Layer) -> Result<Level> {
 
     izip!(0usize.., p_profile, t_profile)
         .filter_map(|triple| {
-            if let (i, &Some(p), &Some(t)) = triple {
+            if triple.1.is_some() && triple.2.is_some(){
+                let (i, p, t) = (triple.0, triple.1.unpack(), triple.2.unpack());
                 if p >= top_p && p <= bottom_p {
                     Some((i,t))
                 } else {

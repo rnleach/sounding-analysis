@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use metfor;
+use optional::{none, Optioned};
 use sounding_base::{Profile, Sounding, StationInfo, Surface};
 
 pub mod layer_tests;
@@ -189,14 +190,14 @@ fn load_test_csv_sounding(
     //
     // Parse profile data
     //
-    let mut height: Vec<Option<f64>> = Vec::with_capacity(lines.len());
-    let mut temp: Vec<Option<f64>> = Vec::with_capacity(lines.len());
-    let mut wb: Vec<Option<f64>> = Vec::with_capacity(lines.len());
-    let mut dp: Vec<Option<f64>> = Vec::with_capacity(lines.len());
-    let mut press: Vec<Option<f64>> = Vec::with_capacity(lines.len());
-    let mut wspd: Vec<Option<f64>> = Vec::with_capacity(lines.len());
-    let mut wdir: Vec<Option<f64>> = Vec::with_capacity(lines.len());
-    let mut wet_bulb: Vec<Option<f64>> = Vec::with_capacity(lines.len());
+    let mut height: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
+    let mut temp: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
+    let mut wb: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
+    let mut dp: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
+    let mut press: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
+    let mut wspd: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
+    let mut wdir: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
+    let mut wet_bulb: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
 
     for line in line_iter.by_ref() {
         if line.starts_with("### Surface Data ###")
@@ -217,18 +218,18 @@ fn load_test_csv_sounding(
             dp_c.and_then(|dp| press_hpa.and_then(|p| metfor::wet_bulb_c(t, dp, p).ok()))
         });
 
-        height.push(f64::from_str(tokens[0]).ok());
-        temp.push(t_c);
-        wb.push(wb_c);
-        dp.push(dp_c);
-        press.push(press_hpa);
-        wspd.push(f64::from_str(tokens[4]).ok());
-        wdir.push(f64::from_str(tokens[5]).ok());
+        height.push(f64::from_str(tokens[0]).ok().into());
+        temp.push(t_c.into());
+        wb.push(wb_c.into());
+        dp.push(dp_c.into());
+        press.push(press_hpa.into());
+        wspd.push(f64::from_str(tokens[4]).ok().into());
+        wdir.push(f64::from_str(tokens[5]).ok().into());
 
         if let (Some(t_c), Some(dp_c), Some(press_hpa)) = (t_c, dp_c, press_hpa) {
-            wet_bulb.push(metfor::wet_bulb_c(t_c, dp_c, press_hpa).ok());
+            wet_bulb.push(metfor::wet_bulb_c(t_c, dp_c, press_hpa).ok().into());
         } else {
-            wet_bulb.push(None);
+            wet_bulb.push(none());
         }
     }
 
