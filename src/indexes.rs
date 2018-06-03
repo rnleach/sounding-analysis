@@ -110,8 +110,9 @@ pub fn precipitable_water(snd: &Sounding) -> Result<f64> {
 
     let (integrated_mw, _) = izip!(p_profile, dp_profile)
         .filter_map(|pair| {
-            if let (&Some(p), &Some(dp)) = pair {
-                Some((p, dp))
+            let (p, dp) = pair;
+            if p.is_some() && dp.is_some() {
+                Some((p.unpack(), dp.unpack()))
             } else {
                 None
             }

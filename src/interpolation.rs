@@ -1,3 +1,5 @@
+use optional::{none, Optioned};
+
 use sounding_base::{DataRow, Sounding};
 
 use error::AnalysisError::*;
@@ -21,13 +23,14 @@ pub fn linear_interpolate_sounding(snd: &Sounding, target_p: f64) -> Result<Data
     let cloud_fraction = snd.get_profile(CloudFraction);
 
     let mut result = DataRow::default();
-    result.pressure = Option::from(target_p);
+    result.pressure = Optioned::from(target_p);
 
     let mut below_idx: usize = 0;
     let mut above_idx: usize = 0;
     let mut found_bottom: bool = false;
     for (i, p) in pressure.iter().enumerate() {
-        if let Some(p) = *p {
+        if p.is_some() {
+            let p = p.unpack();
             if p > target_p {
                 below_idx = i;
                 found_bottom = true;
@@ -55,12 +58,12 @@ pub fn linear_interpolate_sounding(snd: &Sounding, target_p: f64) -> Result<Data
 
         // Special interpolation for vectors
         if direction.len() > above_idx && speed.len() > above_idx {
-            if let (Some(dir_below), Some(spd_below), Some(dir_above), Some(spd_above)) = (
-                direction[below_idx],
-                speed[below_idx],
-                direction[above_idx],
-                speed[above_idx],
-            ) {
+            if direction[below_idx].is_some() && speed[below_idx].is_some()
+                && direction[above_idx].is_some() && speed[above_idx].is_some()
+            {
+                let (dir_below, dir_above) =
+                    (direction[below_idx].unpack(), direction[above_idx].unpack());
+                let (spd_below, spd_above) = (speed[below_idx].unpack(), speed[above_idx].unpack());
                 let x_below = dir_below.to_radians().sin() * spd_below;
                 let x_above = dir_above.to_radians().sin() * spd_above;
                 let y_below = dir_below.to_radians().cos() * spd_below;
@@ -99,14 +102,19 @@ pub fn linear_interpolate_sounding(snd: &Sounding, target_p: f64) -> Result<Data
 }
 
 /// Interpolate values given two parallel vectors of data and a target value.
-pub fn linear_interpolate(xs: &[Option<f64>], ys: &[Option<f64>], target_x: f64) -> Option<f64> {
+pub fn linear_interpolate(
+    xs: &[Optioned<f64>],
+    ys: &[Optioned<f64>],
+    target_x: f64,
+) -> Optioned<f64> {
     debug_assert_eq!(xs.len(), ys.len());
 
     let mut below_idx: usize = 0;
     let mut above_idx: usize = 0;
     let mut found_bottom: bool = false;
     for (i, x) in xs.iter().enumerate() {
-        if let Some(x) = *x {
+        if x.is_some() {
+            let x = x.unpack();
             if x > target_x {
                 below_idx = i;
                 found_bottom = true;
@@ -129,7 +137,7 @@ pub fn linear_interpolate(xs: &[Option<f64>], ys: &[Option<f64>], target_x: f64)
 
         eval_linear_interp(below_idx, above_idx, run, dx, ys)
     } else {
-        None
+        none()
     }
 }
 
@@ -138,17 +146,18 @@ fn eval_linear_interp(
     abv_idx: usize,
     run: f64,
     dp: f64,
-    array: &[Option<f64>],
-) -> Option<f64> {
+    array: &[Optioned<f64>],
+) -> Optioned<f64> {
     if array.len() > abv_idx {
-        if let (Some(val_below), Some(val_above)) = (array[blw_idx], array[abv_idx]) {
+        if array[blw_idx].is_some() && array[abv_idx].is_some() {
+            let (val_below, val_above) = (array[blw_idx].unpack(), array[abv_idx].unpack());
             let rise = val_above - val_below;
-            Option::from(val_below + dp * rise / run)
+            Optioned::from(val_below + dp * rise / run)
         } else {
-            Option::default()
+            Optioned::default()
         }
     } else {
-        Option::default()
+        Optioned::default()
     }
 }
 

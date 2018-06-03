@@ -7,6 +7,7 @@
 //!
 
 use metfor;
+use optional::{none, some, Optioned};
 use sounding_base::Profile::{DewPoint, GeopotentialHeight, Pressure, Temperature, ThetaE};
 use sounding_base::Sounding;
 use sounding_base::Surface;
@@ -14,7 +15,7 @@ use sounding_base::Surface;
 use parcel::mixed_layer_parcel;
 
 /// Given a sounding, calculate a profile of wet bulb temperature.
-pub fn wet_bulb(snd: &Sounding) -> Vec<Option<f64>> {
+pub fn wet_bulb(snd: &Sounding) -> Vec<Optioned<f64>> {
     let p_profile = snd.get_profile(Pressure);
     let t_profile = snd.get_profile(Temperature);
     let dp_profile = snd.get_profile(DewPoint);
@@ -31,6 +32,7 @@ pub fn wet_bulb(snd: &Sounding) -> Vec<Option<f64>> {
                         metfor::wet_bulb_c(t, dp, p)
                         // Ignore errors, if not possible to calculate just use missing value.
                         .ok()
+                        .into()
                     })
                 })
             })
@@ -39,7 +41,7 @@ pub fn wet_bulb(snd: &Sounding) -> Vec<Option<f64>> {
 }
 
 /// Given a sounding, calculate a profile of relative humidity.
-pub fn relative_humidity(snd: &Sounding) -> Vec<Option<f64>> {
+pub fn relative_humidity(snd: &Sounding) -> Vec<Optioned<f64>> {
     let t_profile = snd.get_profile(Temperature);
     let dp_profile = snd.get_profile(DewPoint);
 
@@ -54,6 +56,7 @@ pub fn relative_humidity(snd: &Sounding) -> Vec<Option<f64>> {
                     metfor::rh(t,dp)
                     // Ignore errors, if not possible to calculate just use missing value.
                     .ok()
+                    .into()
                 })
             })
         })
@@ -61,7 +64,7 @@ pub fn relative_humidity(snd: &Sounding) -> Vec<Option<f64>> {
 }
 
 /// Given a sounding, calculate a profile of the potential temperature.
-pub fn potential_temperature(snd: &Sounding) -> Vec<Option<f64>> {
+pub fn potential_temperature(snd: &Sounding) -> Vec<Optioned<f64>> {
     let p_profile = snd.get_profile(Pressure);
     let t_profile = snd.get_profile(Temperature);
 
@@ -76,6 +79,7 @@ pub fn potential_temperature(snd: &Sounding) -> Vec<Option<f64>> {
                     metfor::theta_kelvin(p, t)
                     // Ignore errors, if not possible to calculate just use missing value.
                     .ok()
+                    .into()
                 })
             })
         })
@@ -83,7 +87,7 @@ pub fn potential_temperature(snd: &Sounding) -> Vec<Option<f64>> {
 }
 
 /// Given a sounding, calculate a profile of the equivalent potential temperature.
-pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Option<f64>> {
+pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Optioned<f64>> {
     let p_profile = snd.get_profile(Pressure);
     let t_profile = snd.get_profile(Temperature);
     let dp_profile = snd.get_profile(DewPoint);
@@ -100,6 +104,7 @@ pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Option<f64>> {
                         metfor::theta_e_kelvin(t, dp, p)
                         // Ignore errors, if not possible to calculate just use missing value.
                         .ok()
+                        .into()
                     })
                 })
             })
@@ -108,19 +113,19 @@ pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Option<f64>> {
 }
 
 /// Get a profile of the lapse rate between layers in &deg;C / km.
-pub fn temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
+pub fn temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>> {
     let t_profile = snd.get_profile(Temperature).iter().cloned();
     lapse_rate(snd, t_profile)
 }
 
 /// Get a profile of the average lapse rate from the surface to *, or the level on the y axis.
-pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
+pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>> {
     let z_profile = snd.get_profile(GeopotentialHeight);
     let t_profile = snd.get_profile(Temperature);
 
-    let (t_sfc, z_sfc) = if let (Some(t_sfc), Some(z_sfc)) = (
-        snd.get_surface_value(Surface::Temperature),
-        snd.get_station_info().elevation(),
+    let (t_sfc, z_sfc): (f64, f64) = if let (Some(t_sfc), Some(z_sfc)) = (
+        snd.get_surface_value(Surface::Temperature).into(),
+        snd.get_station_info().elevation().into(),
     ) {
         (t_sfc, z_sfc)
     } else {
@@ -128,28 +133,30 @@ pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
     };
 
     izip!(z_profile, t_profile)
-        .map(|pair| {
-            if let (Some(z), Some(t)) = pair {
-                if (*z - z_sfc).abs() < ::std::f64::EPSILON {
-                    None
+        .map(|(z_opt, t_opt)| {
+            let z_opt: Option<f64> = (*z_opt).into();
+            let t_opt: Option<f64> = (*t_opt).into();
+            if let (Some(z), Some(t)) = (z_opt, t_opt) {
+                if (z - z_sfc).abs() < ::std::f64::EPSILON {
+                    none()
                 } else {
-                    Some((*t - t_sfc) / (*z - z_sfc) * 1000.0)
+                    some((t - t_sfc) / (z - z_sfc) * 1000.0)
                 }
             } else {
-                None
+                none()
             }
         })
         .collect()
 }
 
 /// Get a profile of the average lapse rate from the surface to *, or the level on the y axis.
-pub fn ml_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
+pub fn ml_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>> {
     let z_profile = snd.get_profile(GeopotentialHeight);
     let t_profile = snd.get_profile(Temperature);
 
-    let (t_sfc, z_sfc) = match mixed_layer_parcel(snd) {
+    let (t_sfc, z_sfc): (f64, f64) = match mixed_layer_parcel(snd) {
         Ok(parcel) => {
-            if let Some(z_sfc) = snd.get_station_info().elevation() {
+            if let Some(z_sfc) = snd.get_station_info().elevation().into() {
                 (parcel.temperature, z_sfc)
             } else {
                 return vec![];
@@ -159,40 +166,47 @@ pub fn ml_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
     };
 
     izip!(z_profile, t_profile)
-        .map(|pair| {
-            if let (Some(z), Some(t)) = pair {
-                if (*z - z_sfc).abs() < ::std::f64::EPSILON {
-                    None
+        .map(|(&z_opt, &t_opt)| {
+            let z_opt: Option<f64> = z_opt.into();
+            let t_opt: Option<f64> = t_opt.into();
+            if let (Some(z), Some(t)) = (z_opt, t_opt) {
+                if (z - z_sfc).abs() < ::std::f64::EPSILON {
+                    none()
                 } else {
-                    Some((*t - t_sfc) / (*z - z_sfc) * 1000.0)
+                    some((t - t_sfc) / (z - z_sfc) * 1000.0)
                 }
             } else {
-                None
+                none()
             }
         })
         .collect()
 }
 
 /// Get the lapse rate of equivalent potential temperature in &deg;K / km.
-pub fn theta_e_lapse_rate(snd: &Sounding) -> Vec<Option<f64>> {
+pub fn theta_e_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>> {
     let theta_e = snd.get_profile(ThetaE).iter().cloned();
     lapse_rate(snd, theta_e)
 }
 
-fn lapse_rate<I: Iterator<Item = Option<f64>>>(snd: &Sounding, v_profile: I) -> Vec<Option<f64>> {
+fn lapse_rate<I: Iterator<Item = Optioned<f64>>>(
+    snd: &Sounding,
+    v_profile: I,
+) -> Vec<Optioned<f64>> {
     let z_profile = snd.get_profile(GeopotentialHeight);
 
     izip!(z_profile, v_profile)
-        .scan((None, None), |prev_pair, pair| {
+        .scan((None, None), |prev_pair, (&z, v)| {
             let &mut (ref mut prev_z, ref mut prev_v) = prev_pair;
-            let (&z, v) = pair;
+
+            let z: Option<f64> = z.into();
+            let v: Option<f64> = v.into();
 
             let lapse_rate = if let (Some(ref prev_z), Some(ref prev_v), Some(ref z), Some(ref v)) =
                 (*prev_z, *prev_v, z, v)
             {
-                Some((v - prev_v) / (z - prev_z) * 1000.0)
+                some((v - prev_v) / (z - prev_z) * 1000.0)
             } else {
-                None
+                none()
             };
 
             *prev_z = z;
@@ -204,38 +218,37 @@ fn lapse_rate<I: Iterator<Item = Option<f64>>>(snd: &Sounding, v_profile: I) -> 
 }
 
 /// Get the hydrolapse in (kg/kg)/km
-pub fn hydrolapse(snd: &Sounding) -> Vec<Option<f64>> {
+pub fn hydrolapse(snd: &Sounding) -> Vec<Optioned<f64>> {
     let z_profile = snd.get_profile(GeopotentialHeight);
     let dp_profile = snd.get_profile(DewPoint);
     let p_profile = snd.get_profile(Pressure);
 
     izip!(p_profile, z_profile, dp_profile)
-        .scan(
-            (None, None),
-            |prev_pair: &mut (Option<f64>, Option<f64>), triple| {
-                let &mut (ref mut prev_z, ref mut prev_mw) = prev_pair;
-                let (&p, &z, &dp) = triple;
+        .scan((None, None), |prev_pair, (&p, &z, &dp)| {
+            let &mut (ref mut prev_z, ref mut prev_mw) = prev_pair;
 
-                let mw = if let (Some(p), Some(dp)) = (p, dp) {
-                    ::metfor::mixing_ratio(dp, p).ok()
+            let p: Option<f64> = p.into();
+            let z: Option<f64> = z.into();
+            let dp: Option<f64> = dp.into();
+
+            let mw = if let (Some(p), Some(dp)) = (p, dp) {
+                ::metfor::mixing_ratio(dp, p).ok()
+            } else {
+                None
+            };
+
+            let mw_lapse_rate =
+                if let (Some(p_z), Some(p_mw), Some(z), Some(mw)) = (*prev_z, *prev_mw, z, mw) {
+                    some((mw - p_mw) / (z - p_z) * 1000.0)
                 } else {
-                    None
+                    none()
                 };
 
-                let mw_lapse_rate = if let (Some(p_z), Some(p_mw), Some(z), Some(mw)) =
-                    (*prev_z, *prev_mw, z, mw)
-                {
-                    Some((mw - p_mw) / (z - p_z) * 1000.0)
-                } else {
-                    None
-                };
+            *prev_z = z;
+            *prev_mw = mw;
 
-                *prev_z = z;
-                *prev_mw = mw;
-
-                Some(mw_lapse_rate)
-            },
-        )
+            Some(mw_lapse_rate)
+        })
         .collect()
 }
 
@@ -245,10 +258,10 @@ mod test_sounding_profiles {
 
     fn make_test_sounding() -> Sounding {
         Sounding::new()
-            .set_profile(Temperature, vec![Some(9.8), Some(0.0), Some(-5.0)])
+            .set_profile(Temperature, vec![some(9.8), some(0.0), some(-5.0)])
             .set_profile(
                 GeopotentialHeight,
-                vec![Some(1000.0), Some(2000.0), Some(3000.0)],
+                vec![some(1000.0), some(2000.0), some(3000.0)],
             )
     }
 
@@ -258,7 +271,7 @@ mod test_sounding_profiles {
 
         let lapse_rate = temperature_lapse_rate(&snd);
         println!("{:#?}", lapse_rate);
-        assert!(lapse_rate.contains(&Some(-9.8)));
-        assert!(lapse_rate.contains(&Some(-5.0)));
+        assert!(lapse_rate.contains(&some(-9.8)));
+        assert!(lapse_rate.contains(&some(-5.0)));
     }
 }

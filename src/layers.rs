@@ -90,22 +90,23 @@ impl Layer {
 #[cfg(test)]
 mod layer_tests {
     use super::*;
+    use optional::some;
     use sounding_base::DataRow;
 
     fn make_test_layer() -> Layer {
         let mut bottom = DataRow::default();
-        bottom.pressure = Some(1000.0);
-        bottom.temperature = Some(20.0);
-        bottom.height = Some(5.0);
-        bottom.speed = Some(1.0);
-        bottom.direction = Some(180.0);
+        bottom.pressure = some(1000.0);
+        bottom.temperature = some(20.0);
+        bottom.height = some(5.0);
+        bottom.speed = some(1.0);
+        bottom.direction = some(180.0);
 
         let mut top = DataRow::default();
-        top.pressure = Some(700.0);
-        top.temperature = Some(-2.0);
-        top.height = Some(3012.0);
-        top.speed = Some(1.0);
-        top.direction = Some(90.0);
+        top.pressure = some(700.0);
+        top.temperature = some(-2.0);
+        top.height = some(3012.0);
+        top.speed = some(1.0);
+        top.direction = some(90.0);
 
         Layer { bottom, top }
     }
@@ -196,7 +197,8 @@ fn temperature_layer(
     izip!(p_profile, t_profile)
         // remove levels with missing values
         .filter_map(|pair| {
-            if let (&Some(p), &Some(t)) = pair {
+            if pair.0.is_some() && pair.1.is_some(){
+                let (p,t) = (pair.0.unpack(), pair.1.unpack());
                 Some((p,t))
             } else {
                 None
@@ -306,7 +308,8 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<Layers> {
     izip!(p_profile, t_profile)
         // Remove levels without pressure AND temperature data
         .filter_map(|pair|{
-            if let (&Some(p), &Some(t)) = pair {
+            if pair.0.is_some() && pair.1.is_some(){
+                let (p,t) = (pair.0.unpack(), pair.1.unpack());
                 Some((p,t))
             } else {
                 None
@@ -361,7 +364,8 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Re
     izip!(0usize.., p_profile, t_profile)
         // Remove levels with missing data
         .filter_map(|triplet| {
-            if let (i, &Some(_), &Some(t)) = triplet {
+            if triplet.1.is_some() && triplet.2.is_some(){
+                let (i,t) = (triplet.0, triplet.2.unpack());
                 Some((i,t))
             } else {
                 None
@@ -389,10 +393,13 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Re
 pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
     use std::f64::MAX;
 
-    let tgt_elev = if let Some(elev) = snd.get_station_info().elevation() {
-        elev + meters_agl
-    } else {
-        return Err(MissingValue);
+    let tgt_elev = {
+        let elev = snd.get_station_info().elevation();
+        if elev.is_some() {
+            elev.unpack() + meters_agl
+        } else {
+            return Err(MissingValue);
+        }
     };
 
     let h_profile = snd.get_profile(GeopotentialHeight);
@@ -407,7 +414,8 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
     izip!(p_profile, h_profile)
         // filter out levels with missing data
         .filter_map(|pair| {
-            if let (&Some(p), &Some(h)) = pair {
+            if pair.0.is_some() && pair.1.is_some(){
+                let (p,h) = (pair.0.unpack(), pair.1.unpack());
                 Some((p, h))
             } else {
                 None
@@ -473,7 +481,8 @@ pub fn inversions(snd: &Sounding, top_p: f64) -> Result<Layers> {
     izip!(0usize.., p_profile, t_profile)
         // Filter out rows without both temperature and pressure.
         .filter_map(|triple| {
-            if let (i, &Some(p), &Some(t)) = triple {
+            if triple.1.is_some() && triple.2.is_some(){
+                let (i, p, t) = (triple.0, triple.1.unpack(), triple.2.unpack());
                 Some((i, p, t))
             } else {
                 None
@@ -523,8 +532,8 @@ pub fn sfc_based_inversion(snd: &Sounding) -> Result<Option<Layer>> {
     izip!(0usize.., p_profile, h_profile, t_profile)
         // Remove levels with missing data
         .filter_map(|tuple| {
-            if let (i, &Some(_), &Some(_), &Some(_)) = tuple {
-                Some(i)
+            if tuple.1.is_some() && tuple.2.is_some() && tuple.2.is_some() {
+                Some(tuple.0)
             } else {
                 None
             }
@@ -537,11 +546,14 @@ pub fn sfc_based_inversion(snd: &Sounding) -> Result<Option<Layer>> {
         .and_then(|index| snd.get_data_row(index).ok_or(AnalysisError::MissingValue))
         // Now find the top
         .and_then(|bottom_row|{
-            if let Some(sfc_t) = bottom_row.temperature {
+            let sfc_t = bottom_row.temperature;
+            if sfc_t.is_some() {
+                let sfc_t = sfc_t.unpack();
                 let val = izip!(0usize..,p_profile, t_profile, h_profile)
                     // Remove levels with missing data
                     .filter_map(|tuple| {
-                        if let (i, &Some(p), &Some(t), &Some(_)) = tuple {
+                        if tuple.1.is_some() && tuple.2.is_some() && tuple.3.is_some() {
+                            let (i, p, t) = (tuple.0, tuple.1.unpack(), tuple.2.unpack());
                             Some((i,p,t))
                         } else {
                             None
@@ -577,7 +589,6 @@ pub fn sfc_based_inversion(snd: &Sounding) -> Result<Option<Layer>> {
                     },
                     None => Ok(None)
                 }
-                
             } else {
                 Err(AnalysisError::MissingValue)
             }
