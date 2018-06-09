@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use sounding_base::Sounding;
 
+use indexes::{showalter_index, total_totals, swet, kindex, precipitable_water};
 use parcel::{Parcel, ParcelProfile};
 
 /// Sounding indexes calculated from the sounding and not any particular profile.
@@ -218,6 +219,26 @@ impl Analysis {
     /// Get a reference to the sounding.
     pub fn sounding(&self) -> &Sounding {
         &self.sounding
+    }
+
+    /// Analyze the sounding to get as much information as you can.
+    pub fn fill_in_missing_analysis(self) -> Self {
+        use ProfileIndex::*;
+
+        let show = showalter_index(&self.sounding).ok();
+        let tt = total_totals(&self.sounding).ok();
+        let swet = swet(&self.sounding).ok();
+        let k = kindex(&self.sounding).ok();
+        let pw = precipitable_water(&self.sounding).ok();
+
+        self
+            .with_profile_index(Showalter, show)
+            .with_profile_index(TotalTotals, tt)
+            .with_profile_index(SWeT, swet)
+            .with_profile_index(K, k)
+            .with_profile_index(PWAT, pw)
+            
+        // TODO: add lots more!
     }
 }
 
