@@ -131,5 +131,5 @@ pub fn precipitable_water(snd: &Sounding) -> Result<f64> {
             (acc_mw, p)
         });
 
-    Ok(integrated_mw / 9.81 / 997.0)
+    Ok(integrated_mw / 9.81 / 997.0 * 100_000.0)
 }
