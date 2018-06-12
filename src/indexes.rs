@@ -108,7 +108,7 @@ pub fn precipitable_water(snd: &Sounding) -> Result<f64> {
     let p_profile = snd.get_profile(Profile::Pressure);
     let dp_profile = snd.get_profile(Profile::DewPoint);
 
-    let (integrated_mw, _) = izip!(p_profile, dp_profile)
+    let (integrated_mw, _, _) = izip!(p_profile, dp_profile)
         .filter_map(|pair| {
             let (p, dp) = pair;
             if p.is_some() && dp.is_some() {
@@ -122,14 +122,14 @@ pub fn precipitable_water(snd: &Sounding) -> Result<f64> {
                 .ok()
                 .and_then(|mw| Some((p, mw)))
         })
-        .fold((0.0, 0.0), |(mut acc_mw, prev_p), (p, mw)| {
+        .fold((0.0, 0.0, 0.0), |(mut acc_mw, prev_p, prev_mw), (p, mw)| {
             let dp = prev_p - p;
             if dp > 0.0 {
-                acc_mw += mw * dp;
+                acc_mw += (mw + prev_mw) * dp;
             }
 
-            (acc_mw, p)
+            (acc_mw, p, mw)
         });
 
-    Ok(integrated_mw / 9.81 / 997.0 * 100_000.0)
+    Ok(integrated_mw / 9.81 / 997.0 * 100_000.0 / 2.0)
 }
