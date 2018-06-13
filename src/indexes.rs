@@ -72,11 +72,16 @@ pub fn swet(snd: &Sounding) -> Result<f64> {
 
     let mut total_totals = total_totals(snd)?;
     if total_totals < 49.0 {
-        total_totals = 0.0;
+        total_totals = 49.0;
     }
 
     let mut dir_component = (d_500 - d_850).to_radians().sin();
-    if dir_component < 0.0 {
+    if dir_component < 0.0 || 
+       (d_850 >= 130.0 && d_850 <= 250.0) || 
+       (d_500 >= 210.0 && d_500 <= 310.0) ||
+       (d_500 - d_850) >= 0.0 ||
+       (v_850 >= 15.0 && v_500 >= 15.0)
+    {
         dir_component = 0.0;
     } else {
         dir_component = 125.0 * (dir_component + 0.2);
