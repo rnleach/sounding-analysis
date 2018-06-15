@@ -8,6 +8,7 @@ use parcel;
 use parcel::Parcel;
 
 /// The showalter index, which is like the Lifted Index except for the 850 hPa parcel.
+// TODO: This needs validated, it is very different than bufkit files.
 #[inline]
 pub fn showalter_index(snd: &Sounding) -> Result<f64> {
     parcel_lifted_index(snd, &parcel::pressure_parcel(snd, 850.0)?)
@@ -137,4 +138,82 @@ pub fn precipitable_water(snd: &Sounding) -> Result<f64> {
         });
 
     Ok(integrated_mw / 9.81 / 997.0 * 100_000.0 / 2.0)
+}
+
+/// The Haines index for fire weather
+#[inline]
+pub fn haines(snd: &Sounding) -> Result<f64> {
+    snd.get_station_info().elevation().into_option()
+        .and_then(|elev_meters| {
+            
+            let (stability_term, stability_cutoffs, moisture_term, moisture_cutoffs) = 
+                if elev_meters <= 304.8 {                                    // Low elevation Haines
+                    let level1 = linear_interpolate_sounding(snd, 950.0).ok()?;
+                    let level2 = linear_interpolate_sounding(snd, 850.0).ok()?;
+
+                    let t_low = level1.temperature.ok_or(AnalysisError::MissingValue).ok()?;
+                    let t_hi = level2.temperature.ok_or(AnalysisError::MissingValue).ok()?;
+                    let dp_hi = level2.dew_point.ok_or(AnalysisError::MissingValue).ok()?;
+
+                    let stability_term = t_low - t_hi;
+                    const STABILITY_CUTOFFS: (f64,f64) = (4.0, 7.0);
+                    
+                    let moisture_term = t_hi - dp_hi;
+                    const MOISTURE_CUTOFFS: (f64,f64) = (6.0, 9.0);
+                    
+                    (stability_term, STABILITY_CUTOFFS, moisture_term, MOISTURE_CUTOFFS)
+                } else if elev_meters <= 914.4 {                             // Mid elevation Haines
+                    let level1 = linear_interpolate_sounding(snd, 850.0).ok()?;
+                    let level2 = linear_interpolate_sounding(snd, 700.0).ok()?;
+
+                    let t_low = level1.temperature.ok_or(AnalysisError::MissingValue).ok()?;
+                    let t_hi = level2.temperature.ok_or(AnalysisError::MissingValue).ok()?;
+                    let dp_low = level2.dew_point.ok_or(AnalysisError::MissingValue).ok()?;
+
+                    let stability_term = t_low - t_hi;
+                    const STABILITY_CUTOFFS: (f64,f64) = (6.0, 10.0);
+                    
+                    let moisture_term = t_low - dp_low;
+                    const MOISTURE_CUTOFFS: (f64,f64) = (6.0, 12.0);
+                    
+                    (stability_term, STABILITY_CUTOFFS, moisture_term, MOISTURE_CUTOFFS)
+                } else {                                                    // High elevation Haines
+                    let level1 = linear_interpolate_sounding(snd, 700.0).ok()?;
+                    let level2 = linear_interpolate_sounding(snd, 500.0).ok()?;
+
+                    let t_low = level1.temperature.ok_or(AnalysisError::MissingValue).ok()?;
+                    let t_hi = level2.temperature.ok_or(AnalysisError::MissingValue).ok()?;
+                    let dp_low = level2.dew_point.ok_or(AnalysisError::MissingValue).ok()?;
+
+                    let stability_term = t_low - t_hi;
+                    const STABILITY_CUTOFFS: (f64,f64) = (18.0, 21.0);
+                    
+                    let moisture_term = t_low - dp_low;
+                    const MOISTURE_CUTOFFS: (f64,f64) = (15.0, 20.0);
+                    
+                    (stability_term, STABILITY_CUTOFFS, moisture_term, MOISTURE_CUTOFFS)
+                };
+
+                let stability_part = if stability_term < stability_cutoffs.0 {
+                    1.0
+                } else if stability_term < stability_cutoffs.1 {
+                    2.0
+                } else {
+                    3.0
+                };
+
+                let moisture_part = if moisture_term < moisture_cutoffs.0 {
+                    1.0
+                } else if moisture_term < moisture_cutoffs.1 {
+                    2.0
+                } else {
+                    3.0
+                };
+
+                let haines_index = stability_part + moisture_part;
+
+                debug_assert!(haines_index <= 6.0);
+                Some(haines_index)
+        })
+        .ok_or(AnalysisError::MissingValue)
 }
