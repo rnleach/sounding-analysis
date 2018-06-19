@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use super::*;
-use sounding_analysis::Levels;
 use sounding_analysis::error::*;
+use sounding_analysis::Levels;
 use sounding_base::Sounding;
 
 fn test_levels<F: FnOnce(&Sounding) -> Result<Levels>>(
