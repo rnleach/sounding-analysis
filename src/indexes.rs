@@ -5,7 +5,7 @@ use sounding_base::{Profile, Sounding};
 use error::*;
 use interpolation::{linear_interp, linear_interpolate_sounding};
 use parcel;
-use parcel::{ParcelProfile};
+use parcel::ParcelProfile;
 
 /// The showalter index, which is like the Lifted Index except for the 850 hPa parcel.
 // TODO: This needs validated, it is very different than bufkit files.

@@ -7,6 +7,7 @@ use metfor;
 use sounding_base::{DataRow, Profile::*, Sounding};
 
 use error::*;
+use interpolation::{linear_interp, linear_interpolate_sounding};
 use layers::{pressure_layer, Layers};
 use profile::equivalent_potential_temperature;
 
@@ -78,7 +79,7 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
         // Check to make sure we got one, return error if not.
         .ok_or(AnalysisError::NoDataProfile)?;
 
-    let (sum_t, sum_mw, count) = izip!(press, t, dp)
+    let (sum_p, sum_t, sum_mw) = izip!(press, t, dp)
         // remove levels with missing values
         .filter_map(|(p, t, dp)| {
             if p.is_some() && t.is_some() && dp.is_some() {
@@ -89,27 +90,27 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
         })
         // only go up 100 hPa above the lowest level
         .take_while(|&(p, _, _)| p >= bottom_p - 100.0)
-        // convert to theta and mw, drop the pressure after this level
+        // convert to theta and mw
         .filter_map(|(p,t,dp)|{
             metfor::theta_kelvin(p, t).ok().and_then(|theta|{
-                metfor::mixing_ratio(dp, p).ok().and_then(|mw| Some((theta, mw)))
+                metfor::mixing_ratio(dp, p).ok().and_then(|mw| Some((p, theta, mw)))
             })
         })
         // calculate the sums and count needed for the average
-        .fold((0.0f64, 0.0f64, 0.0f64), |acc, (theta, mw)| {
-            let (sum_t, sum_mw, count) = acc;
-            (sum_t + theta, sum_mw + mw, count + 1.0)
+        .fold((0.0f64, 0.0f64, 0.0f64), |acc, (p, theta, mw)| {
+            let (sum_p, sum_t, sum_mw) = acc;
+            (sum_p + p, sum_t + theta * p, sum_mw + mw * p)
         });
 
-    if count == 0.0 {
+    if sum_p == 0.0 {
         return Err(AnalysisError::NotEnoughData);
     }
 
     // convert back to temperature and dew point at the lowest pressure level.
     let pressure = bottom_p;
-    let temperature = metfor::temperature_c_from_theta(sum_t / count, bottom_p)
+    let temperature = metfor::temperature_c_from_theta(sum_t / sum_p, bottom_p)
         .map_err(|_| AnalysisError::InvalidInput)?;
-    let dew_point = metfor::dew_point_from_p_and_mw(bottom_p, sum_mw / count)
+    let dew_point = metfor::dew_point_from_p_and_mw(bottom_p, sum_mw / sum_p)
         .map_err(|_| AnalysisError::InvalidInput)?;
 
     Ok(Parcel {
@@ -215,28 +216,51 @@ impl ParcelProfile {}
 
 /// Lift a parcel
 pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
+    //
+    // Find the LCL
+    //
     let (lcl_pressure, lcl_temperature) = metfor::pressure_and_temperature_at_lcl(
         parcel.temperature,
         parcel.dew_point,
         parcel.pressure,
-    ).map_err(|_| AnalysisError::InvalidInput)?;
+    )?;
 
-    let lcl_temperature =
-        metfor::kelvin_to_celsius(lcl_temperature).map_err(|_| AnalysisError::InvalidInput)?;
-
-    let theta = parcel.theta()?;
-    let theta_e = parcel.theta_e()?;
-
-    let parcel_start_data = ::interpolation::linear_interpolate_sounding(snd, parcel.pressure)?;
-
-    let lcl_env = ::interpolation::linear_interpolate_sounding(snd, lcl_pressure)?;
+    let lcl_temperature = metfor::kelvin_to_celsius(lcl_temperature)?;
+    let lcl_env = linear_interpolate_sounding(snd, lcl_pressure)?;
     let lcl_height = lcl_env.height.ok_or(AnalysisError::InvalidInput)?;
     let lcl_env_temperature = lcl_env.temperature.ok_or(AnalysisError::InvalidInput)?;
 
+    //
+    // The starting level to lift the parcel from
+    //
+    let parcel_start_data = linear_interpolate_sounding(snd, parcel.pressure)?;
+
+    //
+    // How to calculate a parcel temperature for a given pressure level
+    //
+    let theta = parcel.theta()?;
+    let theta_e = parcel.theta_e()?;
+    let calc_parcel_t = |tgt_pres| {
+        if tgt_pres > lcl_pressure {
+            // Dry adiabatic lifting
+            metfor::temperature_c_from_theta(theta, tgt_pres)
+        } else {
+            // Moist adiabatic lifting
+            metfor::temperature_c_from_theta_e_saturated_and_pressure(tgt_pres, theta_e)
+        }
+    };
+
+    //
+    // Get the environment data to iterate over. We want the parcel profile to have all the same
+    // pressure levels as the environmental sounding, plus a few special ones.
+    //
     let snd_pressure = snd.get_profile(Pressure);
     let hgt = snd.get_profile(GeopotentialHeight);
     let env_t = snd.get_profile(Temperature);
 
+    //
+    // Allocate some buffers to hold the return values.
+    //
     let mut pressure = Vec::with_capacity(snd_pressure.len() + 5);
     let mut height = Vec::with_capacity(snd_pressure.len() + 5);
     let mut parcel_t = Vec::with_capacity(snd_pressure.len() + 5);
@@ -244,19 +268,6 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
 
     // Nested scope to limit closure borrows
     {
-        // Helper function to calculate parcel temperature
-        let calc_parcel_t = |tgt_pres| {
-            if tgt_pres > lcl_pressure {
-                // Dry adiabatic lifting
-                metfor::temperature_c_from_theta(theta, tgt_pres)
-                    .map_err(|_| AnalysisError::InvalidInput)
-            } else {
-                // Moist adiabatic lifting
-                metfor::temperature_c_from_theta_e_saturated_and_pressure(tgt_pres, theta_e)
-                    .map_err(|_| AnalysisError::InvalidInput)
-            }
-        };
-
         // Helper function to add row to parcel profile
         let mut add_row = |pp, hh, pcl_tt, env_tt| {
             pressure.push(pp);
@@ -275,19 +286,32 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
 
         add_row(p0, h0, pcl_t0, env_t0);
 
-        for (p, h, env_t) in izip!(snd_pressure, hgt, env_t) {
-            // Unpack options
-            let (p, h, env_t) = if p.is_some() && h.is_some() && env_t.is_some() {
-                (p.unpack(), h.unpack(), env_t.unpack())
-            } else {
-                continue;
-            };
+        //
+        // Construct an iterator that calculates the parcel values
+        //
+        let iter = izip!(snd_pressure, hgt, env_t)
+            // Remove rows with missing data and unpack options
+            .filter_map(|(p, h, env_t)|{
+                if p.is_some() && h.is_some() && env_t.is_some() {
+                    Some((p.unpack(), h.unpack(), env_t.unpack()))
+                } else {
+                    None
+                }
+            })
+            // Remove rows at or below the parcel level
+            .filter(move |(p, _, _)| *p < p0)
+            // Calculate the parcel temperature, skip this level if there is an error
+            .filter_map(|(p, h, env_t)| {
+                match calc_parcel_t(p) {
+                    Ok(pcl_t) => Some((p, h, env_t, pcl_t)),
+                    Err(_) => None
+                }
+            });
 
-            // Check if this level has already been added or if we are below the parcel.
-            if p0 <= p {
-                continue;
-            }
-
+        //
+        // Pack the resulting values into their vectors.
+        //
+        for (p, h, env_t, pcl_t) in iter {
             // Check to see if we are passing the lcl
             if p0 > lcl_pressure && p < lcl_pressure {
                 add_row(
@@ -298,18 +322,10 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
                 );
             }
 
-            // Calculate the new parcel temperature
-            let pcl_t = if let Ok(new_t) = calc_parcel_t(p) {
-                new_t
-            } else {
-                break;
-            };
-
             // Check to see if the parcel and environment soundings have crossed
             if (pcl_t0 < env_t0 && pcl_t > env_t) || (pcl_t0 > env_t0 && pcl_t < env_t) {
-                let tgt_pres =
-                    ::interpolation::linear_interp(0.0, pcl_t - env_t, pcl_t0 - env_t0, p, p0);
-                let tgt_row = ::interpolation::linear_interpolate_sounding(snd, tgt_pres)?;
+                let tgt_pres = linear_interp(0.0, pcl_t - env_t, pcl_t0 - env_t0, p, p0);
+                let tgt_row = linear_interpolate_sounding(snd, tgt_pres)?;
                 let h2 = tgt_row.height.ok_or(AnalysisError::InvalidInput)?;
                 let env_t2 = tgt_row.temperature.ok_or(AnalysisError::InvalidInput)?;
                 add_row(tgt_pres, h2, env_t2, env_t2);
@@ -448,7 +464,7 @@ pub fn descend_dry_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<Parce
     descend_parcel(parcel, snd, theta, ::metfor::temperature_c_from_theta)
 }
 
-/// Descend a parcel dry adiabatically
+/// Descend a parcel moist adiabatically
 pub fn descend_moist_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta_e()?;
 
@@ -459,6 +475,7 @@ pub fn descend_moist_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<Par
     descend_parcel(parcel, snd, theta, theta_func)
 }
 
+#[inline]
 fn descend_parcel<F>(
     parcel: Parcel,
     snd: &Sounding,

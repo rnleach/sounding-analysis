@@ -3,12 +3,14 @@
 //! Not every possible analysis is in this data.
 use std::collections::HashMap;
 
+use metfor;
 use sounding_base::Sounding;
 
 use error::*;
 use indexes::{haines, kindex, parcel_lifted_index, precipitable_water, showalter_index, swet,
               total_totals};
-use parcel::{Parcel, ParcelProfile, lift_parcel, mixed_layer_parcel, surface_parcel, most_unstable_parcel};
+use parcel::{lift_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel, Parcel,
+             ParcelProfile};
 
 /// Sounding indexes calculated from the sounding and not any particular profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,20 +238,20 @@ impl Analysis {
         self.haines = self.haines.or_else(|| haines(&self.sounding).ok());
         // TODO: bulk richardson number
 
-        if self.mixed_layer.is_none(){
-            self.mixed_layer = match mixed_layer_parcel(&self.sounding){
+        if self.mixed_layer.is_none() {
+            self.mixed_layer = match mixed_layer_parcel(&self.sounding) {
                 Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
                 Err(_) => None,
             };
         }
-        if self.most_unstable.is_none(){
-            self.most_unstable = match most_unstable_parcel(&self.sounding){
+        if self.most_unstable.is_none() {
+            self.most_unstable = match most_unstable_parcel(&self.sounding) {
                 Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
                 Err(_) => None,
             };
         }
-        if self.surface.is_none(){
-            self.surface = match surface_parcel(&self.sounding){
+        if self.surface.is_none() {
+            self.surface = match surface_parcel(&self.sounding) {
                 Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
                 Err(_) => None,
             };
@@ -298,15 +300,31 @@ impl ParcelAnalysis {
         let profile = lift_parcel(parcel, snd)?;
         // FIXME: finish building these!
         let li = parcel_lifted_index(&profile).ok();
+
+        let (lcl, lcl_temperature) = match metfor::pressure_and_temperature_at_lcl(
+            parcel.temperature,
+            parcel.dew_point,
+            parcel.pressure,
+        ) {
+            Ok((lcl_p, lcl_t)) => (Some(lcl_p), metfor::kelvin_to_celsius(lcl_t).ok()),
+            Err(_) => (None, None),
+        };
+
         let cape = None;
-        let lcl = None;
-        let lcl_temperature = None;
         let cin = None;
         let el = None;
         let lfc = None;
 
-        Ok(ParcelAnalysis{
-            parcel, profile, li, cape, lcl, lcl_temperature, cin, el, lfc,
+        Ok(ParcelAnalysis {
+            parcel,
+            profile,
+            li,
+            cape,
+            lcl,
+            lcl_temperature,
+            cin,
+            el,
+            lfc,
         })
     }
 
