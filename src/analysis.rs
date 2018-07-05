@@ -7,10 +7,13 @@ use metfor;
 use sounding_base::Sounding;
 
 use error::*;
-use indexes::{haines, kindex, parcel_lifted_index, precipitable_water, showalter_index, swet,
-              total_totals};
-use parcel::{lift_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel, Parcel,
-             ParcelProfile};
+use indexes::{
+    haines, kindex, parcel_lifted_index, precipitable_water, showalter_index, swet, total_totals,
+};
+use parcel::{
+    cape, lift_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel, Parcel,
+    ParcelProfile,
+};
 
 /// Sounding indexes calculated from the sounding and not any particular profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -310,7 +313,7 @@ impl ParcelAnalysis {
             Err(_) => (None, None),
         };
 
-        let cape = None;
+        let cape = cape(&profile).ok();
         let cin = None;
         let el = None;
         let lfc = None;

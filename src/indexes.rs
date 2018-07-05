@@ -77,8 +77,10 @@ pub fn swet(snd: &Sounding) -> Result<f64> {
     }
 
     let mut dir_component = (d_500 - d_850).to_radians().sin();
-    if dir_component < 0.0 || (d_850 >= 130.0 && d_850 <= 250.0)
-        || (d_500 >= 210.0 && d_500 <= 310.0) || (d_500 - d_850) >= 0.0
+    if dir_component < 0.0
+        || (d_850 >= 130.0 && d_850 <= 250.0)
+        || (d_500 >= 210.0 && d_500 <= 310.0)
+        || (d_500 - d_850) >= 0.0
         || (v_850 >= 15.0 && v_500 >= 15.0)
     {
         dir_component = 0.0;
