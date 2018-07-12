@@ -301,7 +301,7 @@ impl ParcelAnalysis {
     #[inline]
     pub fn create(parcel: Parcel, snd: &Sounding) -> Result<Self> {
         let profile = lift_parcel(parcel, snd)?;
-        // FIXME: finish building these!
+
         let li = parcel_lifted_index(&profile).ok();
 
         let (lcl, lcl_temperature) = match metfor::pressure_and_temperature_at_lcl(
@@ -314,6 +314,8 @@ impl ParcelAnalysis {
         };
 
         let cape = cape(&profile).ok();
+
+        // FIXME: finish building these!
         let cin = None;
         let el = None;
         let lfc = None;
