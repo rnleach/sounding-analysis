@@ -66,8 +66,8 @@ impl Parcel {
 
 /// Create a mixed layer parcel.
 ///
-/// Calculated by averaging potential temperature and mixing ratio in the lowest  100 hPa of the
-/// sounding and calculating a temperature and dew point at the lowest pressure level  using those
+/// Calculated by averaging potential temperature and mixing ratio in the lowest 100 hPa of the
+/// sounding and calculating a temperature and dew point at the lowest pressure level using those
 /// averaged values.
 pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
     use sounding_base::Profile::*;
@@ -171,10 +171,17 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
     };
     let press = snd.get_profile(Pressure);
 
+    let top_pressure = press
+        .iter()
+        .filter(|p| p.is_some())
+        .nth(0)
+        .ok_or(AnalysisError::NotEnoughData)?
+        .unpack() - 300.0;
+
     let (idx, _) = izip!(0.., press, theta_e)
         .take_while(|&(_, press_opt, _)| {
             if press_opt.is_some() {
-                if press_opt.unpack() >= 300.0 {
+                if press_opt.unpack() >= top_pressure {
                     true
                 } else {
                     false // only stop if we are sure we are above 300.0 hPa
