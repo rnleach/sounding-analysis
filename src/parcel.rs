@@ -532,7 +532,7 @@ pub fn cin_layers(parcel_profile: &ParcelProfile) -> SmallVec<[(f64, f64); ::VEC
 }
 
 /// Descend a parcel dry adiabatically.
-pub fn descend_dry_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
+pub fn descend_dry(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta()?;
     descend_parcel(
         parcel,
@@ -544,7 +544,7 @@ pub fn descend_dry_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<Parce
 }
 
 /// Descend a parcel moist adiabatically
-pub fn descend_moist_adiabatically(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
+pub fn descend_moist(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta_e()?;
 
     let theta_func = |theta_e, press| {

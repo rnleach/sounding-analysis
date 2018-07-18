@@ -8,9 +8,8 @@ use parcel;
 use parcel::ParcelProfile;
 
 /// The showalter index, which is like the Lifted Index except for the 850 hPa parcel.
-// TODO: This needs validated, it is very different than bufkit files.
 #[inline]
-pub fn showalter_index(snd: &Sounding) -> Result<f64> {
+pub fn showalter(snd: &Sounding) -> Result<f64> {
     let parcel = parcel::pressure_parcel(snd, 850.0)?;
     let profile = parcel::lift_parcel(parcel, snd)?;
     parcel_lifted_index(&profile)

@@ -104,6 +104,7 @@ pub fn linear_interpolate_sounding(snd: &Sounding, target_p: f64) -> Result<Data
 }
 
 /// Interpolate values given two parallel vectors of data and a target value.
+// FIXME: Currently assume xs are sorted in descending order, change to just assuming monotonic
 pub fn linear_interpolate(
     xs: &[Optioned<f64>],
     ys: &[Optioned<f64>],

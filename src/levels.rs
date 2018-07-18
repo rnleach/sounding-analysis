@@ -22,7 +22,7 @@ pub type Level = DataRow;
 pub type Levels = SmallVec<[Level; ::VEC_SIZE]>;
 
 /// Find the freezing/melting levels below 500 hPa.
-pub fn freezing_melting_levels(snd: &Sounding) -> Result<Levels> {
+pub fn freezing_levels(snd: &Sounding) -> Result<Levels> {
     find_temperature_levels(snd, Temperature, FREEZING)
 }
 

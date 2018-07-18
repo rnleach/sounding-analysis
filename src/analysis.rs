@@ -8,7 +8,7 @@ use sounding_base::Sounding;
 
 use error::*;
 use indexes::{
-    haines, kindex, parcel_lifted_index, precipitable_water, showalter_index, swet, total_totals,
+    haines, kindex, parcel_lifted_index, precipitable_water, showalter, swet, total_totals,
 };
 use parcel::{
     cape, lift_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel, Parcel,
@@ -230,8 +230,7 @@ impl Analysis {
 
     /// Analyze the sounding to get as much information as you can.
     pub fn fill_in_missing_analysis(mut self) -> Self {
-        self.showalter = self.showalter
-            .or_else(|| showalter_index(&self.sounding).ok());
+        self.showalter = self.showalter.or_else(|| showalter(&self.sounding).ok());
         self.swet = self.swet.or_else(|| swet(&self.sounding).ok());
         self.total_totals = self.total_totals
             .or_else(|| total_totals(&self.sounding).ok());
