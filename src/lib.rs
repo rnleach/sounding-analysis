@@ -26,9 +26,10 @@ pub use levels::{
     max_wet_bulb_in_profile, wet_bulb_zero_levels, Level, Levels,
 };
 pub use parcel::{
-    cape, descend_dry, descend_moist, lift_parcel, mixed_layer_parcel, most_unstable_parcel,
-    pressure_parcel, surface_parcel, Parcel, ParcelProfile,
+     mixed_layer_parcel, most_unstable_parcel,
+    pressure_parcel, surface_parcel, Parcel, 
 };
+pub use parcel_profile::{cape, descend_dry, descend_moist, lift_parcel, ParcelProfile,};
 pub use profile::{
     equivalent_potential_temperature, hydrolapse, ml_to_level_temperature_lapse_rate,
     potential_temperature, relative_humidity, sfc_to_level_temperature_lapse_rate,
@@ -64,6 +65,7 @@ mod interpolation;
 mod layers;
 mod levels;
 mod parcel;
+mod parcel_profile;
 mod profile;
 
 pub(crate) const VEC_SIZE: usize = 2;

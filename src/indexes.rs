@@ -5,13 +5,14 @@ use sounding_base::{Profile, Sounding};
 use error::*;
 use interpolation::{linear_interp, linear_interpolate_sounding};
 use parcel;
-use parcel::ParcelProfile;
+use parcel_profile;
+use parcel_profile::ParcelProfile;
 
 /// The showalter index, which is like the Lifted Index except for the 850 hPa parcel.
 #[inline]
 pub fn showalter(snd: &Sounding) -> Result<f64> {
     let parcel = parcel::pressure_parcel(snd, 850.0)?;
-    let profile = parcel::lift_parcel(parcel, snd)?;
+    let profile = parcel_profile::lift_parcel(parcel, snd)?;
     parcel_lifted_index(&profile)
 }
 
