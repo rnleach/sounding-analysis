@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::*;
-use sounding_analysis::error::*;
+use sounding_analysis::Result;
 use sounding_analysis::Levels;
 use sounding_base::Sounding;
 
@@ -52,13 +52,13 @@ pub fn test_freezing_levels(
     tgt_int_vals: &HashMap<String, i64>,
     tgt_float_vals: &HashMap<String, Vec<f64>>,
 ) {
-    use sounding_analysis::levels::freezing_melting_levels;
+    use sounding_analysis::freezing_levels;
 
     test_levels(
         snd,
         tgt_int_vals,
         tgt_float_vals,
-        freezing_melting_levels,
+        freezing_levels,
         "num freezing level",
         "freezing level pressures",
     );
@@ -70,7 +70,7 @@ pub fn test_wet_bulb_zero_levels(
     tgt_int_vals: &HashMap<String, i64>,
     tgt_float_vals: &HashMap<String, Vec<f64>>,
 ) {
-    use sounding_analysis::levels::wet_bulb_zero_levels;
+    use sounding_analysis::wet_bulb_zero_levels;
 
     test_levels(
         snd,
@@ -84,7 +84,7 @@ pub fn test_wet_bulb_zero_levels(
 
 #[allow(dead_code)] // False alarm - lint is done before macro expansion.
 pub fn test_max_wet_bulb_in_profile(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>) {
-    use sounding_analysis::levels::max_wet_bulb_in_profile;
+    use sounding_analysis::max_wet_bulb_in_profile;
 
     let analysis = max_wet_bulb_in_profile(snd).unwrap();
 
@@ -117,7 +117,7 @@ pub fn test_max_wet_bulb_in_profile(snd: &Sounding, tgt_float_vals: &HashMap<Str
 
 #[allow(dead_code)] // False alarm - lint is done before macro expansion.
 pub fn test_max_temperature(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>) {
-    use sounding_analysis::levels::{max_temperature_in_layer, max_temperature_in_profile};
+    use sounding_analysis::{max_temperature_in_layer, max_temperature_in_profile};
 
     let analysis = max_temperature_in_profile(snd).unwrap();
 
@@ -147,7 +147,7 @@ pub fn test_max_temperature(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec
         panic!("Missing max temperature level or value.");
     }
 
-    let warm_layers = ::sounding_analysis::layers::warm_temperature_layer_aloft(snd).unwrap();
+    let warm_layers = ::sounding_analysis::warm_temperature_layer_aloft(snd).unwrap();
     let num_warm_layers = warm_layers.len();
     if num_warm_layers > 0 {
         if let Some(max_ts) = tgt_float_vals.get("warm layer max t") {
