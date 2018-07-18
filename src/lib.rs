@@ -31,9 +31,8 @@ pub use parcel::{
 };
 pub use parcel_profile::{cape, descend_dry, descend_moist, lift_parcel, ParcelProfile};
 pub use profile::{
-    equivalent_potential_temperature, hydrolapse, ml_to_level_temperature_lapse_rate,
-    potential_temperature, relative_humidity, sfc_to_level_temperature_lapse_rate,
-    temperature_lapse_rate, theta_e_lapse_rate, wet_bulb,
+    equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,
+    sfc_to_level_temperature_lapse_rate, temperature_lapse_rate, theta_e_lapse_rate, wet_bulb,
 };
 
 //
