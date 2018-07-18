@@ -12,9 +12,9 @@ crate.
 //
 // API
 //
-pub use analysis::{Analysis, ParcelAnalysis};
+pub use analysis::Analysis;
 pub use error::{AnalysisError, Result};
-pub use indexes::{haines, kindex, precipitable_water, showalter, swet, total_totals};
+pub use indexes::{haines, kindex, precipitable_water, swet, total_totals};
 pub use interpolation::{linear_interpolate, linear_interpolate_sounding};
 pub use keys::{ParcelIndex, ProfileIndex};
 pub use layers::{
@@ -29,7 +29,7 @@ pub use levels::{
 pub use parcel::{
     mixed_layer_parcel, most_unstable_parcel, pressure_parcel, surface_parcel, Parcel,
 };
-pub use parcel_profile::{cape, descend_dry, descend_moist, lift_parcel, ParcelProfile};
+pub use parcel_profile::{descend_dry, descend_moist, lift_parcel, ParcelAnalysis, ParcelProfile};
 pub use profile::{
     equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,
     sfc_to_level_temperature_lapse_rate, temperature_lapse_rate, theta_e_lapse_rate, wet_bulb,

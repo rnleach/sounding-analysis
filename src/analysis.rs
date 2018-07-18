@@ -3,16 +3,12 @@
 //! Not every possible analysis is in this data.
 use std::collections::HashMap;
 
-use metfor;
 use sounding_base::Sounding;
 
-use error::*;
-use indexes::{
-    haines, kindex, parcel_lifted_index, precipitable_water, showalter, swet, total_totals,
-};
-use keys::{ParcelIndex, ProfileIndex};
-use parcel::{mixed_layer_parcel, most_unstable_parcel, surface_parcel, Parcel};
-use parcel_profile::{cape, lift_parcel, ParcelProfile};
+use indexes::{haines, kindex, precipitable_water, swet, total_totals};
+use keys::ProfileIndex;
+use parcel::{mixed_layer_parcel, most_unstable_parcel, surface_parcel};
+use parcel_profile::{lift_parcel, ParcelAnalysis};
 
 /// Convenient package for commonly requested analysis values.
 ///
@@ -23,7 +19,6 @@ pub struct Analysis {
     sounding: Sounding,
 
     // Profile specific indicies
-    showalter: Option<f64>,
     swet: Option<f64>,
     k_index: Option<f64>,
     precipitable_water: Option<f64>,
@@ -45,7 +40,6 @@ impl Analysis {
     pub fn new(snd: Sounding) -> Self {
         Analysis {
             sounding: snd,
-            showalter: None,
             swet: None,
             k_index: None,
             precipitable_water: None,
@@ -71,10 +65,6 @@ impl Analysis {
         let opt = Option::from(value);
 
         match var {
-            Showalter => Analysis {
-                showalter: opt,
-                ..self
-            },
             SWeT => Analysis { swet: opt, ..self },
             K => Analysis {
                 k_index: opt,
@@ -104,7 +94,6 @@ impl Analysis {
         use self::ProfileIndex::*;
 
         match var {
-            Showalter => self.showalter,
             SWeT => self.swet,
             K => self.k_index,
             PWAT => self.precipitable_water,
@@ -189,7 +178,6 @@ impl Analysis {
 
     /// Analyze the sounding to get as much information as you can.
     pub fn fill_in_missing_analysis(mut self) -> Self {
-        self.showalter = self.showalter.or_else(|| showalter(&self.sounding).ok());
         self.swet = self.swet.or_else(|| swet(&self.sounding).ok());
         self.total_totals = self.total_totals
             .or_else(|| total_totals(&self.sounding).ok());
@@ -201,133 +189,23 @@ impl Analysis {
 
         if self.mixed_layer.is_none() {
             self.mixed_layer = match mixed_layer_parcel(&self.sounding) {
-                Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
+                Ok(parcel) => lift_parcel(parcel, &self.sounding).ok(),
                 Err(_) => None,
             };
         }
         if self.most_unstable.is_none() {
             self.most_unstable = match most_unstable_parcel(&self.sounding) {
-                Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
+                Ok(parcel) => lift_parcel(parcel, &self.sounding).ok(),
                 Err(_) => None,
             };
         }
         if self.surface.is_none() {
             self.surface = match surface_parcel(&self.sounding) {
-                Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
+                Ok(parcel) => lift_parcel(parcel, &self.sounding).ok(),
                 Err(_) => None,
             };
         }
 
         self
-    }
-}
-
-/// Parcel analysis, this is a way to package the analysis of a parcel.
-#[derive(Debug, Clone)]
-pub struct ParcelAnalysis {
-    // The orginal parcel and profile
-    parcel: Parcel,
-    profile: ParcelProfile,
-
-    // Indicies from analysis
-    li: Option<f64>,
-    cape: Option<f64>,
-    lcl: Option<f64>,
-    lcl_temperature: Option<f64>,
-    cin: Option<f64>,
-    el: Option<f64>,
-    lfc: Option<f64>,
-}
-
-impl ParcelAnalysis {
-    /// Create a new empty `Analysis`.
-    pub fn new(parcel: Parcel, profile: ParcelProfile) -> Self {
-        ParcelAnalysis {
-            parcel,
-            profile,
-            li: None,
-            cape: None,
-            lcl: None,
-            lcl_temperature: None,
-            cin: None,
-            el: None,
-            lfc: None,
-        }
-    }
-
-    /// Create a new analysis and fill it by doing all the parcel analysis'
-    #[inline]
-    pub fn create(parcel: Parcel, snd: &Sounding) -> Result<Self> {
-        let profile = lift_parcel(parcel, snd)?;
-
-        let li = parcel_lifted_index(&profile).ok();
-
-        let (lcl, lcl_temperature) = match metfor::pressure_and_temperature_at_lcl(
-            parcel.temperature,
-            parcel.dew_point,
-            parcel.pressure,
-        ) {
-            Ok((lcl_p, lcl_t)) => (Some(lcl_p), metfor::kelvin_to_celsius(lcl_t).ok()),
-            Err(_) => (None, None),
-        };
-
-        let cape = cape(&profile).ok();
-
-        // FIXME: finish building these!
-        let cin = None;
-        let el = None;
-        let lfc = None;
-
-        Ok(ParcelAnalysis {
-            parcel,
-            profile,
-            li,
-            cape,
-            lcl,
-            lcl_temperature,
-            cin,
-            el,
-            lfc,
-        })
-    }
-
-    /// Set a value in the analysis
-    #[inline]
-    pub fn set_index<T>(self, var: ParcelIndex, value: T) -> Self
-    where
-        Option<f64>: From<T>,
-    {
-        use self::ParcelIndex::*;
-
-        let opt = Option::from(value);
-
-        match var {
-            LI => ParcelAnalysis { li: opt, ..self },
-            LCL => ParcelAnalysis { lcl: opt, ..self },
-            LCLTemperature => ParcelAnalysis {
-                lcl_temperature: opt,
-                ..self
-            },
-            CAPE => ParcelAnalysis { cape: opt, ..self },
-            CIN => ParcelAnalysis { cin: opt, ..self },
-            EquilibriumLevel => ParcelAnalysis { el: opt, ..self },
-            LFC => ParcelAnalysis { lfc: opt, ..self },
-        }
-    }
-
-    /// Method to retrieve value from analysis.
-    #[inline]
-    pub fn get_index(&self, var: ParcelIndex) -> Option<f64> {
-        use self::ParcelIndex::*;
-
-        match var {
-            LI => self.li,
-            LCL => self.lcl,
-            LCLTemperature => self.lcl_temperature,
-            CAPE => self.cape,
-            CIN => self.cin,
-            EquilibriumLevel => self.el,
-            LFC => self.lfc,
-        }
     }
 }

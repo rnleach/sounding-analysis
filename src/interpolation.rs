@@ -5,6 +5,8 @@ use sounding_base::{DataRow, Sounding};
 use error::AnalysisError::*;
 use error::*;
 
+// FIXME: Use interpolation error.
+
 /// Interpolate values from the vertical sounding using pressure as the primary coordinate.
 ///
 /// Returns a `DataRow` struct with interpolated values.

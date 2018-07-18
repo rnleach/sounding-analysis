@@ -3,8 +3,6 @@
 /// Sounding indexes calculated from the sounding and not any particular profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProfileIndex {
-    /// Showalter index
-    Showalter,
     /// Severe Weather Threat Index
     SWeT,
     /// K-index
@@ -23,19 +21,26 @@ pub enum ProfileIndex {
 /// Indexes from a parcel analysis of a sounding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParcelIndex {
-    /// Lifted index
-    LI,
+    /// Lifting Condensation Level meters AGL
+    LCLHeightAGL,
     /// Lifting Condensation Level, or LCL (hPa), pressure vertical coordinate.
-    LCL,
+    LCLPressure,
     /// Convective Available Potential Energy, or CAPE. (J/kg)
     CAPE,
-    /// Temperature at LCL (K)
+    /// CAPE in the hail growth zone
+    CAPEHail,
+    /// Temperature at LCL (C)
     LCLTemperature,
     /// Convective Inhibitive Energy, or CIN (J/kg)
     CIN,
     /// Equilibrium Level (hPa), pressure vertical coordinate
-    EquilibriumLevel,
+    ELPressure,
+    /// Eqilibrium level height (meters ASL)
+    ELHeightASL,
+    /// Equilibrium level temperature (degrees C)
+    ELTemperature,
     /// Level of Free Convection (hPa), pressure vertical coordinate
     LFC,
-    // TODO: NCAPE, hail zone cape
+    /// Normalized CAPE
+    NCAPE,
 }
