@@ -12,10 +12,11 @@ crate.
 //
 // API
 //
-pub use analysis::{Analysis, ParcelAnalysis, ParcelIndex, ProfileIndex};
+pub use analysis::{Analysis, ParcelAnalysis};
 pub use error::{AnalysisError, Result};
 pub use indexes::{haines, kindex, precipitable_water, showalter, swet, total_totals};
 pub use interpolation::{linear_interpolate, linear_interpolate_sounding};
+pub use keys::{ParcelIndex, ProfileIndex};
 pub use layers::{
     cold_surface_temperature_layer, dendritic_snow_zone, hail_growth_zone, inversions, layer_agl,
     pressure_layer, sfc_based_inversion, warm_temperature_layer_aloft, warm_wet_bulb_layer_aloft,
@@ -61,6 +62,7 @@ mod analysis;
 mod error;
 mod indexes;
 mod interpolation;
+mod keys;
 mod layers;
 mod levels;
 mod parcel;
