@@ -3,9 +3,17 @@
 //! Not every possible analysis is in this data.
 use std::collections::HashMap;
 
+use metfor;
 use sounding_base::Sounding;
 
-use parcel::{Parcel, ParcelProfile};
+use error::*;
+use indexes::{
+    haines, kindex, parcel_lifted_index, precipitable_water, showalter_index, swet, total_totals,
+};
+use parcel::{
+    cape, lift_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel, Parcel,
+    ParcelProfile,
+};
 
 /// Sounding indexes calculated from the sounding and not any particular profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,6 +227,41 @@ impl Analysis {
     pub fn sounding(&self) -> &Sounding {
         &self.sounding
     }
+
+    /// Analyze the sounding to get as much information as you can.
+    pub fn fill_in_missing_analysis(mut self) -> Self {
+        self.showalter = self.showalter
+            .or_else(|| showalter_index(&self.sounding).ok());
+        self.swet = self.swet.or_else(|| swet(&self.sounding).ok());
+        self.total_totals = self.total_totals
+            .or_else(|| total_totals(&self.sounding).ok());
+        self.k_index = self.k_index.or_else(|| kindex(&self.sounding).ok());
+        self.precipitable_water = self.precipitable_water
+            .or_else(|| precipitable_water(&self.sounding).ok());
+        self.haines = self.haines.or_else(|| haines(&self.sounding).ok());
+        // TODO: bulk richardson number
+
+        if self.mixed_layer.is_none() {
+            self.mixed_layer = match mixed_layer_parcel(&self.sounding) {
+                Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
+                Err(_) => None,
+            };
+        }
+        if self.most_unstable.is_none() {
+            self.most_unstable = match most_unstable_parcel(&self.sounding) {
+                Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
+                Err(_) => None,
+            };
+        }
+        if self.surface.is_none() {
+            self.surface = match surface_parcel(&self.sounding) {
+                Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
+                Err(_) => None,
+            };
+        }
+
+        self
+    }
 }
 
 /// Parcel analysis, this is a way to package the analysis of a parcel.
@@ -254,7 +297,44 @@ impl ParcelAnalysis {
         }
     }
 
+    /// Create a new analysis and fill it by doing all the parcel analysis'
+    #[inline]
+    pub fn create(parcel: Parcel, snd: &Sounding) -> Result<Self> {
+        let profile = lift_parcel(parcel, snd)?;
+
+        let li = parcel_lifted_index(&profile).ok();
+
+        let (lcl, lcl_temperature) = match metfor::pressure_and_temperature_at_lcl(
+            parcel.temperature,
+            parcel.dew_point,
+            parcel.pressure,
+        ) {
+            Ok((lcl_p, lcl_t)) => (Some(lcl_p), metfor::kelvin_to_celsius(lcl_t).ok()),
+            Err(_) => (None, None),
+        };
+
+        let cape = cape(&profile).ok();
+
+        // FIXME: finish building these!
+        let cin = None;
+        let el = None;
+        let lfc = None;
+
+        Ok(ParcelAnalysis {
+            parcel,
+            profile,
+            li,
+            cape,
+            lcl,
+            lcl_temperature,
+            cin,
+            el,
+            lfc,
+        })
+    }
+
     /// Set a value in the analysis
+    #[inline]
     pub fn set_index<T>(self, var: ParcelIndex, value: T) -> Self
     where
         Option<f64>: From<T>,
@@ -278,6 +358,7 @@ impl ParcelAnalysis {
     }
 
     /// Method to retrieve value from analysis.
+    #[inline]
     pub fn get_index(&self, var: ParcelIndex) -> Option<f64> {
         use self::ParcelIndex::*;
 

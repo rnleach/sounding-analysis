@@ -1,4 +1,5 @@
 //! Error types for the sounding-analysis crate.
+use metfor;
 
 /// Error type for the crate.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Fail)]
@@ -18,6 +19,10 @@ pub enum AnalysisError {
     /// Bad or invalid input.
     #[fail(display = "Invalid input.")]
     InvalidInput,
+
+    /// Forward an error from the metfor crate
+    #[fail(display = "Error bubbled up from metfor crate: {}", _0)]
+    MetForError(metfor::MetForErr),
 }
 
 /// Shorthand for results.
@@ -33,5 +38,11 @@ impl AnalysisError {
             );
         }
         self
+    }
+}
+
+impl From<metfor::MetForErr> for AnalysisError {
+    fn from(err: metfor::MetForErr) -> Self {
+        AnalysisError::MetForError(err)
     }
 }
