@@ -85,7 +85,7 @@ pub fn max_wet_bulb_in_profile(snd: &Sounding) -> Result<Level> {
 
 /// Maximum temperature aloft.
 pub fn max_temperature_in_profile(snd: &Sounding) -> Result<Level> {
-    max_t_aloft(snd, Profile::WetBulb)
+    max_t_aloft(snd, Profile::Temperature)
 }
 
 // Only searches up to 500 hPa
