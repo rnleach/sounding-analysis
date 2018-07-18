@@ -10,10 +10,8 @@ use error::*;
 use indexes::{
     haines, kindex, parcel_lifted_index, precipitable_water, showalter, swet, total_totals,
 };
-use parcel::{
-     mixed_layer_parcel, most_unstable_parcel, surface_parcel, Parcel,
-};
-use parcel_profile::{cape, lift_parcel, ParcelProfile,};
+use parcel::{mixed_layer_parcel, most_unstable_parcel, surface_parcel, Parcel};
+use parcel_profile::{cape, lift_parcel, ParcelProfile};
 
 /// Sounding indexes calculated from the sounding and not any particular profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

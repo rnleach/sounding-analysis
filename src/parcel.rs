@@ -6,7 +6,7 @@ use metfor;
 use sounding_base::{DataRow, Sounding};
 
 use error::*;
-use interpolation::{linear_interpolate_sounding};
+use interpolation::linear_interpolate_sounding;
 use profile::equivalent_potential_temperature;
 
 /// Variables defining a parcel as used in parcel analysis.

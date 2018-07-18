@@ -2,7 +2,7 @@
 
 use metfor;
 use smallvec::SmallVec;
-use sounding_base::{Sounding, Profile::*,};
+use sounding_base::{Profile::*, Sounding};
 
 use error::*;
 use interpolation::{linear_interp, linear_interpolate_sounding};
