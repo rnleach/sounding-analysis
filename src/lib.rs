@@ -29,7 +29,7 @@ pub use levels::{
 pub use parcel::{
     mixed_layer_parcel, most_unstable_parcel, pressure_parcel, surface_parcel, Parcel,
 };
-pub use parcel_profile::{descend_dry, descend_moist, lift_parcel, ParcelAnalysis, ParcelProfile};
+pub use parcel_profile::{descend_moist, lift_parcel, mix_down, ParcelAnalysis, ParcelProfile};
 pub use profile::{
     equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,
     sfc_to_level_temperature_lapse_rate, temperature_lapse_rate, theta_e_lapse_rate, wet_bulb,

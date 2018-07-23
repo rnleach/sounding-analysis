@@ -347,15 +347,25 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
 
 /// Descend a parcel dry adiabatically.
 ///
-/// The resulting `ParcelProfile` has actual temperatures and not virtual temperatures.
-pub fn descend_dry(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
+/// The resulting `ParcelProfile` has actual temperatures and not virtual temperatures. This is for
+/// analyzing inversions and visualizing what a sounding would look like if deep, dry mixing were
+/// to occur. This function assumes that the profile would be heated from below.
+pub fn mix_down(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta()?;
-    descend_parcel(parcel, snd, theta, ::metfor::temperature_c_from_theta)
+    descend_parcel(
+        parcel,
+        snd,
+        theta,
+        ::metfor::temperature_c_from_theta,
+        false,
+        false,
+    )
 }
 
-/// Descend a parcel moist adiabatically
+/// Descend a parcel moist adiabatically.
 ///
-/// The resulting `ParcelProfile` has actual temperatures and not virtual temperatures.
+/// The resulting `ParcelProfile` has virtual temperatures and is intended for calculating
+/// DCAPE.
 pub fn descend_moist(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta_e()?;
 
@@ -363,7 +373,7 @@ pub fn descend_moist(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
         ::metfor::temperature_c_from_theta_e_saturated_and_pressure(press, theta_e)
     };
 
-    descend_parcel(parcel, snd, theta, theta_func)
+    descend_parcel(parcel, snd, theta, theta_func, true, true)
 }
 
 #[inline]
@@ -372,6 +382,8 @@ fn descend_parcel<F>(
     snd: &Sounding,
     theta: f64,
     theta_func: F,
+    saturated: bool,
+    virtual_t: bool,
 ) -> Result<ParcelProfile>
 where
     F: Fn(f64, f64) -> ::std::result::Result<f64, ::metfor::MetForErr>,
@@ -384,7 +396,10 @@ where
     // Actually start at the bottom and work up.
     let press = snd.get_profile(Pressure);
     let env_t = snd.get_profile(Temperature);
+    let env_dp = snd.get_profile(DewPoint);
     let hght = snd.get_profile(GeopotentialHeight);
+
+    let pcl_mw = parcel.mixing_ratio()?;
 
     // Nested scope to limit borrows
     {
@@ -396,8 +411,8 @@ where
             environment_t.push(env_tt);
         };
 
-        izip!(press, hght, env_t)
-            .take_while(|(p_opt, _, _)| {
+        izip!(press, hght, env_t, env_dp)
+            .take_while(|(p_opt, _, _, _)| {
                 if p_opt.is_some() {
                     p_opt.unpack() >= parcel.pressure
                 } else {
@@ -405,19 +420,54 @@ where
                 }
             })
             // Remove levels with missing data
-            .filter_map(|(p_opt, h_opt, e_t_opt)| {
-                if p_opt.is_some() && h_opt.is_some() && e_t_opt.is_some() {
-                    Some((p_opt.unpack(), h_opt.unpack(), e_t_opt.unpack()))
+            .filter_map(|(p_opt, h_opt, e_t_opt, e_dp_opt)| {
+                if p_opt.is_some() && h_opt.is_some() && e_t_opt.is_some() && e_dp_opt.is_some() {
+                    Some((p_opt.unpack(), h_opt.unpack(), e_t_opt.unpack(), e_dp_opt.unpack()))
                 } else {
                     None
                 }
             })
             // Get the parcel temperature
-            .filter_map(|(p, h, et)|{
+            .filter_map(|(p, h, e_t, e_dp)|{
                 match theta_func(theta, p) {
-                    Ok(pcl_t) => Some((p, h, pcl_t, et)),
+                    Ok(pcl_t) => Some((p, h, pcl_t, e_t, e_dp)),
                     Err(_) => None,
                 }
+            })
+            // Get the parcel dew point
+            .filter_map(|(p, h, pcl_t, e_t, e_dp)|{
+                let p_dp = if saturated {
+                    pcl_t
+                } else {
+                    match metfor::dew_point_from_p_and_mw(p, pcl_mw) {
+                        Ok(dp) => dp,
+                        Err(_) => return None,
+                    }
+                };
+
+                Some((p, h, pcl_t,p_dp, e_t, e_dp))
+            })
+            // Convert to virtual temperature if needed.
+            .filter_map(|(p, h, pcl_t, p_dp, e_t, e_dp)|{
+                let pcl_t = if virtual_t {
+                    match metfor::virtual_temperature_c(pcl_t, p_dp, p) {
+                        Ok(vt) => vt,
+                        Err(_) => return None,
+                    }
+                } else {
+                    pcl_t
+                };
+
+                let e_t = if virtual_t {
+                    match metfor::virtual_temperature_c(e_t, e_dp, p) {
+                        Ok(vt) => vt,
+                        Err(_) => return None,
+                    }
+                } else {
+                    e_t
+                };
+
+                Some((p,h,pcl_t, e_t))
             })
             .for_each(|(p, h, pt, et)| {
                 add_row(p, h, pt, et);
