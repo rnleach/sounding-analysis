@@ -15,7 +15,7 @@ pub enum ProfileIndex {
     BulkRichardsonNumber,
     /// Haines index
     Haines,
-    // TODO: DCAPE
+    // TODO: DCAPE from SPC definition
 }
 
 /// Indexes from a parcel analysis of a sounding.
@@ -43,4 +43,7 @@ pub enum ParcelIndex {
     LFC,
     /// Normalized CAPE
     NCAPE,
+    /// Lifted Index
+    LI,
+    // TODO: DCAPE from LCL, cloud base
 }

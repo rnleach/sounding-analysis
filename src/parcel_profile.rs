@@ -42,6 +42,7 @@ pub struct ParcelAnalysis {
     el_height_asl: Option<f64>,  // Calculating convective cloud tops for aviation
     el_temperature: Option<f64>, // useful for comparing to satellite
     lfc_pressure: Option<f64>,   // plotting on skew-t
+    lifted_index: Option<f64>,
 }
 
 impl ParcelAnalysis {
@@ -62,6 +63,7 @@ impl ParcelAnalysis {
             ELHeightASL => self.el_height_asl,
             ELTemperature => self.el_temperature,
             LFC => self.lfc_pressure,
+            LI => self.lifted_index,
         }
     }
 
@@ -139,6 +141,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
 
     let mut lfc_pressure: Option<f64> = None;
     let mut el_pressure: Option<f64> = None;
+    let mut lifted_index: Option<f64> = None;
 
     //
     // Allocate some buffers to hold the return values.
@@ -160,7 +163,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
 
         // Start by adding the parcel level
         let mut p0 = parcel.pressure;
-        let h0 = parcel_start_data.height.ok_or(AnalysisError::InvalidInput)?;
+        let mut h0 = parcel_start_data.height.ok_or(AnalysisError::InvalidInput)?;
         let mut pcl_t0 = parcel.virtual_temperature_c()?;
         let mut env_t0 = parcel_start_data
             .dew_point
@@ -229,16 +232,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
             // Check to see if the parcel and environment soundings have crossed
             if (pcl_t0 < env_t0 && pcl_t > env_t) || (pcl_t0 > env_t0 && pcl_t < env_t) {
                 let tgt_pres = linear_interp(0.0, pcl_t - env_t, pcl_t0 - env_t0, p, p0);
-                let tgt_row = linear_interpolate_sounding(snd, tgt_pres)?;
-                let h2 = tgt_row.height.ok_or(AnalysisError::InterpolationError)?;
-                let env_t2 = tgt_row
-                    .temperature
-                    .ok_or(AnalysisError::InterpolationError)
-                    .and_then(|t_c| {
-                        let env_dp2 = tgt_row.dew_point.ok_or(AnalysisError::InterpolationError)?;
-                        metfor::virtual_temperature_c(t_c, env_dp2, tgt_pres)
-                            .map_err(|err| AnalysisError::MetForError(err))
-                    })?;
+                let h2 = linear_interp(tgt_pres, p0, p, h0, h);
+                let env_t2 = linear_interp(tgt_pres, p0, p, env_t0, env_t);
 
                 add_row(tgt_pres, h2, env_t2, env_t2);
 
@@ -251,11 +246,19 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
                 }
             }
 
+            // Check to see if the parcel is passing 500 hPa for the LI calculation
+            if p0 >= 500.0 && p <= 500.0 {
+                let tgt_et = linear_interp(500.0, p0, p, env_t0, env_t);
+                let tgt_pt = linear_interp(500.0, p0, p, pcl_t0, pcl_t);
+                lifted_index = Some(tgt_et - tgt_pt);
+            }
+
             // Add the new values to the array
             add_row(p, h, pcl_t, env_t);
 
             // Remember them for the next iteration
             p0 = p;
+            h0 = h;
             pcl_t0 = pcl_t;
             env_t0 = env_t;
         }
@@ -331,6 +334,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         el_height_asl,
         el_temperature,
         lfc_pressure,
+        lifted_index,
     })
 }
 
