@@ -85,6 +85,8 @@ impl ParcelAnalysis {
     pub fn calculate_cape_velocity(&self) -> Option<f64> {
         self.cape.map(|cape| f64::sqrt(2.0 * cape))
     }
+
+    // TODO: Calculate dcape velocity
 }
 
 /// Lift a parcel for a convective parcel analysis.
@@ -146,6 +148,9 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
     let env_t = snd.get_profile(Temperature);
     let env_dp = snd.get_profile(DewPoint);
 
+    //
+    // Initialize some special levels/values we'll want to find during lifting
+    //
     let mut lfc_pressure: Option<f64> = None;
     let mut el_pressure: Option<f64> = None;
     let mut lifted_index: Option<f64> = None;
@@ -194,7 +199,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         }
 
         //
-        // Construct an iterator that calculates the parcel values
+        // Construct an iterator that selects the environment values and calculates the
+        // corresponding parcel values.
         //
         let iter = izip!(snd_pressure, hgt, env_t, env_dp)
             // Remove rows with missing data and unpack options
@@ -214,7 +220,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
                     Err(_) => None,
                 }
             })
-            // Calculate the environment virtual temperature
+            // Calculate the environment virtual temperature, skip levels with errors
             .filter_map(|(p, h, env_t, env_dp, pcl_t)|{
                 match metfor::virtual_temperature_c(env_t, env_dp, p) {
                     Ok(env_vt) => Some((p, h, env_vt, pcl_t)),
@@ -223,7 +229,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
             });
 
         //
-        // Pack the resulting values into their vectors.
+        // Pack the resulting values into their vectors and handle special levels
         //
         for (p, h, env_t, pcl_t) in iter {
             // Check to see if we are passing the lcl
@@ -297,7 +303,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
             lfc_pressure = None;
             el_pressure = None;
         }
-        _ => {}
+        _ => unreachable!(),
     }
 
     let (el_height_asl, el_temperature) = if let Some(elp) = el_pressure {
@@ -323,8 +329,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
     };
 
     let ncape = cape.and_then(|cape| {
-        lfc_height_asl
-            .and_then(|lfc_h: f64| el_height_asl.and_then(|el_h| Some(cape / (el_h - lfc_h))))
+        lfc_height_asl.and_then(|lfc_h: f64| el_height_asl.map(|el_h| cape / (el_h - lfc_h)))
     });
 
     Ok(ParcelAnalysis {
