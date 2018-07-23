@@ -64,6 +64,18 @@ impl ParcelAnalysis {
             LFC => self.lfc_pressure,
         }
     }
+
+    /// Retrieve the parcel's profile
+    #[inline]
+    pub fn get_profile(&self) -> &ParcelProfile {
+        return &self.profile
+    }
+
+    /// Retrieve the original parcel.
+    #[inline]
+    pub fn get_parcel(&self) -> &Parcel {
+        return &self.parcel
+    }
 }
 
 /// Lift a parcel
