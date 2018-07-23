@@ -78,9 +78,16 @@ impl ParcelAnalysis {
     pub fn get_parcel(&self) -> &Parcel {
         &self.parcel
     }
+
+    /// Calculate the parcel velocity at the equilibrium level. Note that this is most likely an
+    /// over estimate due to the effects of entrainment and water/ice loading.
+    #[inline]
+    pub fn calculate_cape_velocity(&self) -> Option<f64> {
+        self.cape.map(|cape| f64::sqrt(2.0 * cape))
+    }
 }
 
-/// Lift a parcel
+/// Lift a parcel for a convective parcel analysis.
 ///
 /// The resulting `ParcelProfile` and analysis are based off of virtual temperatures and the idea
 /// that if there is no *moist* convection, or convective cloud, then there is no CAPE or CIN.
