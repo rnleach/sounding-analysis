@@ -68,17 +68,20 @@ impl ParcelAnalysis {
     /// Retrieve the parcel's profile
     #[inline]
     pub fn get_profile(&self) -> &ParcelProfile {
-        return &self.profile
+        &self.profile
     }
 
     /// Retrieve the original parcel.
     #[inline]
     pub fn get_parcel(&self) -> &Parcel {
-        return &self.parcel
+        &self.parcel
     }
 }
 
 /// Lift a parcel
+///
+/// The resulting `ParcelProfile` and analysis are based off of virtual temperatures and the idea
+/// that if there is no *moist* convection, or convective cloud, then there is no CAPE or CIN.
 pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
     //
     // Find the LCL
@@ -304,7 +307,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         None
     };
 
-    let (cape, cin, hail_cape) = match cape_cin(&profile, lfc_pressure, el_pressure) {
+    let (cape, cin, hail_cape) = match cape_cin(&profile, lcl_pressure, lfc_pressure, el_pressure) {
         Ok((cape, cin, hail_cape)) => (Some(cape), Some(cin), Some(hail_cape)),
         Err(_) => (None, None, None),
     };
@@ -332,12 +335,16 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
 }
 
 /// Descend a parcel dry adiabatically.
+///
+/// The resulting `ParcelProfile` has actual temperatures and not virtual temperatures.
 pub fn descend_dry(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta()?;
     descend_parcel(parcel, snd, theta, ::metfor::temperature_c_from_theta)
 }
 
 /// Descend a parcel moist adiabatically
+///
+/// The resulting `ParcelProfile` has actual temperatures and not virtual temperatures.
 pub fn descend_moist(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta_e()?;
 
@@ -423,9 +430,20 @@ where
 /// Convective available potential energy of a parcel in J/kg
 ///
 /// Assumes the profile has virtual temperatures in it.
-fn cape_cin(profile: &ParcelProfile, lfc: Option<f64>, el: Option<f64>) -> Result<(f64, f64, f64)> {
-    let (lfc, el) = if let (Some(lfc), Some(el)) = (lfc, el) {
-        (lfc, el)
+fn cape_cin(
+    profile: &ParcelProfile,
+    lcl: Option<f64>,
+    lfc: Option<f64>,
+    el: Option<f64>,
+) -> Result<(f64, f64, f64)> {
+    let (lfc, el) = if let (Some(lcl), Some(lfc), Some(el)) = (lcl, lfc, el) {
+        // If no LCL, then no moist convection, then don't mention CAPE/CIN
+        if el < lcl {
+            (lfc, el)
+        } else {
+            // No cloud, no moist convection
+            return Ok((0.0, 0.0, 0.0));
+        }
     } else {
         return Err(AnalysisError::MissingValue);
     };
@@ -442,6 +460,12 @@ fn cape_cin(profile: &ParcelProfile, lfc: Option<f64>, el: Option<f64>) -> Resul
             |acc, (&p, &h, &pt, &et)| {
                 let ((mut cape, mut cin, mut hail_cape), prev_h, prev_pt, prev_et) = acc;
 
+                let (pt, et) = match (metfor::celsius_to_kelvin(pt), metfor::celsius_to_kelvin(et))
+                {
+                    (Ok(pt), Ok(et)) => (pt, et),
+                    _ => return ((cape, cin, hail_cape), prev_h, prev_pt, prev_et),
+                };
+
                 let dz = h - prev_h;
 
                 if dz <= 0.0 {
@@ -449,12 +473,12 @@ fn cape_cin(profile: &ParcelProfile, lfc: Option<f64>, el: Option<f64>) -> Resul
                     ((cape, cin, hail_cape), h, pt, et)
                 } else {
                     let bouyancy = ((pt - et) / et + (prev_pt - prev_et) / prev_et) * dz;
-                    if pt >= et && prev_pt >= prev_et && p <= lfc {
+                    if bouyancy > 0.0 && p <= lfc {
                         cape += bouyancy;
                         if pt <= -10.0 && pt >= -30.0 {
                             hail_cape += bouyancy;
                         }
-                    } else if pt <= et && prev_pt <= prev_et {
+                    } else if bouyancy < 0.0 {
                         cin += bouyancy
                     }
                     ((cape, cin, hail_cape), h, pt, et)
