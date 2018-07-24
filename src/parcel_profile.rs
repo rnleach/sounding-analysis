@@ -371,7 +371,7 @@ pub fn mix_down(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
 ///
 /// The resulting `ParcelProfile` has virtual temperatures and is intended for calculating
 /// DCAPE.
-pub fn descend_moist(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
+fn descend_moist(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta_e()?;
 
     let theta_func = |theta_e, press| {
@@ -495,7 +495,8 @@ where
 
 /// Convective available potential energy of a parcel in J/kg
 ///
-/// Assumes the profile has virtual temperatures in it.
+/// Assumes the profile has virtual temperatures in it. Returns a tuple with the values
+/// (CAPE, CIN, hail zone cape)
 fn cape_cin(
     profile: &ParcelProfile,
     lcl: Option<f64>,
@@ -560,4 +561,113 @@ fn cape_cin(
     ))
 }
 
-// TODO: dcape
+/// Downdraft CAPE.
+///
+/// Defined as the net area between a parcel descended moist adiabatically from the level of the
+/// lowest theta-e in the lowest 400 hPa of the sounding.
+///
+/// Returns the profile, downdraft cape, and downrush temperature in a tuple.
+pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
+    let t = snd.get_profile(Temperature);
+    let dp = snd.get_profile(DewPoint);
+    let p = snd.get_profile(Pressure);
+
+    // Find the lowest pressure
+    let top_p = -400.0
+        + p.iter()
+            .filter_map(|p| if p.is_some() { Some(p.unpack()) } else { None })
+            .nth(0)
+            .ok_or(AnalysisError::NotEnoughData)?;
+
+    // Find the starting parcel.
+    let pcl = izip!(p, t, dp)
+        .filter_map(|(p, t, dp)| {
+            if p.is_some() && t.is_some() && dp.is_some() {
+                Some((p.unpack(), t.unpack(), dp.unpack()))
+            } else {
+                None
+            }
+        })
+        .take_while(|(p, _, _)| *p >= top_p)
+        .fold(
+            Err(AnalysisError::NotEnoughData),
+            |acc: Result<Parcel>, (p, t, dp)| match metfor::theta_e_kelvin(t, dp, p) {
+                Ok(theta_e) => match acc {
+                    Ok(parcel) => {
+                        if let Ok(old_theta) = parcel.theta_e() {
+                            if old_theta < theta_e {
+                                Ok(parcel)
+                            } else {
+                                Ok(Parcel {
+                                    temperature: t,
+                                    dew_point: dp,
+                                    pressure: p,
+                                })
+                            }
+                        } else {
+                            Ok(Parcel {
+                                temperature: t,
+                                dew_point: dp,
+                                pressure: p,
+                            })
+                        }
+                    }
+                    Err(_) => Ok(Parcel {
+                        temperature: t,
+                        dew_point: dp,
+                        pressure: p,
+                    }),
+                },
+                Err(_) => acc,
+            },
+        )?;
+
+    let profile = descend_moist(pcl, snd)?;
+
+    let mut dcape = 0.0;
+    let mut h0 = 1_000_000_000.0; // Big number
+    let mut pt0 = 0.0;
+    let mut et0 = 0.0;
+    for (&p, &h, &pt, &et) in izip!(
+        &profile.pressure,
+        &profile.height,
+        &profile.parcel_t,
+        &profile.environment_t
+    ) {
+        let pt = match metfor::theta_kelvin(p, pt) {
+            Ok(pt) => pt,
+            Err(_) => continue,
+        };
+
+        let et = match metfor::theta_kelvin(p, et) {
+            Ok(et) => et,
+            Err(_) => continue,
+        };
+
+        let dz = h - h0;
+        // we must be starting out, becuase h0 starts as a large positive number
+        if dz <= 0.0 {
+            h0 = h;
+            pt0 = pt;
+            et0 = et;
+            continue;
+        }
+
+        dcape += (pt - et) / et + (pt0 - et0) / et0;
+
+        h0 = h;
+        pt0 = pt;
+        et0 = et;
+    }
+
+    // - for integration direction should be top down, 9.81 for gravity, and 2.0 for trapezoid rule.
+    dcape *= -9.81 / 2.0;
+
+    let downrush_t = *profile
+        .parcel_t
+        .iter()
+        .nth(0)
+        .ok_or(AnalysisError::MissingValue)?;
+
+    Ok((profile, dcape, downrush_t))
+}

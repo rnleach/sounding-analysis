@@ -11,11 +11,12 @@ pub enum ProfileIndex {
     PWAT,
     /// Total-Totals
     TotalTotals,
-    /// Bulk Richardson Number
-    BulkRichardsonNumber,
     /// Haines index
     Haines,
-    // TODO: DCAPE from SPC definition
+    /// Downward CAPE
+    DCAPE,
+    /// Downrush temperature. The temperature of a saturated downburst from parcel theory.
+    DownrushT,
 }
 
 /// Indexes from a parcel analysis of a sounding.
@@ -45,5 +46,4 @@ pub enum ParcelIndex {
     NCAPE,
     /// Lifted Index
     LI,
-    // TODO: DCAPE from LCL, cloud base
 }

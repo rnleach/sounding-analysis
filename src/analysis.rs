@@ -8,7 +8,7 @@ use sounding_base::Sounding;
 use indexes::{haines, kindex, precipitable_water, swet, total_totals};
 use keys::ProfileIndex;
 use parcel::{mixed_layer_parcel, most_unstable_parcel, surface_parcel};
-use parcel_profile::{lift_parcel, ParcelAnalysis};
+use parcel_profile::{dcape, lift_parcel, ParcelAnalysis, ParcelProfile};
 
 /// Convenient package for commonly requested analysis values.
 ///
@@ -23,8 +23,12 @@ pub struct Analysis {
     k_index: Option<f64>,
     precipitable_water: Option<f64>,
     total_totals: Option<f64>,
-    bulk_richardson_number: Option<f64>,
     haines: Option<f64>,
+
+    // Downburst
+    dcape: Option<f64>,
+    downrush_t: Option<f64>,
+    downburst_profile: Option<ParcelProfile>,
 
     // Parcel analysis
     mixed_layer: Option<ParcelAnalysis>,
@@ -44,8 +48,11 @@ impl Analysis {
             k_index: None,
             precipitable_water: None,
             total_totals: None,
-            bulk_richardson_number: None,
             haines: None,
+
+            dcape: None,
+            downrush_t: None,
+            downburst_profile: None,
 
             mixed_layer: None,
             surface: None,
@@ -78,8 +85,9 @@ impl Analysis {
                 total_totals: opt,
                 ..self
             },
-            BulkRichardsonNumber => Analysis {
-                bulk_richardson_number: opt,
+            DCAPE => Analysis { dcape: opt, ..self },
+            DownrushT => Analysis {
+                downrush_t: opt,
                 ..self
             },
             Haines => Analysis {
@@ -98,7 +106,8 @@ impl Analysis {
             K => self.k_index,
             PWAT => self.precipitable_water,
             TotalTotals => self.total_totals,
-            BulkRichardsonNumber => self.bulk_richardson_number,
+            DCAPE => self.dcape,
+            DownrushT => self.downrush_t,
             Haines => self.haines,
         }
     }
@@ -151,6 +160,11 @@ impl Analysis {
         self.most_unstable.as_ref()
     }
 
+    /// Get the downburst profile
+    pub fn get_downburst_profile(&self) -> Option<&ParcelProfile> {
+        self.downburst_profile.as_ref()
+    }
+
     /// Set the provider analysis.
     ///
     /// This is just a table of what ever values you want to store, it may be empty.
@@ -185,7 +199,15 @@ impl Analysis {
         self.precipitable_water = self.precipitable_water
             .or_else(|| precipitable_water(&self.sounding).ok());
         self.haines = self.haines.or_else(|| haines(&self.sounding).ok());
-        // TODO: bulk richardson number
+        if self.dcape.is_none() || self.downrush_t.is_none() || self.downburst_profile.is_none() {
+            let result = dcape(&self.sounding);
+
+            if let Ok((pp, dcape, down_t)) = result {
+                self.dcape = Some(dcape);
+                self.downrush_t = Some(down_t);
+                self.downburst_profile = Some(pp);
+            }
+        }
 
         if self.mixed_layer.is_none() {
             self.mixed_layer = match mixed_layer_parcel(&self.sounding) {
