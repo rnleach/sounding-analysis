@@ -85,8 +85,6 @@ impl ParcelAnalysis {
     pub fn calculate_cape_velocity(&self) -> Option<f64> {
         self.cape.map(|cape| f64::sqrt(2.0 * cape))
     }
-
-    // TODO: Calculate dcape velocity
 }
 
 /// Lift a parcel for a convective parcel analysis.
