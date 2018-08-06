@@ -19,8 +19,5 @@ optional = "^0.4.3"
 smallvec = "^0.6"
 sounding-base = "^0.7"
 
-[patch.crates-io]
-optional = {git="https://github.com/rnleach/optional.git", branch="master"}
-
 [dev-dependencies]
 sounding-validate = "^0.7"
