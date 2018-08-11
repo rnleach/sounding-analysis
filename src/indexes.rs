@@ -3,42 +3,7 @@
 use sounding_base::{Profile, Sounding};
 
 use error::*;
-use interpolation::{linear_interp, linear_interpolate_sounding};
-use parcel;
-use parcel::ParcelProfile;
-
-/// The showalter index, which is like the Lifted Index except for the 850 hPa parcel.
-// TODO: This needs validated, it is very different than bufkit files.
-#[inline]
-pub fn showalter_index(snd: &Sounding) -> Result<f64> {
-    let parcel = parcel::pressure_parcel(snd, 850.0)?;
-    let profile = parcel::lift_parcel(parcel, snd)?;
-    parcel_lifted_index(&profile)
-}
-
-#[inline]
-pub(crate) fn parcel_lifted_index(parcel_profile: &ParcelProfile) -> Result<f64> {
-    izip!(
-        &parcel_profile.pressure,
-        &parcel_profile.parcel_t,
-        &parcel_profile.environment_t
-    ).take_while(|&(p, _, _)| *p > 500.0)
-        .last()
-        .and_then(|(bottom_p, bottom_p_t, bottom_e_t)| {
-            izip!(
-                &parcel_profile.pressure,
-                &parcel_profile.parcel_t,
-                &parcel_profile.environment_t
-            ).skip_while(|&(p, _, _)| *p > 500.0)
-                .nth(0)
-                .and_then(|(top_p, top_p_t, top_e_t)| {
-                    let e_t = linear_interp(500.0, *bottom_p, *top_p, *bottom_e_t, *top_e_t);
-                    let p_t = linear_interp(500.0, *bottom_p, *top_p, *bottom_p_t, *top_p_t);
-                    Some(e_t - p_t)
-                })
-        })
-        .ok_or(AnalysisError::MissingValue)
-}
+use interpolation::linear_interpolate_sounding;
 
 /// The Total Totals index
 pub fn total_totals(snd: &Sounding) -> Result<f64> {

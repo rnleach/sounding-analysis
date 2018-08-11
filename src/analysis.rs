@@ -3,57 +3,12 @@
 //! Not every possible analysis is in this data.
 use std::collections::HashMap;
 
-use metfor;
 use sounding_base::Sounding;
 
-use error::*;
-use indexes::{
-    haines, kindex, parcel_lifted_index, precipitable_water, showalter_index, swet, total_totals,
-};
-use parcel::{
-    cape, lift_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel, Parcel,
-    ParcelProfile,
-};
-
-/// Sounding indexes calculated from the sounding and not any particular profile.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProfileIndex {
-    /// Showalter index
-    Showalter,
-    /// Severe Weather Threat Index
-    SWeT,
-    /// K-index
-    K,
-    /// Precipitable Water (mm)
-    PWAT,
-    /// Total-Totals
-    TotalTotals,
-    /// Bulk Richardson Number
-    BulkRichardsonNumber,
-    /// Haines index
-    Haines,
-    // TODO: DCAPE
-}
-
-/// Indexes from a parcel analysis of a sounding.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParcelIndex {
-    /// Lifted index
-    LI,
-    /// Lifting Condensation Level, or LCL (hPa), pressure vertical coordinate.
-    LCL,
-    /// Convective Available Potential Energy, or CAPE. (J/kg)
-    CAPE,
-    /// Temperature at LCL (K)
-    LCLTemperature,
-    /// Convective Inhibitive Energy, or CIN (J/kg)
-    CIN,
-    /// Equilibrium Level (hPa), pressure vertical coordinate
-    EquilibriumLevel,
-    /// Level of Free Convection (hPa), pressure vertical coordinate
-    LFC,
-    // TODO: NCAPE, hail zone cape
-}
+use indexes::{haines, kindex, precipitable_water, swet, total_totals};
+use keys::ProfileIndex;
+use parcel::{mixed_layer_parcel, most_unstable_parcel, surface_parcel};
+use parcel_profile::{dcape, lift_parcel, ParcelAnalysis, ParcelProfile};
 
 /// Convenient package for commonly requested analysis values.
 ///
@@ -64,13 +19,16 @@ pub struct Analysis {
     sounding: Sounding,
 
     // Profile specific indicies
-    showalter: Option<f64>,
     swet: Option<f64>,
     k_index: Option<f64>,
     precipitable_water: Option<f64>,
     total_totals: Option<f64>,
-    bulk_richardson_number: Option<f64>,
     haines: Option<f64>,
+
+    // Downburst
+    dcape: Option<f64>,
+    downrush_t: Option<f64>,
+    downburst_profile: Option<ParcelProfile>,
 
     // Parcel analysis
     mixed_layer: Option<ParcelAnalysis>,
@@ -86,13 +44,15 @@ impl Analysis {
     pub fn new(snd: Sounding) -> Self {
         Analysis {
             sounding: snd,
-            showalter: None,
             swet: None,
             k_index: None,
             precipitable_water: None,
             total_totals: None,
-            bulk_richardson_number: None,
             haines: None,
+
+            dcape: None,
+            downrush_t: None,
+            downburst_profile: None,
 
             mixed_layer: None,
             surface: None,
@@ -112,10 +72,6 @@ impl Analysis {
         let opt = Option::from(value);
 
         match var {
-            Showalter => Analysis {
-                showalter: opt,
-                ..self
-            },
             SWeT => Analysis { swet: opt, ..self },
             K => Analysis {
                 k_index: opt,
@@ -129,8 +85,9 @@ impl Analysis {
                 total_totals: opt,
                 ..self
             },
-            BulkRichardsonNumber => Analysis {
-                bulk_richardson_number: opt,
+            DCAPE => Analysis { dcape: opt, ..self },
+            DownrushT => Analysis {
+                downrush_t: opt,
                 ..self
             },
             Haines => Analysis {
@@ -145,12 +102,12 @@ impl Analysis {
         use self::ProfileIndex::*;
 
         match var {
-            Showalter => self.showalter,
             SWeT => self.swet,
             K => self.k_index,
             PWAT => self.precipitable_water,
             TotalTotals => self.total_totals,
-            BulkRichardsonNumber => self.bulk_richardson_number,
+            DCAPE => self.dcape,
+            DownrushT => self.downrush_t,
             Haines => self.haines,
         }
     }
@@ -203,6 +160,11 @@ impl Analysis {
         self.most_unstable.as_ref()
     }
 
+    /// Get the downburst profile
+    pub fn get_downburst_profile(&self) -> Option<&ParcelProfile> {
+        self.downburst_profile.as_ref()
+    }
+
     /// Set the provider analysis.
     ///
     /// This is just a table of what ever values you want to store, it may be empty.
@@ -230,8 +192,6 @@ impl Analysis {
 
     /// Analyze the sounding to get as much information as you can.
     pub fn fill_in_missing_analysis(mut self) -> Self {
-        self.showalter = self.showalter
-            .or_else(|| showalter_index(&self.sounding).ok());
         self.swet = self.swet.or_else(|| swet(&self.sounding).ok());
         self.total_totals = self.total_totals
             .or_else(|| total_totals(&self.sounding).ok());
@@ -239,137 +199,35 @@ impl Analysis {
         self.precipitable_water = self.precipitable_water
             .or_else(|| precipitable_water(&self.sounding).ok());
         self.haines = self.haines.or_else(|| haines(&self.sounding).ok());
-        // TODO: bulk richardson number
+        if self.dcape.is_none() || self.downrush_t.is_none() || self.downburst_profile.is_none() {
+            let result = dcape(&self.sounding);
+
+            if let Ok((pp, dcape, down_t)) = result {
+                self.dcape = Some(dcape);
+                self.downrush_t = Some(down_t);
+                self.downburst_profile = Some(pp);
+            }
+        }
 
         if self.mixed_layer.is_none() {
             self.mixed_layer = match mixed_layer_parcel(&self.sounding) {
-                Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
+                Ok(parcel) => lift_parcel(parcel, &self.sounding).ok(),
                 Err(_) => None,
             };
         }
         if self.most_unstable.is_none() {
             self.most_unstable = match most_unstable_parcel(&self.sounding) {
-                Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
+                Ok(parcel) => lift_parcel(parcel, &self.sounding).ok(),
                 Err(_) => None,
             };
         }
         if self.surface.is_none() {
             self.surface = match surface_parcel(&self.sounding) {
-                Ok(parcel) => ParcelAnalysis::create(parcel, &self.sounding).ok(),
+                Ok(parcel) => lift_parcel(parcel, &self.sounding).ok(),
                 Err(_) => None,
             };
         }
 
         self
-    }
-}
-
-/// Parcel analysis, this is a way to package the analysis of a parcel.
-#[derive(Debug, Clone)]
-pub struct ParcelAnalysis {
-    // The orginal parcel and profile
-    parcel: Parcel,
-    profile: ParcelProfile,
-
-    // Indicies from analysis
-    li: Option<f64>,
-    cape: Option<f64>,
-    lcl: Option<f64>,
-    lcl_temperature: Option<f64>,
-    cin: Option<f64>,
-    el: Option<f64>,
-    lfc: Option<f64>,
-}
-
-impl ParcelAnalysis {
-    /// Create a new empty `Analysis`.
-    pub fn new(parcel: Parcel, profile: ParcelProfile) -> Self {
-        ParcelAnalysis {
-            parcel,
-            profile,
-            li: None,
-            cape: None,
-            lcl: None,
-            lcl_temperature: None,
-            cin: None,
-            el: None,
-            lfc: None,
-        }
-    }
-
-    /// Create a new analysis and fill it by doing all the parcel analysis'
-    #[inline]
-    pub fn create(parcel: Parcel, snd: &Sounding) -> Result<Self> {
-        let profile = lift_parcel(parcel, snd)?;
-
-        let li = parcel_lifted_index(&profile).ok();
-
-        let (lcl, lcl_temperature) = match metfor::pressure_and_temperature_at_lcl(
-            parcel.temperature,
-            parcel.dew_point,
-            parcel.pressure,
-        ) {
-            Ok((lcl_p, lcl_t)) => (Some(lcl_p), metfor::kelvin_to_celsius(lcl_t).ok()),
-            Err(_) => (None, None),
-        };
-
-        let cape = cape(&profile).ok();
-
-        // FIXME: finish building these!
-        let cin = None;
-        let el = None;
-        let lfc = None;
-
-        Ok(ParcelAnalysis {
-            parcel,
-            profile,
-            li,
-            cape,
-            lcl,
-            lcl_temperature,
-            cin,
-            el,
-            lfc,
-        })
-    }
-
-    /// Set a value in the analysis
-    #[inline]
-    pub fn set_index<T>(self, var: ParcelIndex, value: T) -> Self
-    where
-        Option<f64>: From<T>,
-    {
-        use self::ParcelIndex::*;
-
-        let opt = Option::from(value);
-
-        match var {
-            LI => ParcelAnalysis { li: opt, ..self },
-            LCL => ParcelAnalysis { lcl: opt, ..self },
-            LCLTemperature => ParcelAnalysis {
-                lcl_temperature: opt,
-                ..self
-            },
-            CAPE => ParcelAnalysis { cape: opt, ..self },
-            CIN => ParcelAnalysis { cin: opt, ..self },
-            EquilibriumLevel => ParcelAnalysis { el: opt, ..self },
-            LFC => ParcelAnalysis { lfc: opt, ..self },
-        }
-    }
-
-    /// Method to retrieve value from analysis.
-    #[inline]
-    pub fn get_index(&self, var: ParcelIndex) -> Option<f64> {
-        use self::ParcelIndex::*;
-
-        match var {
-            LI => self.li,
-            LCL => self.lcl,
-            LCLTemperature => self.lcl_temperature,
-            CAPE => self.cape,
-            CIN => self.cin,
-            EquilibriumLevel => self.el,
-            LFC => self.lfc,
-        }
     }
 }

@@ -12,8 +12,6 @@ use sounding_base::Profile::{DewPoint, GeopotentialHeight, Pressure, Temperature
 use sounding_base::Sounding;
 use sounding_base::Surface;
 
-use parcel::mixed_layer_parcel;
-
 /// Given a sounding, calculate a profile of wet bulb temperature.
 pub fn wet_bulb(snd: &Sounding) -> Vec<Optioned<f64>> {
     let p_profile = snd.get_profile(Pressure);
@@ -136,39 +134,6 @@ pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>>
         .map(|(z_opt, t_opt)| {
             let z_opt: Option<f64> = (*z_opt).into();
             let t_opt: Option<f64> = (*t_opt).into();
-            if let (Some(z), Some(t)) = (z_opt, t_opt) {
-                if (z - z_sfc).abs() < ::std::f64::EPSILON {
-                    none()
-                } else {
-                    some((t - t_sfc) / (z - z_sfc) * 1000.0)
-                }
-            } else {
-                none()
-            }
-        })
-        .collect()
-}
-
-/// Get a profile of the average lapse rate from the surface to *, or the level on the y axis.
-pub fn ml_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>> {
-    let z_profile = snd.get_profile(GeopotentialHeight);
-    let t_profile = snd.get_profile(Temperature);
-
-    let (t_sfc, z_sfc): (f64, f64) = match mixed_layer_parcel(snd) {
-        Ok(parcel) => {
-            if let Some(z_sfc) = snd.get_station_info().elevation().into() {
-                (parcel.temperature, z_sfc)
-            } else {
-                return vec![];
-            }
-        }
-        Err(_) => return vec![],
-    };
-
-    izip!(z_profile, t_profile)
-        .map(|(&z_opt, &t_opt)| {
-            let z_opt: Option<f64> = z_opt.into();
-            let t_opt: Option<f64> = t_opt.into();
             if let (Some(z), Some(t)) = (z_opt, t_opt) {
                 if (z - z_sfc).abs() < ::std::f64::EPSILON {
                     none()

@@ -22,7 +22,7 @@ pub type Level = DataRow;
 pub type Levels = SmallVec<[Level; ::VEC_SIZE]>;
 
 /// Find the freezing/melting levels below 500 hPa.
-pub fn freezing_melting_levels(snd: &Sounding) -> Result<Levels> {
+pub fn freezing_levels(snd: &Sounding) -> Result<Levels> {
     find_temperature_levels(snd, Temperature, FREEZING)
 }
 
@@ -85,7 +85,7 @@ pub fn max_wet_bulb_in_profile(snd: &Sounding) -> Result<Level> {
 
 /// Maximum temperature aloft.
 pub fn max_temperature_in_profile(snd: &Sounding) -> Result<Level> {
-    max_t_aloft(snd, Profile::WetBulb)
+    max_t_aloft(snd, Profile::Temperature)
 }
 
 // Only searches up to 500 hPa

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use super::*;
-use sounding_analysis::error::*;
 use sounding_analysis::Layers;
+use sounding_analysis::Result;
 use sounding_base::Sounding;
 
 fn test_layers<F: FnOnce(&Sounding) -> Result<Layers>>(
@@ -59,7 +59,7 @@ pub fn test_dendritic_layers(
     tgt_int_vals: &HashMap<String, i64>,
     tgt_float_vals: &HashMap<String, Vec<f64>>,
 ) {
-    use sounding_analysis::layers::dendritic_snow_zone;
+    use sounding_analysis::dendritic_snow_zone;
 
     test_layers(
         snd,
@@ -77,7 +77,7 @@ pub fn test_warm_dry_bulb_aloft_and_cold_sfc_layers(
     tgt_int_vals: &HashMap<String, i64>,
     tgt_float_vals: &HashMap<String, Vec<f64>>,
 ) {
-    use sounding_analysis::layers::{cold_surface_temperature_layer, warm_temperature_layer_aloft};
+    use sounding_analysis::{cold_surface_temperature_layer, warm_temperature_layer_aloft};
 
     // Test warm layers aloft.
     test_layers(
@@ -134,7 +134,7 @@ pub fn test_warm_wet_bulb_aloft(
     tgt_int_vals: &HashMap<String, i64>,
     tgt_float_vals: &HashMap<String, Vec<f64>>,
 ) {
-    use sounding_analysis::layers::warm_wet_bulb_layer_aloft;
+    use sounding_analysis::warm_wet_bulb_layer_aloft;
 
     test_layers(
         snd,
@@ -148,7 +148,7 @@ pub fn test_warm_wet_bulb_aloft(
 
 #[allow(dead_code)] // False alarm - lint is done before macro expansion.
 pub fn test_layer_agl(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>) {
-    use sounding_analysis::layers::layer_agl;
+    use sounding_analysis::layer_agl;
 
     let analysis = layer_agl(snd, 6000.0).unwrap();
     println!("\n6km AGL layer: {:#?}", analysis);
@@ -173,7 +173,7 @@ pub fn test_layer_agl(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>
 
 #[allow(dead_code)] // False alarm - lint is done before macro expansion.
 pub fn test_pressure_layer(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>) {
-    use sounding_analysis::layers::pressure_layer;
+    use sounding_analysis::pressure_layer;
 
     let analysis = pressure_layer(snd, 700.0, 500.0).unwrap();
     println!("\n700-500 hPa layer: {:#?}", analysis);
@@ -202,7 +202,7 @@ pub fn test_inversion_layers(
     tgt_int_vals: &HashMap<String, i64>,
     tgt_float_vals: &HashMap<String, Vec<f64>>,
 ) {
-    use sounding_analysis::layers::inversions;
+    use sounding_analysis::inversions;
 
     let test_inversions = |snd: &Sounding| inversions(snd, 300.0);
 

@@ -19,6 +19,9 @@ pub enum AnalysisError {
     /// Bad or invalid input.
     #[fail(display = "Invalid input.")]
     InvalidInput,
+    /// Missing data during interpolation, or it would have been extrapolation
+    #[fail(display = "None value encountered during interpolation.")]
+    InterpolationError,
 
     /// Forward an error from the metfor crate
     #[fail(display = "Error bubbled up from metfor crate: {}", _0)]

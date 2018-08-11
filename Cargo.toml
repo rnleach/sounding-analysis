@@ -1,6 +1,6 @@
 [package]
 name = "sounding-analysis"
-version = "0.7.1"
+version = "0.8.0"
 authors = ["Ryan Leach <clumsycodemonkey@gmail.com>"]
 description = """Analysis capability for the sounding-base crate."""
 repository = "https://github.com/rnleach/sounding-analysis.git"
@@ -18,9 +18,6 @@ metfor = "^0.3.0"
 optional = "^0.4.3"
 smallvec = "^0.6"
 sounding-base = "^0.7"
-
-[patch.crates-io]
-optional = {git="https://github.com/rnleach/optional.git", branch="master"}
 
 [dev-dependencies]
 sounding-validate = "^0.7"
