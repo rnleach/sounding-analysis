@@ -1,4 +1,3 @@
-#![warn(missing_docs)]
 /*!
 Functions and data types for analyzing soundings from the 
 [sounding-base](https://github.com/rnleach/sounding-base.git) crate.
@@ -8,6 +7,7 @@ Provides analysis capabilities for the [sounding-base](https://github.com/rnleac
 crate.
 
 */
+#![warn(missing_docs)]
 
 //
 // API
