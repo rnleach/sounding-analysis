@@ -1,9 +1,9 @@
 //! Indexes that are specific to a sounding, but not a particular parcel analysis of that sounding.
-
 use sounding_base::{Profile, Sounding};
 
 use error::*;
 use interpolation::linear_interpolate_sounding;
+use metfor::vapor_pressure_liquid_water;
 
 /// The Total Totals index
 pub fn total_totals(snd: &Sounding) -> Result<f64> {
@@ -200,4 +200,68 @@ pub fn haines(snd: &Sounding) -> Result<f64> {
             Some(haines_index)
         })
         .ok_or(AnalysisError::MissingValue)
+}
+
+/// The Hot-Dry-Windy index
+#[inline]
+pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
+    let elevation = if let Some(sfc_h) = snd.get_station_info().elevation().into_option() {
+        sfc_h
+    } else {
+        if let Some(lowest_h) = snd
+            .get_profile(Profile::GeopotentialHeight)
+            .iter()
+            .filter_map(|optd| {
+                if optd.is_some() {
+                    Some(optd.unpack())
+                } else {
+                    None
+                }
+            })
+            .nth(0) 
+        {
+            lowest_h
+        } else {
+            return Err(AnalysisError::NotEnoughData);
+        }
+    };
+
+    let h_profile = snd.get_profile(Profile::GeopotentialHeight); // Meters
+    let t_profile = snd.get_profile(Profile::Temperature);        // C
+    let dp_profile = snd.get_profile(Profile::DewPoint);          // C
+    let ws_profile = snd.get_profile(Profile::WindSpeed);         // in knots
+
+    let (vpd, ws) = izip!(h_profile, t_profile, dp_profile, ws_profile)
+        // Remove rows with missing data
+        .filter_map(|(h, t, dp, ws)|{
+            if h.is_some() && t.is_some() && dp.is_some() && ws.is_some() {
+                Some((h.unpack(), t.unpack(), dp.unpack(), ws.unpack()))
+            } else {
+                None
+            }
+        })
+        // Only look up to 500 m above AGL
+        .take_while(|(h, _, _, _)| *h <= elevation + 500.0)
+        // Convert t and dp to VPD
+        .filter_map(|(_, t, dp, ws)|{
+            match vapor_pressure_liquid_water(t){
+                Ok(sat_vap) => {
+                    match vapor_pressure_liquid_water(dp){
+                        Ok(vap) => {
+                            Some((sat_vap - vap, ws))
+                        },
+                        Err(_) => None,
+                    }
+                },
+                Err(_) => None,
+            }
+        })
+        // Convert knots to m/s
+        .map(|(vpd, ws)|(vpd, ws * 0.514444))
+        // Choose the max.
+        .fold((0.0, 0.0), |(vpd_max, ws_max),(vpd, ws)|{
+            (vpd.max(vpd_max), ws.max(ws_max))
+        });
+
+        Ok(vpd * ws)
 }
