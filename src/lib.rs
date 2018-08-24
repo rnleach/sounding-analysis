@@ -14,7 +14,10 @@ crate.
 //
 pub use analysis::Analysis;
 pub use error::{AnalysisError, Result};
-pub use indexes::{haines, kindex, precipitable_water, swet, total_totals, hot_dry_windy};
+pub use indexes::{
+    haines, haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water, swet,
+    total_totals,
+};
 pub use interpolation::{linear_interpolate, linear_interpolate_sounding};
 pub use keys::{ParcelIndex, ProfileIndex};
 pub use layers::{

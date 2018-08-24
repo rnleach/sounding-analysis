@@ -132,11 +132,14 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
 pub fn surface_parcel(snd: &Sounding) -> Result<Parcel> {
     use sounding_base::Surface::*;
 
-    let pressure = snd.get_surface_value(StationPressure)
+    let pressure = snd
+        .get_surface_value(StationPressure)
         .ok_or(AnalysisError::MissingValue)?;
-    let temperature = snd.get_surface_value(Temperature)
+    let temperature = snd
+        .get_surface_value(Temperature)
         .ok_or(AnalysisError::MissingValue)?;
-    let dew_point = snd.get_surface_value(DewPoint)
+    let dew_point = snd
+        .get_surface_value(DewPoint)
         .ok_or(AnalysisError::MissingValue)?;
 
     Ok(Parcel {

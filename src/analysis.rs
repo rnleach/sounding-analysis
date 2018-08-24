@@ -193,10 +193,12 @@ impl Analysis {
     /// Analyze the sounding to get as much information as you can.
     pub fn fill_in_missing_analysis(mut self) -> Self {
         self.swet = self.swet.or_else(|| swet(&self.sounding).ok());
-        self.total_totals = self.total_totals
+        self.total_totals = self
+            .total_totals
             .or_else(|| total_totals(&self.sounding).ok());
         self.k_index = self.k_index.or_else(|| kindex(&self.sounding).ok());
-        self.precipitable_water = self.precipitable_water
+        self.precipitable_water = self
+            .precipitable_water
             .or_else(|| precipitable_water(&self.sounding).ok());
         self.haines = self.haines.or_else(|| haines(&self.sounding).ok());
         if self.dcape.is_none() || self.downrush_t.is_none() || self.downburst_profile.is_none() {

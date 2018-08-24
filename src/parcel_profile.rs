@@ -284,7 +284,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
 
     let lcl_pressure = Some(lcl_pressure);
     let lcl_temperature = Some(lcl_temperature);
-    let lcl_height_agl = snd.get_station_info()
+    let lcl_height_agl = snd
+        .get_station_info()
         .elevation()
         .into_option()
         .map(|elev| lcl_height - elev);

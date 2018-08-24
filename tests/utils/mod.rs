@@ -265,7 +265,8 @@ fn load_test_csv_sounding(
         let wspd = f64::from_str(tokens[4]).ok();
         let wdir = f64::from_str(tokens[5]).ok();
 
-        snd = snd.set_surface_value(Surface::Temperature, t_c)
+        snd = snd
+            .set_surface_value(Surface::Temperature, t_c)
             .set_station_info(StationInfo::new().with_elevation(height))
             .set_surface_value(Surface::DewPoint, dp_c)
             .set_surface_value(Surface::StationPressure, press_hpa)
@@ -282,7 +283,8 @@ fn load_test_csv_sounding(
             break;
         }
 
-        let tokens: Vec<String> = line.split(',')
+        let tokens: Vec<String> = line
+            .split(',')
             .filter_map(|val| {
                 let v = val.trim();
                 if v != "" {
@@ -306,7 +308,8 @@ fn load_test_csv_sounding(
     // Float values.
     let mut target_float_vals = HashMap::new();
     for line in line_iter.by_ref() {
-        let tokens: Vec<String> = line.split(',')
+        let tokens: Vec<String> = line
+            .split(',')
             .filter_map(|val| {
                 let v = val.trim();
                 if v != "" {
