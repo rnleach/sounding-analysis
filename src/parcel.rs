@@ -3,10 +3,10 @@
 use optional::Optioned;
 
 use metfor;
-use sounding_base::{DataRow, Sounding};
+use sounding_base::{DataRow, Profile::*, Sounding};
 
 use error::*;
-use interpolation::linear_interpolate_sounding;
+use interpolation::{linear_interp, linear_interpolate_sounding};
 use profile::equivalent_potential_temperature;
 
 /// Variables defining a parcel as used in parcel analysis.
@@ -213,4 +213,58 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
     let row = snd.get_data_row(idx).ok_or(AnalysisError::NoDataProfile)?;
 
     Parcel::from_datarow(row).ok_or(AnalysisError::MissingValue)
+}
+
+/// Get the convective parcel - this is the surface parcel that will rise without any lifting.
+///
+/// This is based off the mixing ratio of the mixed layer parcel.
+pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
+    let Parcel {
+        dew_point: dp,
+        pressure: initial_p,
+        ..
+    } = mixed_layer_parcel(snd)?;
+    let tgt_mw = metfor::mixing_ratio(dp, initial_p)?;
+
+    let pressure = snd.get_profile(Pressure);
+    let temperature = snd.get_profile(Temperature);
+
+    let (tgt_p, tgt_t) = izip!(pressure, temperature)
+        .filter_map(|(p, t)| {
+            let p = p.into_option()?;
+            let t = t.into_option()?;
+            let mw = metfor::mixing_ratio(t, p).ok()?;
+
+            Some((p, t, mw))
+        })
+        .skip_while(|(_, _, mw)| *mw <= tgt_mw)
+        .scan((0.0, 0.0, 0.0), |(old_p, old_t, old_mw), (p, t, mw)| {
+            let result = if mw < tgt_mw && *old_mw >= tgt_mw {
+                // found the crossing
+                let tgt_p = linear_interp(tgt_mw, *old_mw, mw, *old_p, p);
+                let tgt_t = linear_interp(tgt_mw, *old_mw, mw, *old_t, t);
+
+                Some((tgt_p, tgt_t))
+            } else {
+                None
+            };
+
+            // save these as the new ones
+            *old_p = p;
+            *old_t = t;
+            *old_mw = mw;
+
+            result
+        })
+        .nth(0)
+        .ok_or(AnalysisError::NotEnoughData)?;
+
+    let tgt_theta = metfor::theta_kelvin(tgt_p, tgt_t)?;
+    let tgt_t = metfor::temperature_c_from_theta(tgt_theta, initial_p)?;
+
+    Ok(Parcel {
+        pressure: initial_p,
+        temperature: tgt_t,
+        dew_point: dp,
+    })
 }

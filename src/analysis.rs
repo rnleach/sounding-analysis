@@ -7,7 +7,7 @@ use sounding_base::Sounding;
 
 use indexes::{haines, kindex, precipitable_water, swet, total_totals};
 use keys::ProfileIndex;
-use parcel::{mixed_layer_parcel, most_unstable_parcel, surface_parcel};
+use parcel::{convective_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel};
 use parcel_profile::{dcape, lift_parcel, ParcelAnalysis, ParcelProfile};
 
 /// Convenient package for commonly requested analysis values.
@@ -38,6 +38,7 @@ pub struct Analysis {
     mixed_layer: Option<ParcelAnalysis>,
     surface: Option<ParcelAnalysis>,
     most_unstable: Option<ParcelAnalysis>,
+    convective: Option<ParcelAnalysis>,
 
     // Provider analysis
     provider_analysis: HashMap<&'static str, f64>,
@@ -61,6 +62,7 @@ impl Analysis {
             mixed_layer: None,
             surface: None,
             most_unstable: None,
+            convective: None,
 
             provider_analysis: HashMap::new(),
         }
@@ -159,9 +161,23 @@ impl Analysis {
         }
     }
 
-    /// Get the surface parcel analysis
+    /// Get the most unstable parcel analysis
     pub fn get_most_unstable_parcel_analysis(&self) -> Option<&ParcelAnalysis> {
         self.most_unstable.as_ref()
+    }
+
+    /// Set the convective parcel analysis.
+    pub fn with_convective_parcel_analysis<T>(self, anal: T) -> Self
+    where
+        Option<ParcelAnalysis>: From<T>,
+    {
+        let convective = Option::from(anal);
+        Analysis { convective, ..self }
+    }
+
+    /// Get the convective parcel analysis
+    pub fn get_convective_parcel_analysis(&self) -> Option<&ParcelAnalysis> {
+        self.convective.as_ref()
     }
 
     /// Set the downburst profile
@@ -241,6 +257,12 @@ impl Analysis {
         }
         if self.surface.is_none() {
             self.surface = match surface_parcel(&self.sounding) {
+                Ok(parcel) => lift_parcel(parcel, &self.sounding).ok(),
+                Err(_) => None,
+            };
+        }
+        if self.convective.is_none() {
+            self.convective = match convective_parcel(&self.sounding) {
                 Ok(parcel) => lift_parcel(parcel, &self.sounding).ok(),
                 Err(_) => None,
             };
