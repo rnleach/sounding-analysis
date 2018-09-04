@@ -25,6 +25,10 @@ pub struct Analysis {
     total_totals: Option<f64>,
     haines: Option<f64>,
 
+    //
+    // TODO: Add all three of the haines indexes?
+    //
+
     // Downburst
     dcape: Option<f64>,
     downrush_t: Option<f64>,
