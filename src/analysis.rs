@@ -164,6 +164,18 @@ impl Analysis {
         self.most_unstable.as_ref()
     }
 
+    /// Set the downburst profile
+    pub fn with_downburst_profile<T>(self, parcel_profile: T) -> Self
+    where
+        Option<ParcelProfile>: From<T>,
+    {
+        let downburst_profile = Option::from(parcel_profile);
+        Analysis {
+            downburst_profile,
+            ..self
+        }
+    }
+
     /// Get the downburst profile
     pub fn get_downburst_profile(&self) -> Option<&ParcelProfile> {
         self.downburst_profile.as_ref()
