@@ -2,14 +2,14 @@
 // cargo and rustc
 //
 /target/
-/rls/
 **/*.rs.bk
 Cargo.lock
 
 //
-// Sublime editor
+// Editor specific
 //
-*.sublime-workspace
+*.sublime*
+.vscode
 
 //
 // OS specific

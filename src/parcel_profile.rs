@@ -284,7 +284,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
 
     let lcl_pressure = Some(lcl_pressure);
     let lcl_temperature = Some(lcl_temperature);
-    let lcl_height_agl = snd.get_station_info()
+    let lcl_height_agl = snd
+        .get_station_info()
         .elevation()
         .into_option()
         .map(|elev| lcl_height - elev);
@@ -668,4 +669,77 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
         .ok_or(AnalysisError::MissingValue)?;
 
     Ok((profile, dcape, downrush_t))
+}
+
+/// Partition the CAPE between dry and moist ascent contributions. EXPERIMENTAL.
+///
+/// This is an experimental function that calculates how much CAPE there would be with a "dry"
+/// ascent only. Above the LCL it keeps the parcel saturated but keeps lifting it at the dry
+/// adiabatic lapse rate, and then calculates the CAPE of this profile. The difference between this
+/// value and the CAPE is the amount of CAPE added by latent heat release. It isn't perfect, but
+/// when applied to a convective parcel (think CCL and convective temperature) it can be used
+/// to partition the energy contributed by heating the column from the sun and the energy added by
+/// latent heat release. This can be useful for analyzing convection initiated by wildfire and
+/// estimating how much the convective column is being driven by the surface heating and how much it
+/// is being driven by latent heat release.
+///
+/// Returns a tuple with `(dry_cape, wet_cape)`
+pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
+    let total_cape = pa.cape.ok_or(AnalysisError::MissingValue)?;
+    let lcl = pa.lcl_pressure.ok_or(AnalysisError::MissingValue)?;
+
+    let parcel_theta = pa.parcel.theta()?;
+
+    let lower_dry_profile = izip!(
+        &pa.profile.pressure,
+        &pa.profile.height,
+        &pa.profile.parcel_t,
+        &pa.profile.environment_t
+    ).take_while(|(p, _, _, _)| **p >= lcl)
+        .map(|(_, h, pt, et)| (*h, *pt, *et));
+
+    let upper_dry_profile = izip!(
+        &pa.profile.pressure,
+        &pa.profile.height,
+        &pa.profile.environment_t
+    ).skip_while(|(p, _, _)| **p >= lcl)
+        .filter_map(|(p, h, et)| {
+            metfor::temperature_c_from_theta(parcel_theta, *p)
+                .and_then(|t| metfor::virtual_temperature_c(t, t, *p))
+                .ok()
+                .and_then(|pt| Some((*p, *h, pt, *et)))
+        })
+        .take_while(|(_, _, pt, et)| pt >= et)
+        .map(|(_, h, pt, et)| (h, pt, et));
+
+    let dry_profile = lower_dry_profile.chain(upper_dry_profile);
+
+    let dry_cape = dry_profile
+        .fold((0.0, 1_000_000.0, 0.0, 0.0), |acc, (h, pt, et)| {
+            let (mut cape, prev_h, prev_pt, prev_et) = acc;
+
+            let (pt, et) = match (metfor::celsius_to_kelvin(pt), metfor::celsius_to_kelvin(et)) {
+                (Ok(pt), Ok(et)) => (pt, et),
+                _ => return (cape, prev_h, prev_pt, prev_et),
+            };
+
+            let dz = h - prev_h;
+
+            if dz <= 0.0 {
+                // Must be just starting out, save the previous layer and move on
+                (cape, h, pt, et)
+            } else {
+                let bouyancy = ((pt - et) / et + (prev_pt - prev_et) / prev_et) * dz;
+                if bouyancy > 0.0 {
+                    cape += bouyancy;
+                }
+                (cape, h, pt, et)
+            }
+        })
+        .0;
+
+    let dry_cape = dry_cape / 2.0 * 9.81;
+    let wet_cape = total_cape - dry_cape;
+
+    Ok((dry_cape, wet_cape))
 }

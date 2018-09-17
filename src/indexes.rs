@@ -1,9 +1,9 @@
 //! Indexes that are specific to a sounding, but not a particular parcel analysis of that sounding.
-
 use sounding_base::{Profile, Sounding};
 
 use error::*;
 use interpolation::linear_interpolate_sounding;
+use metfor::vapor_pressure_liquid_water;
 
 /// The Total Totals index
 pub fn total_totals(snd: &Sounding) -> Result<f64> {
@@ -105,99 +105,225 @@ pub fn precipitable_water(snd: &Sounding) -> Result<f64> {
     Ok(integrated_mw / 9.81 / 997.0 * 100_000.0 / 2.0)
 }
 
-/// The Haines index for fire weather
+/// The Haines index for fire weather.
 #[inline]
 pub fn haines(snd: &Sounding) -> Result<f64> {
     snd.get_station_info()
         .elevation()
         .into_option()
-        .and_then(|elev_meters| {
-            let (stability_term, stability_cutoffs, moisture_term, moisture_cutoffs) =
-                if elev_meters <= 304.8 {
-                    // Low elevation Haines
-                    let level1 = linear_interpolate_sounding(snd, 950.0).ok()?;
-                    let level2 = linear_interpolate_sounding(snd, 850.0).ok()?;
-
-                    let t_low = level1.temperature.ok_or(AnalysisError::MissingValue).ok()?;
-                    let t_hi = level2.temperature.ok_or(AnalysisError::MissingValue).ok()?;
-                    let dp_hi = level2.dew_point.ok_or(AnalysisError::MissingValue).ok()?;
-
-                    let stability_term = t_low - t_hi;
-                    const STABILITY_CUTOFFS: (f64, f64) = (4.0, 7.0);
-
-                    let moisture_term = t_hi - dp_hi;
-                    const MOISTURE_CUTOFFS: (f64, f64) = (6.0, 9.0);
-
-                    (
-                        stability_term,
-                        STABILITY_CUTOFFS,
-                        moisture_term,
-                        MOISTURE_CUTOFFS,
-                    )
-                } else if elev_meters <= 914.4 {
-                    // Mid elevation Haines
-                    let level1 = linear_interpolate_sounding(snd, 850.0).ok()?;
-                    let level2 = linear_interpolate_sounding(snd, 700.0).ok()?;
-
-                    let t_low = level1.temperature.ok_or(AnalysisError::MissingValue).ok()?;
-                    let t_hi = level2.temperature.ok_or(AnalysisError::MissingValue).ok()?;
-                    let dp_low = level2.dew_point.ok_or(AnalysisError::MissingValue).ok()?;
-
-                    let stability_term = t_low - t_hi;
-                    const STABILITY_CUTOFFS: (f64, f64) = (6.0, 10.0);
-
-                    let moisture_term = t_low - dp_low;
-                    const MOISTURE_CUTOFFS: (f64, f64) = (6.0, 12.0);
-
-                    (
-                        stability_term,
-                        STABILITY_CUTOFFS,
-                        moisture_term,
-                        MOISTURE_CUTOFFS,
-                    )
-                } else {
-                    // High elevation Haines
-                    let level1 = linear_interpolate_sounding(snd, 700.0).ok()?;
-                    let level2 = linear_interpolate_sounding(snd, 500.0).ok()?;
-
-                    let t_low = level1.temperature.ok_or(AnalysisError::MissingValue).ok()?;
-                    let t_hi = level2.temperature.ok_or(AnalysisError::MissingValue).ok()?;
-                    let dp_low = level2.dew_point.ok_or(AnalysisError::MissingValue).ok()?;
-
-                    let stability_term = t_low - t_hi;
-                    const STABILITY_CUTOFFS: (f64, f64) = (18.0, 21.0);
-
-                    let moisture_term = t_low - dp_low;
-                    const MOISTURE_CUTOFFS: (f64, f64) = (15.0, 20.0);
-
-                    (
-                        stability_term,
-                        STABILITY_CUTOFFS,
-                        moisture_term,
-                        MOISTURE_CUTOFFS,
-                    )
-                };
-
-            let stability_part = if stability_term < stability_cutoffs.0 {
-                1.0
-            } else if stability_term < stability_cutoffs.1 {
-                2.0
-            } else {
-                3.0
-            };
-
-            let moisture_part = if moisture_term < moisture_cutoffs.0 {
-                1.0
-            } else if moisture_term < moisture_cutoffs.1 {
-                2.0
-            } else {
-                3.0
-            };
-
-            let haines_index = stability_part + moisture_part;
-
-            debug_assert!(haines_index <= 6.0);
-            Some(haines_index)
-        })
         .ok_or(AnalysisError::MissingValue)
+        .and_then(|elev_meters| {
+            if elev_meters <= 304.8 {
+                haines_low(snd)
+            } else if elev_meters <= 914.4 {
+                haines_mid(snd)
+            } else {
+                haines_high(snd)
+            }
+        })
+}
+
+/// The low level version of the Haines index for fire weather.
+#[inline]
+pub fn haines_low(snd: &Sounding) -> Result<f64> {
+    let level1 = linear_interpolate_sounding(snd, 950.0)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+    let level2 = linear_interpolate_sounding(snd, 850.0)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+
+    let t_low = level1
+        .temperature
+        .ok_or(AnalysisError::MissingValue)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+    let t_hi = level2
+        .temperature
+        .ok_or(AnalysisError::MissingValue)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+    let dp_hi = level2
+        .dew_point
+        .ok_or(AnalysisError::MissingValue)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+
+    let stability_term = t_low - t_hi;
+    let stability_term = if stability_term >= 7.0 {
+        3.0
+    } else if stability_term >= 4.0 {
+        2.0
+    } else {
+        1.0
+    };
+
+    let moisture_term = t_hi - dp_hi;
+    let moisture_term = if moisture_term >= 9.0 {
+        3.0
+    } else if moisture_term >= 6.0 {
+        2.0
+    } else {
+        1.0
+    };
+
+    return Ok(stability_term + moisture_term);
+}
+
+/// The mid level version of the Haines index for fire weather.
+#[inline]
+pub fn haines_mid(snd: &Sounding) -> Result<f64> {
+    let level1 = linear_interpolate_sounding(snd, 850.0)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+    let level2 = linear_interpolate_sounding(snd, 70.0)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+
+    let t_low = level1
+        .temperature
+        .ok_or(AnalysisError::MissingValue)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+    let t_hi = level2
+        .temperature
+        .ok_or(AnalysisError::MissingValue)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+    let dp_hi = level2
+        .dew_point
+        .ok_or(AnalysisError::MissingValue)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+
+    let stability_term = t_low - t_hi;
+    let stability_term = if stability_term >= 10.0 {
+        3.0
+    } else if stability_term >= 6.0 {
+        2.0
+    } else {
+        1.0
+    };
+
+    let moisture_term = t_hi - dp_hi;
+    let moisture_term = if moisture_term >= 12.0 {
+        3.0
+    } else if moisture_term >= 6.0 {
+        2.0
+    } else {
+        1.0
+    };
+
+    return Ok(stability_term + moisture_term);
+}
+
+/// The high level version of the Haines index for fire weather.
+#[inline]
+pub fn haines_high(snd: &Sounding) -> Result<f64> {
+    let level1 = linear_interpolate_sounding(snd, 700.0)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+    let level2 = linear_interpolate_sounding(snd, 500.0)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+
+    let t_low = level1
+        .temperature
+        .ok_or(AnalysisError::MissingValue)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+    let t_hi = level2
+        .temperature
+        .ok_or(AnalysisError::MissingValue)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+    let dp_hi = level2
+        .dew_point
+        .ok_or(AnalysisError::MissingValue)
+        .ok()
+        .ok_or(AnalysisError::MissingValue)?;
+
+    let stability_term = t_low - t_hi;
+    let stability_term = if stability_term >= 21.0 {
+        3.0
+    } else if stability_term >= 18.0 {
+        2.0
+    } else {
+        1.0
+    };
+
+    let moisture_term = t_hi - dp_hi;
+    let moisture_term = if moisture_term >= 20.0 {
+        3.0
+    } else if moisture_term >= 15.0 {
+        2.0
+    } else {
+        1.0
+    };
+
+    return Ok(stability_term + moisture_term);
+}
+
+/// The Hot-Dry-Windy index
+#[inline]
+pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
+    let elevation = if let Some(sfc_h) = snd.get_station_info().elevation().into_option() {
+        sfc_h
+    } else {
+        if let Some(lowest_h) = snd
+            .get_profile(Profile::GeopotentialHeight)
+            .iter()
+            .filter_map(|optd| {
+                if optd.is_some() {
+                    Some(optd.unpack())
+                } else {
+                    None
+                }
+            })
+            .nth(0)
+        {
+            lowest_h
+        } else {
+            return Err(AnalysisError::NotEnoughData);
+        }
+    };
+
+    let h_profile = snd.get_profile(Profile::GeopotentialHeight); // Meters
+    let t_profile = snd.get_profile(Profile::Temperature); // C
+    let dp_profile = snd.get_profile(Profile::DewPoint); // C
+    let ws_profile = snd.get_profile(Profile::WindSpeed); // in knots
+
+    let (vpd, ws) = izip!(h_profile, t_profile, dp_profile, ws_profile)
+        // Remove rows with missing data
+        .filter_map(|(h, t, dp, ws)|{
+            if h.is_some() && t.is_some() && dp.is_some() && ws.is_some() {
+                Some((h.unpack(), t.unpack(), dp.unpack(), ws.unpack()))
+            } else {
+                None
+            }
+        })
+        // Only look up to 500 m above AGL
+        .take_while(|(h, _, _, _)| *h <= elevation + 500.0)
+        // Convert t and dp to VPD
+        .filter_map(|(_, t, dp, ws)|{
+            match vapor_pressure_liquid_water(t){
+                Ok(sat_vap) => {
+                    match vapor_pressure_liquid_water(dp){
+                        Ok(vap) => {
+                            Some((sat_vap - vap, ws))
+                        },
+                        Err(_) => None,
+                    }
+                },
+                Err(_) => None,
+            }
+        })
+        // Convert knots to m/s
+        .map(|(vpd, ws)|(vpd, ws * 0.514444))
+        // Choose the max.
+        .fold((0.0, 0.0), |(vpd_max, ws_max),(vpd, ws)|{
+            (vpd.max(vpd_max), ws.max(ws_max))
+        });
+
+    Ok(vpd * ws)
 }
