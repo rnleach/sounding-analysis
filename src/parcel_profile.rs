@@ -1,7 +1,7 @@
 //! Create and analyze a profile from lifting or descending a parcel.
 
 use metfor;
-use sounding_base::{Profile::*, Sounding};
+use sounding_base::{Profile::*, Sounding, DataRow};
 
 use error::*;
 use interpolation::{linear_interp, linear_interpolate_sounding};
@@ -112,7 +112,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
     //
     // The starting level to lift the parcel from
     //
-    let parcel_start_data = linear_interpolate_sounding(snd, parcel.pressure)?;
+    let (parcel_start_data, parcel) = find_parcel_start_data(snd, &parcel)?;
+    println!("parcel_start_dat: {:?}", parcel_start_data);
 
     //
     // How to calculate a parcel temperature for a given pressure level
@@ -347,6 +348,36 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         lfc_pressure,
         lifted_index,
     })
+}
+
+// In order for parcel lifting to work and create a parallel environmental profile, we need to 
+// start at a level in the sounding with pressure, height, temperature, and dew point. Otherwise
+// we end up with too much missing data in the sounding.
+fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<(DataRow, Parcel)> {
+
+    let good_row = |row: &DataRow| -> bool {
+        row.temperature.is_some() && row.dew_point.is_some() && row.pressure.is_some()
+            && row.height.is_some()
+    };
+
+    let first_guess = linear_interpolate_sounding(snd, parcel.pressure)?;
+    if good_row(&first_guess) {
+        return Ok((first_guess, *parcel));
+    }
+
+    let second_guess = snd.bottom_up()
+        .filter(good_row)
+        .nth(0)
+        .ok_or(AnalysisError::NotEnoughData)?;
+
+    let pressure = second_guess.pressure.ok_or(AnalysisError::InvalidInput)?;
+    let theta = parcel.theta()?;
+    let temperature = metfor::temperature_c_from_theta(theta, pressure)?;
+    let mw = parcel.mixing_ratio()?;
+    let dew_point = metfor::dew_point_from_p_and_mw(pressure, mw)?;
+    let new_parcel = Parcel {pressure, temperature, dew_point};
+
+    Ok((second_guess, new_parcel))
 }
 
 /// Descend a parcel dry adiabatically.
