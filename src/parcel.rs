@@ -219,11 +219,13 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
 ///
 /// This is based off the mixing ratio of the mixed layer parcel.
 pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
+
     let Parcel {
         dew_point: dp,
         pressure: initial_p,
         ..
     } = mixed_layer_parcel(snd)?;
+
     let tgt_mw = metfor::mixing_ratio(dp, initial_p)?;
 
     let pressure = snd.get_profile(Pressure);
@@ -239,14 +241,15 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
         })
         .skip_while(|(_, _, mw)| *mw <= tgt_mw)
         .scan((0.0, 0.0, 0.0), |(old_p, old_t, old_mw), (p, t, mw)| {
+
             let result = if mw < tgt_mw && *old_mw >= tgt_mw {
                 // found the crossing
                 let tgt_p = linear_interp(tgt_mw, *old_mw, mw, *old_p, p);
                 let tgt_t = linear_interp(tgt_mw, *old_mw, mw, *old_t, t);
 
-                Some((tgt_p, tgt_t))
+                Some(Some((tgt_p, tgt_t)))
             } else {
-                None
+                Some(None)
             };
 
             // save these as the new ones
@@ -256,6 +259,7 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
 
             result
         })
+        .filter_map(|opt_opt| opt_opt)
         .nth(0)
         .ok_or(AnalysisError::NotEnoughData)?;
 
