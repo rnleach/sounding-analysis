@@ -113,7 +113,6 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
     // The starting level to lift the parcel from
     //
     let (parcel_start_data, parcel) = find_parcel_start_data(snd, &parcel)?;
-    println!("parcel_start_dat: {:?}", parcel_start_data);
 
     //
     // How to calculate a parcel temperature for a given pressure level

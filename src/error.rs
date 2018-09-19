@@ -31,19 +31,6 @@ pub enum AnalysisError {
 /// Shorthand for results.
 pub type Result<T> = ::std::result::Result<T, AnalysisError>;
 
-impl AnalysisError {
-    #[allow(missing_docs)]
-    pub fn tag(self, file: &str, line: u32) -> Self {
-        if cfg!(debug_assertions) {
-            println!(
-                "\n******\n\n\nError initiated in {} on line {}: {}\n\n\n******",
-                file, line, self
-            );
-        }
-        self
-    }
-}
-
 impl From<metfor::MetForErr> for AnalysisError {
     fn from(err: metfor::MetForErr) -> Self {
         AnalysisError::MetForError(err)
