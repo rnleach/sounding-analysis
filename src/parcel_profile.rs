@@ -1,7 +1,7 @@
 //! Create and analyze a profile from lifting or descending a parcel.
 
 use metfor;
-use sounding_base::{Profile::*, Sounding};
+use sounding_base::{DataRow, Profile::*, Sounding};
 
 use error::*;
 use interpolation::{linear_interp, linear_interpolate_sounding};
@@ -112,7 +112,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
     //
     // The starting level to lift the parcel from
     //
-    let parcel_start_data = linear_interpolate_sounding(snd, parcel.pressure)?;
+    let (parcel_start_data, parcel) = find_parcel_start_data(snd, &parcel)?;
 
     //
     // How to calculate a parcel temperature for a given pressure level
@@ -173,7 +173,9 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
 
         // Start by adding the parcel level
         let mut p0 = parcel.pressure;
-        let mut h0 = parcel_start_data.height.ok_or(AnalysisError::InvalidInput)?;
+        let mut h0 = parcel_start_data
+            .height
+            .ok_or(AnalysisError::InvalidInput)?;
         let mut pcl_t0 = parcel.virtual_temperature_c()?;
         let mut env_t0 = parcel_start_data
             .dew_point
@@ -349,6 +351,42 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
     })
 }
 
+// In order for parcel lifting to work and create a parallel environmental profile, we need to
+// start at a level in the sounding with pressure, height, temperature, and dew point. Otherwise
+// we end up with too much missing data in the sounding.
+fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<(DataRow, Parcel)> {
+    let good_row = |row: &DataRow| -> bool {
+        row.temperature.is_some()
+            && row.dew_point.is_some()
+            && row.pressure.is_some()
+            && row.height.is_some()
+    };
+
+    let first_guess = linear_interpolate_sounding(snd, parcel.pressure)?;
+    if good_row(&first_guess) {
+        return Ok((first_guess, *parcel));
+    }
+
+    let second_guess = snd
+        .bottom_up()
+        .filter(good_row)
+        .nth(0)
+        .ok_or(AnalysisError::NotEnoughData)?;
+
+    let pressure = second_guess.pressure.ok_or(AnalysisError::InvalidInput)?;
+    let theta = parcel.theta()?;
+    let temperature = metfor::temperature_c_from_theta(theta, pressure)?;
+    let mw = parcel.mixing_ratio()?;
+    let dew_point = metfor::dew_point_from_p_and_mw(pressure, mw)?;
+    let new_parcel = Parcel {
+        pressure,
+        temperature,
+        dew_point,
+    };
+
+    Ok((second_guess, new_parcel))
+}
+
 /// Descend a parcel dry adiabatically.
 ///
 /// The resulting `ParcelProfile` has actual temperatures and not virtual temperatures. This is for
@@ -480,7 +518,9 @@ where
         // Add the parcel layer also
         let parcel_level = linear_interpolate_sounding(snd, parcel.pressure)?;
         let parcel_height = parcel_level.height.ok_or(AnalysisError::MissingValue)?;
-        let env_t = parcel_level.temperature.ok_or(AnalysisError::MissingValue)?;
+        let env_t = parcel_level
+            .temperature
+            .ok_or(AnalysisError::MissingValue)?;
         add_row(parcel.pressure, parcel_height, parcel.temperature, env_t);
     }
 
@@ -550,8 +590,7 @@ fn cape_cin(
                     ((cape, cin, hail_cape), h, pt, et)
                 }
             },
-        )
-        .0;
+        ).0;
 
     Ok((
         cape / 2.0 * 9.81,
@@ -572,11 +611,11 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
     let p = snd.get_profile(Pressure);
 
     // Find the lowest pressure
-    let top_p = -400.0
-        + p.iter()
-            .filter_map(|p| if p.is_some() { Some(p.unpack()) } else { None })
-            .nth(0)
-            .ok_or(AnalysisError::NotEnoughData)?;
+    let top_p = -400.0 + p
+        .iter()
+        .filter_map(|p| if p.is_some() { Some(p.unpack()) } else { None })
+        .nth(0)
+        .ok_or(AnalysisError::NotEnoughData)?;
 
     // Find the starting parcel.
     let pcl = izip!(p, t, dp)
@@ -586,8 +625,7 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
             } else {
                 None
             }
-        })
-        .take_while(|(p, _, _)| *p >= top_p)
+        }).take_while(|(p, _, _)| *p >= top_p)
         .fold(
             Err(AnalysisError::NotEnoughData),
             |acc: Result<Parcel>, (p, t, dp)| match metfor::theta_e_kelvin(t, dp, p) {
@@ -696,21 +734,20 @@ pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
         &pa.profile.parcel_t,
         &pa.profile.environment_t
     ).take_while(|(p, _, _, _)| **p >= lcl)
-        .map(|(_, h, pt, et)| (*h, *pt, *et));
+    .map(|(_, h, pt, et)| (*h, *pt, *et));
 
     let upper_dry_profile = izip!(
         &pa.profile.pressure,
         &pa.profile.height,
         &pa.profile.environment_t
     ).skip_while(|(p, _, _)| **p >= lcl)
-        .filter_map(|(p, h, et)| {
-            metfor::temperature_c_from_theta(parcel_theta, *p)
-                .and_then(|t| metfor::virtual_temperature_c(t, t, *p))
-                .ok()
-                .and_then(|pt| Some((*p, *h, pt, *et)))
-        })
-        .take_while(|(_, _, pt, et)| pt >= et)
-        .map(|(_, h, pt, et)| (h, pt, et));
+    .filter_map(|(p, h, et)| {
+        metfor::temperature_c_from_theta(parcel_theta, *p)
+            .and_then(|t| metfor::virtual_temperature_c(t, t, *p))
+            .ok()
+            .and_then(|pt| Some((*p, *h, pt, *et)))
+    }).take_while(|(_, _, pt, et)| pt >= et)
+    .map(|(_, h, pt, et)| (h, pt, et));
 
     let dry_profile = lower_dry_profile.chain(upper_dry_profile);
 
@@ -735,8 +772,7 @@ pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
                 }
                 (cape, h, pt, et)
             }
-        })
-        .0;
+        }).0;
 
     let dry_cape = dry_cape / 2.0 * 9.81;
     let wet_cape = total_cape - dry_cape;

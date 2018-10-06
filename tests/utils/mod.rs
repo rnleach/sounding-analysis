@@ -292,8 +292,7 @@ fn load_test_csv_sounding(
                 } else {
                     None
                 }
-            })
-            .collect();
+            }).collect();
 
         if tokens.len() < 2 {
             continue;
@@ -317,8 +316,7 @@ fn load_test_csv_sounding(
                 } else {
                     None
                 }
-            })
-            .collect();
+            }).collect();
         if tokens.len() < 1 {
             continue;
         }
