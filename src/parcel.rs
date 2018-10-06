@@ -178,7 +178,8 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
         .filter(|p| p.is_some())
         .nth(0)
         .ok_or(AnalysisError::NotEnoughData)?
-        .unpack() - 300.0;
+        .unpack()
+        - 300.0;
 
     let (idx, _) = izip!(0.., press, theta_e)
         .take_while(|&(_, press_opt, _)| {
@@ -191,15 +192,13 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
             } else {
                 true // Don't stop just because one is missing or the none value
             }
-        })
-        .filter_map(|(idx, _, theta_e_opt)| {
+        }).filter_map(|(idx, _, theta_e_opt)| {
             if theta_e_opt.is_some() {
                 Some((idx, theta_e_opt.unpack()))
             } else {
                 None
             }
-        })
-        .fold(
+        }).fold(
             (::std::usize::MAX, ::std::f64::MIN),
             |(max_idx, max_val), (i, theta_e)| {
                 if theta_e > max_val {
@@ -219,7 +218,6 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
 ///
 /// This is based off the mixing ratio of the mixed layer parcel.
 pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
-
     let Parcel {
         dew_point: dp,
         pressure: initial_p,
@@ -238,10 +236,8 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
             let mw = metfor::mixing_ratio(t, p).ok()?;
 
             Some((p, t, mw))
-        })
-        .skip_while(|(_, _, mw)| *mw <= tgt_mw)
+        }).skip_while(|(_, _, mw)| *mw <= tgt_mw)
         .scan((0.0, 0.0, 0.0), |(old_p, old_t, old_mw), (p, t, mw)| {
-
             let result = if mw < tgt_mw && *old_mw >= tgt_mw {
                 // found the crossing
                 let tgt_p = linear_interp(tgt_mw, *old_mw, mw, *old_p, p);
@@ -258,8 +254,7 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
             *old_mw = mw;
 
             result
-        })
-        .filter_map(|opt_opt| opt_opt)
+        }).filter_map(|opt_opt| opt_opt)
         .nth(0)
         .ok_or(AnalysisError::NotEnoughData)?;
 

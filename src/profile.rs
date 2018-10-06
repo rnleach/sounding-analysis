@@ -34,8 +34,7 @@ pub fn wet_bulb(snd: &Sounding) -> Vec<Optioned<f64>> {
                     })
                 })
             })
-        })
-        .collect()
+        }).collect()
 }
 
 /// Given a sounding, calculate a profile of relative humidity.
@@ -57,8 +56,7 @@ pub fn relative_humidity(snd: &Sounding) -> Vec<Optioned<f64>> {
                     .into()
                 })
             })
-        })
-        .collect()
+        }).collect()
 }
 
 /// Given a sounding, calculate a profile of the potential temperature.
@@ -80,8 +78,7 @@ pub fn potential_temperature(snd: &Sounding) -> Vec<Optioned<f64>> {
                     .into()
                 })
             })
-        })
-        .collect()
+        }).collect()
 }
 
 /// Given a sounding, calculate a profile of the equivalent potential temperature.
@@ -106,8 +103,7 @@ pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Optioned<f64>> {
                     })
                 })
             })
-        })
-        .collect()
+        }).collect()
 }
 
 /// Get a profile of the lapse rate between layers in &deg;C / km.
@@ -143,8 +139,7 @@ pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>>
             } else {
                 none()
             }
-        })
-        .collect()
+        }).collect()
 }
 
 /// Get the lapse rate of equivalent potential temperature in &deg;K / km.
@@ -178,8 +173,7 @@ fn lapse_rate<I: Iterator<Item = Optioned<f64>>>(
             *prev_v = v;
 
             Some(lapse_rate)
-        })
-        .collect()
+        }).collect()
 }
 
 /// Get the hydrolapse in (kg/kg)/km
@@ -213,8 +207,7 @@ pub fn hydrolapse(snd: &Sounding) -> Vec<Optioned<f64>> {
             *prev_mw = mw;
 
             Some(mw_lapse_rate)
-        })
-        .collect()
+        }).collect()
 }
 
 #[cfg(test)]
