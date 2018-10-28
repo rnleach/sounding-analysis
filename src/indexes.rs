@@ -200,7 +200,6 @@ pub fn haines_high(snd: &Sounding) -> Result<f64> {
     let dp_low = level1.dew_point.ok_or(AnalysisError::MissingValue)?;
 
     let stability_term = (t_low - t_hi).round();
-    println!("stability {}", stability_term);
     let stability_term = if stability_term >= 22.0 {
         3.0
     } else if stability_term > 17.0 {
@@ -210,7 +209,6 @@ pub fn haines_high(snd: &Sounding) -> Result<f64> {
     };
 
     let moisture_term = (t_low - dp_low).round();
-    println!("moisture term {}", moisture_term);
     let moisture_term = if moisture_term >= 21.0 {
         3.0
     } else if moisture_term > 14.0 {
