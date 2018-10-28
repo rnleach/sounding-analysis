@@ -613,7 +613,7 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
     // Find the lowest pressure
     let top_p = -400.0 + p
         .iter()
-        .filter_map(|p| if p.is_some() { Some(p.unpack()) } else { None })
+        .filter_map(|p| p.into_option())
         .nth(0)
         .ok_or(AnalysisError::NotEnoughData)?;
 
@@ -690,7 +690,7 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
             continue;
         }
 
-        dcape += (pt - et) / et + (pt0 - et0) / et0;
+        dcape += ((pt - et) / et + (pt0 - et0) / et0) * dz;
 
         h0 = h;
         pt0 = pt;
