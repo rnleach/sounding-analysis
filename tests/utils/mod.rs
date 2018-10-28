@@ -177,6 +177,7 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::haines_low,
                         "haines_low",
+                        0.5,
                         0.0,
                     );
                 }
@@ -189,6 +190,7 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::haines_mid,
                         "haines_mid",
+                        0.5,
                         0.0,
                     );
                 }
@@ -201,6 +203,7 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::haines_high,
                         "haines_high",
+                        0.5,
                         0.0,
                     );
                 }
@@ -208,7 +211,7 @@ macro_rules! test_file {
                 #[test]
                 fn test_haines() {
                     let (snd, _, fvals) = load_data();
-                    index_tests::test_index(&snd, &fvals, sounding_analysis::haines, "haines", 0.0);
+                    index_tests::test_index(&snd, &fvals, sounding_analysis::haines, "haines", 0.5, 0.0);
                 }
 
                 #[test]
@@ -219,6 +222,7 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::hot_dry_windy,
                         "hdw",
+                        5.0,
                         0.0,
                     );
                 }
@@ -226,13 +230,13 @@ macro_rules! test_file {
                 #[test]
                 fn test_kindex() {
                     let (snd, _, fvals) = load_data();
-                    index_tests::test_index(&snd, &fvals, sounding_analysis::kindex, "kindex", 0.0);
+                    index_tests::test_index(&snd, &fvals, sounding_analysis::kindex, "kindex", 0.1, -1000.0);
                 }
 
                 #[test]
                 fn test_swet() {
                     let (snd, _, fvals) = load_data();
-                    index_tests::test_index(&snd, &fvals, sounding_analysis::swet, "swet", 0.0);
+                    index_tests::test_index(&snd, &fvals, sounding_analysis::swet, "swet", 1.0, -1000.0);
                 }
 
                 #[test]
@@ -243,6 +247,7 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::total_totals,
                         "total_totals",
+                        1.0,
                         0.0,
                     );
                 }
@@ -255,6 +260,7 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::precipitable_water,
                         "precipitable_water",
+                        0.5,
                         0.0,
                     );
                 }
@@ -277,7 +283,13 @@ fn approx_equal(tgt: f64, guess: f64, tol: f64) -> bool {
 
     assert!(tol > 0.0);
 
-    f64::abs(tgt - guess) <= tol
+    let passed = f64::abs(tgt - guess) <= tol;
+    
+    if !passed {
+        println!("left = {} and right = {}", tgt, guess);
+    }
+
+    passed
 }
 
 fn load_test_csv_sounding(
