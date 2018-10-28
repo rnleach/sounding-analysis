@@ -211,7 +211,14 @@ macro_rules! test_file {
                 #[test]
                 fn test_haines() {
                     let (snd, _, fvals) = load_data();
-                    index_tests::test_index(&snd, &fvals, sounding_analysis::haines, "haines", 0.5, 0.0);
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::haines,
+                        "haines",
+                        0.5,
+                        0.0,
+                    );
                 }
 
                 #[test]
@@ -230,13 +237,27 @@ macro_rules! test_file {
                 #[test]
                 fn test_kindex() {
                     let (snd, _, fvals) = load_data();
-                    index_tests::test_index(&snd, &fvals, sounding_analysis::kindex, "kindex", 0.1, -1000.0);
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::kindex,
+                        "kindex",
+                        0.1,
+                        -1000.0,
+                    );
                 }
 
                 #[test]
                 fn test_swet() {
                     let (snd, _, fvals) = load_data();
-                    index_tests::test_index(&snd, &fvals, sounding_analysis::swet, "swet", 1.0, -1000.0);
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::swet,
+                        "swet",
+                        1.0,
+                        -1000.0,
+                    );
                 }
 
                 #[test]
@@ -284,7 +305,7 @@ fn approx_equal(tgt: f64, guess: f64, tol: f64) -> bool {
     assert!(tol > 0.0);
 
     let passed = f64::abs(tgt - guess) <= tol;
-    
+
     if !passed {
         println!("left = {} and right = {}", tgt, guess);
     }

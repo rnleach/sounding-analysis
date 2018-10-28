@@ -18,7 +18,7 @@ pub fn test_index<F: FnOnce(&Sounding) -> Result<f64>>(
         let analysis = anal_func(&snd);
 
         if let Err(anal_err) = analysis {
-            println!("Analysis Error Value: {err:#?} => {err}", err=anal_err);
+            println!("Analysis Error Value: {err:#?} => {err}", err = anal_err);
         }
 
         let analysis = analysis.unwrap_or(err_val);

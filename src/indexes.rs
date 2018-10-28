@@ -124,42 +124,28 @@ pub fn haines(snd: &Sounding) -> Result<f64> {
 /// The low level version of the Haines index for fire weather.
 #[inline]
 pub fn haines_low(snd: &Sounding) -> Result<f64> {
-    let level1 = linear_interpolate_sounding(snd, 950.0)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
-    let level2 = linear_interpolate_sounding(snd, 850.0)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
+    let level1 =
+        linear_interpolate_sounding(snd, 950.0).map_err(|_| AnalysisError::MissingValue)?;
+    let level2 =
+        linear_interpolate_sounding(snd, 850.0).map_err(|_| AnalysisError::MissingValue)?;
 
-    let t_low = level1
-        .temperature
-        .ok_or(AnalysisError::MissingValue)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
-    let t_hi = level2
-        .temperature
-        .ok_or(AnalysisError::MissingValue)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
-    let dp_hi = level2
-        .dew_point
-        .ok_or(AnalysisError::MissingValue)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
+    let t_low = level1.temperature.ok_or(AnalysisError::MissingValue)?;
+    let t_hi = level2.temperature.ok_or(AnalysisError::MissingValue)?;
+    let dp_hi = level2.dew_point.ok_or(AnalysisError::MissingValue)?;
 
-    let stability_term = t_low - t_hi;
-    let stability_term = if stability_term >= 7.0 {
+    let stability_term = (t_low - t_hi).round();
+    let stability_term = if stability_term >= 8.0 {
         3.0
-    } else if stability_term >= 4.0 {
+    } else if stability_term > 3.0 {
         2.0
     } else {
         1.0
     };
 
-    let moisture_term = t_hi - dp_hi;
-    let moisture_term = if moisture_term >= 9.0 {
+    let moisture_term = (t_hi - dp_hi).round();
+    let moisture_term = if moisture_term >= 10.0 {
         3.0
-    } else if moisture_term >= 6.0 {
+    } else if moisture_term > 5.0 {
         2.0
     } else {
         1.0
@@ -171,42 +157,28 @@ pub fn haines_low(snd: &Sounding) -> Result<f64> {
 /// The mid level version of the Haines index for fire weather.
 #[inline]
 pub fn haines_mid(snd: &Sounding) -> Result<f64> {
-    let level1 = linear_interpolate_sounding(snd, 850.0)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
-    let level2 = linear_interpolate_sounding(snd, 70.0)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
+    let level1 =
+        linear_interpolate_sounding(snd, 850.0).map_err(|_| AnalysisError::MissingValue)?;
+    let level2 =
+        linear_interpolate_sounding(snd, 700.0).map_err(|_| AnalysisError::MissingValue)?;
 
-    let t_low = level1
-        .temperature
-        .ok_or(AnalysisError::MissingValue)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
-    let t_hi = level2
-        .temperature
-        .ok_or(AnalysisError::MissingValue)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
-    let dp_hi = level2
-        .dew_point
-        .ok_or(AnalysisError::MissingValue)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
+    let t_low = level1.temperature.ok_or(AnalysisError::MissingValue)?;
+    let t_hi = level2.temperature.ok_or(AnalysisError::MissingValue)?;
+    let dp_low = level1.dew_point.ok_or(AnalysisError::MissingValue)?;
 
-    let stability_term = t_low - t_hi;
-    let stability_term = if stability_term >= 10.0 {
+    let stability_term = (t_low - t_hi).round();
+    let stability_term = if stability_term >= 11.0 {
         3.0
-    } else if stability_term >= 6.0 {
+    } else if stability_term > 5.0 {
         2.0
     } else {
         1.0
     };
 
-    let moisture_term = t_hi - dp_hi;
-    let moisture_term = if moisture_term >= 12.0 {
+    let moisture_term = (t_low - dp_low).round();
+    let moisture_term = if moisture_term >= 13.0 {
         3.0
-    } else if moisture_term >= 6.0 {
+    } else if moisture_term > 5.0 {
         2.0
     } else {
         1.0
@@ -218,42 +190,30 @@ pub fn haines_mid(snd: &Sounding) -> Result<f64> {
 /// The high level version of the Haines index for fire weather.
 #[inline]
 pub fn haines_high(snd: &Sounding) -> Result<f64> {
-    let level1 = linear_interpolate_sounding(snd, 700.0)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
-    let level2 = linear_interpolate_sounding(snd, 500.0)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
+    let level1 =
+        linear_interpolate_sounding(snd, 700.0).map_err(|_| AnalysisError::MissingValue)?;
+    let level2 =
+        linear_interpolate_sounding(snd, 500.0).map_err(|_| AnalysisError::MissingValue)?;
 
-    let t_low = level1
-        .temperature
-        .ok_or(AnalysisError::MissingValue)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
-    let t_hi = level2
-        .temperature
-        .ok_or(AnalysisError::MissingValue)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
-    let dp_hi = level2
-        .dew_point
-        .ok_or(AnalysisError::MissingValue)
-        .ok()
-        .ok_or(AnalysisError::MissingValue)?;
+    let t_low = level1.temperature.ok_or(AnalysisError::MissingValue)?;
+    let t_hi = level2.temperature.ok_or(AnalysisError::MissingValue)?;
+    let dp_low = level1.dew_point.ok_or(AnalysisError::MissingValue)?;
 
-    let stability_term = t_low - t_hi;
-    let stability_term = if stability_term >= 21.0 {
+    let stability_term = (t_low - t_hi).round();
+    println!("stability {}", stability_term);
+    let stability_term = if stability_term >= 22.0 {
         3.0
-    } else if stability_term >= 18.0 {
+    } else if stability_term > 17.0 {
         2.0
     } else {
         1.0
     };
 
-    let moisture_term = t_hi - dp_hi;
-    let moisture_term = if moisture_term >= 20.0 {
+    let moisture_term = (t_low - dp_low).round();
+    println!("moisture term {}", moisture_term);
+    let moisture_term = if moisture_term >= 21.0 {
         3.0
-    } else if moisture_term >= 15.0 {
+    } else if moisture_term > 14.0 {
         2.0
     } else {
         1.0
