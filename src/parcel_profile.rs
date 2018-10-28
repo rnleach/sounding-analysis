@@ -204,8 +204,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         //
         let iter = izip!(snd_pressure, hgt, env_t, env_dp)
             // Remove rows with missing data and unpack options
-            .filter_map(|(p, h, env_t, env_dp)|{
-                if p.is_some() && h.is_some() && env_t.is_some() && env_dp.is_some(){
+            .filter_map(|(p, h, env_t, env_dp)| {
+                if p.is_some() && h.is_some() && env_t.is_some() && env_dp.is_some() {
                     Some((p.unpack(), h.unpack(), env_t.unpack(), env_dp.unpack()))
                 } else {
                     None
@@ -214,14 +214,12 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
             // Remove rows at or below the parcel level
             .filter(move |(p, _, _, _)| *p < p0)
             // Calculate the parcel temperature, skip this level if there is an error
-            .filter_map(|(p, h, env_t, env_dp)| {
-                match calc_parcel_t(p) {
-                    Ok(pcl_t) => Some((p, h, env_t, env_dp, pcl_t)),
-                    Err(_) => None,
-                }
+            .filter_map(|(p, h, env_t, env_dp)| match calc_parcel_t(p) {
+                Ok(pcl_t) => Some((p, h, env_t, env_dp, pcl_t)),
+                Err(_) => None,
             })
             // Calculate the environment virtual temperature, skip levels with errors
-            .filter_map(|(p, h, env_t, env_dp, pcl_t)|{
+            .filter_map(|(p, h, env_t, env_dp, pcl_t)| {
                 match metfor::virtual_temperature_c(env_t, env_dp, p) {
                     Ok(env_vt) => Some((p, h, env_vt, pcl_t)),
                     Err(_) => None,
@@ -464,20 +462,23 @@ where
             // Remove levels with missing data
             .filter_map(|(p_opt, h_opt, e_t_opt, e_dp_opt)| {
                 if p_opt.is_some() && h_opt.is_some() && e_t_opt.is_some() && e_dp_opt.is_some() {
-                    Some((p_opt.unpack(), h_opt.unpack(), e_t_opt.unpack(), e_dp_opt.unpack()))
+                    Some((
+                        p_opt.unpack(),
+                        h_opt.unpack(),
+                        e_t_opt.unpack(),
+                        e_dp_opt.unpack(),
+                    ))
                 } else {
                     None
                 }
             })
             // Get the parcel temperature
-            .filter_map(|(p, h, e_t, e_dp)|{
-                match theta_func(theta, p) {
-                    Ok(pcl_t) => Some((p, h, pcl_t, e_t, e_dp)),
-                    Err(_) => None,
-                }
+            .filter_map(|(p, h, e_t, e_dp)| match theta_func(theta, p) {
+                Ok(pcl_t) => Some((p, h, pcl_t, e_t, e_dp)),
+                Err(_) => None,
             })
             // Get the parcel dew point
-            .filter_map(|(p, h, pcl_t, e_t, e_dp)|{
+            .filter_map(|(p, h, pcl_t, e_t, e_dp)| {
                 let p_dp = if saturated {
                     pcl_t
                 } else {
@@ -487,10 +488,10 @@ where
                     }
                 };
 
-                Some((p, h, pcl_t,p_dp, e_t, e_dp))
+                Some((p, h, pcl_t, p_dp, e_t, e_dp))
             })
             // Convert to virtual temperature if needed.
-            .filter_map(|(p, h, pcl_t, p_dp, e_t, e_dp)|{
+            .filter_map(|(p, h, pcl_t, p_dp, e_t, e_dp)| {
                 let pcl_t = if virtual_t {
                     match metfor::virtual_temperature_c(pcl_t, p_dp, p) {
                         Ok(vt) => vt,
@@ -509,9 +510,8 @@ where
                     e_t
                 };
 
-                Some((p,h,pcl_t, e_t))
-            })
-            .for_each(|(p, h, pt, et)| {
+                Some((p, h, pcl_t, e_t))
+            }).for_each(|(p, h, pt, et)| {
                 add_row(p, h, pt, et);
             });
 

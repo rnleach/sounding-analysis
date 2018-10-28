@@ -8,6 +8,7 @@ use metfor;
 use optional::{none, Optioned};
 use sounding_base::{Profile, Sounding, StationInfo, Surface};
 
+pub mod index_tests;
 pub mod layer_tests;
 pub mod level_tests;
 
@@ -47,6 +48,15 @@ macro_rules! check_file_complete {
                 "max temperature aloft",
                 "max temperature pressure",
                 "warm layer max t",
+                "haines_low",
+                "haines_mid",
+                "haines_high",
+                "haines",
+                "hdw",
+                "kindex",
+                "swet",
+                "total_totals",
+                "precipitable_water",
             ];
 
             // Make sure all of these keys are in the hashmaps
@@ -63,7 +73,6 @@ macro_rules! check_file_complete {
                 assert!(ival_keys.contains(&key.as_str()), "extra ival key found");
             }
 
-            // Make sure there are no extra keys in there being ignored.
             for key in fvals.keys() {
                 assert!(fval_keys.contains(&key.as_str()), "extra fval key found");
             }
@@ -155,6 +164,129 @@ macro_rules! test_file {
                 }
             }
 
+            mod indexes {
+                use sounding_analysis;
+                use utils::index_tests;
+                use $test_mod_name::load_data;
+
+                #[test]
+                fn test_haines_low() {
+                    let (snd, _, fvals) = load_data();
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::haines_low,
+                        "haines_low",
+                        0.5,
+                        0.0,
+                    );
+                }
+
+                #[test]
+                fn test_haines_mid() {
+                    let (snd, _, fvals) = load_data();
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::haines_mid,
+                        "haines_mid",
+                        0.5,
+                        0.0,
+                    );
+                }
+
+                #[test]
+                fn test_haines_high() {
+                    let (snd, _, fvals) = load_data();
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::haines_high,
+                        "haines_high",
+                        0.5,
+                        0.0,
+                    );
+                }
+
+                #[test]
+                fn test_haines() {
+                    let (snd, _, fvals) = load_data();
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::haines,
+                        "haines",
+                        0.5,
+                        0.0,
+                    );
+                }
+
+                #[test]
+                fn test_hdw() {
+                    let (snd, _, fvals) = load_data();
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::hot_dry_windy,
+                        "hdw",
+                        5.0,
+                        0.0,
+                    );
+                }
+
+                #[test]
+                fn test_kindex() {
+                    let (snd, _, fvals) = load_data();
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::kindex,
+                        "kindex",
+                        0.1,
+                        -1000.0,
+                    );
+                }
+
+                #[test]
+                fn test_swet() {
+                    let (snd, _, fvals) = load_data();
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::swet,
+                        "swet",
+                        1.0,
+                        -1000.0,
+                    );
+                }
+
+                #[test]
+                fn test_total_totals() {
+                    let (snd, _, fvals) = load_data();
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::total_totals,
+                        "total_totals",
+                        1.0,
+                        0.0,
+                    );
+                }
+
+                #[test]
+                fn test_precipitable_water() {
+                    let (snd, _, fvals) = load_data();
+                    index_tests::test_index(
+                        &snd,
+                        &fvals,
+                        sounding_analysis::precipitable_water,
+                        "precipitable_water",
+                        0.5,
+                        0.0,
+                    );
+                }
+            }
+
         }
     };
 }
@@ -172,7 +304,13 @@ fn approx_equal(tgt: f64, guess: f64, tol: f64) -> bool {
 
     assert!(tol > 0.0);
 
-    f64::abs(tgt - guess) <= tol
+    let passed = f64::abs(tgt - guess) <= tol;
+
+    if !passed {
+        println!("left = {} and right = {}", tgt, guess);
+    }
+
+    passed
 }
 
 fn load_test_csv_sounding(
