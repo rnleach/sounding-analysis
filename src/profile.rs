@@ -28,9 +28,9 @@ pub fn wet_bulb(snd: &Sounding) -> Vec<Optioned<f64>> {
                 t_opt.and_then(|t| {
                     dp_opt.and_then(|dp| {
                         metfor::wet_bulb_c(t, dp, p)
-                        // Ignore errors, if not possible to calculate just use missing value.
-                        .ok()
-                        .into()
+                            // Ignore errors, if not possible to calculate just use missing value.
+                            .ok()
+                            .into()
                     })
                 })
             })
@@ -50,10 +50,10 @@ pub fn relative_humidity(snd: &Sounding) -> Vec<Optioned<f64>> {
         .map(|(t_opt, dp_opt)| {
             t_opt.and_then(|t| {
                 dp_opt.and_then(|dp| {
-                    metfor::rh(t,dp)
-                    // Ignore errors, if not possible to calculate just use missing value.
-                    .ok()
-                    .into()
+                    metfor::rh(t, dp)
+                        // Ignore errors, if not possible to calculate just use missing value.
+                        .ok()
+                        .into()
                 })
             })
         }).collect()
@@ -73,9 +73,9 @@ pub fn potential_temperature(snd: &Sounding) -> Vec<Optioned<f64>> {
             p_opt.and_then(|p| {
                 t_opt.and_then(|t| {
                     metfor::theta_kelvin(p, t)
-                    // Ignore errors, if not possible to calculate just use missing value.
-                    .ok()
-                    .into()
+                        // Ignore errors, if not possible to calculate just use missing value.
+                        .ok()
+                        .into()
                 })
             })
         }).collect()
@@ -97,9 +97,9 @@ pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Optioned<f64>> {
                 t_opt.and_then(|t| {
                     dp_opt.and_then(|dp| {
                         metfor::theta_e_kelvin(t, dp, p)
-                        // Ignore errors, if not possible to calculate just use missing value.
-                        .ok()
-                        .into()
+                            // Ignore errors, if not possible to calculate just use missing value.
+                            .ok()
+                            .into()
                     })
                 })
             })

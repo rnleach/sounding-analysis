@@ -195,3 +195,12 @@ max wet bulb pressure,1080
 max temperature aloft,19
 max temperature pressure,1080
 warm layer max t
+haines_low,5
+haines_mid,5
+haines_high,5
+haines,5
+hdw,50
+kindex,-4
+swet,-6
+total_totals,-2
+precipitable_water,-5.0

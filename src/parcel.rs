@@ -100,9 +100,11 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
         // only go up 100 hPa above the lowest level
         .take_while(|&(p, _, _)| p >= bottom_p - 100.0)
         // convert to theta and mw
-        .filter_map(|(p,t,dp)|{
-            metfor::theta_kelvin(p, t).ok().and_then(|theta|{
-                metfor::mixing_ratio(dp, p).ok().and_then(|mw| Some((p, theta, mw)))
+        .filter_map(|(p, t, dp)| {
+            metfor::theta_kelvin(p, t).ok().and_then(|theta| {
+                metfor::mixing_ratio(dp, p)
+                    .ok()
+                    .and_then(|mw| Some((p, theta, mw)))
             })
         })
         // calculate the sums and count needed for the average

@@ -292,7 +292,7 @@ pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
 
     let (vpd, ws) = izip!(h_profile, t_profile, dp_profile, ws_profile)
         // Remove rows with missing data
-        .filter_map(|(h, t, dp, ws)|{
+        .filter_map(|(h, t, dp, ws)| {
             if h.is_some() && t.is_some() && dp.is_some() && ws.is_some() {
                 Some((h.unpack(), t.unpack(), dp.unpack(), ws.unpack()))
             } else {
@@ -302,23 +302,17 @@ pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
         // Only look up to 500 m above AGL
         .take_while(|(h, _, _, _)| *h <= elevation + 500.0)
         // Convert t and dp to VPD
-        .filter_map(|(_, t, dp, ws)|{
-            match vapor_pressure_liquid_water(t){
-                Ok(sat_vap) => {
-                    match vapor_pressure_liquid_water(dp){
-                        Ok(vap) => {
-                            Some((sat_vap - vap, ws))
-                        },
-                        Err(_) => None,
-                    }
-                },
+        .filter_map(|(_, t, dp, ws)| match vapor_pressure_liquid_water(t) {
+            Ok(sat_vap) => match vapor_pressure_liquid_water(dp) {
+                Ok(vap) => Some((sat_vap - vap, ws)),
                 Err(_) => None,
-            }
+            },
+            Err(_) => None,
         })
         // Convert knots to m/s
-        .map(|(vpd, ws)|(vpd, ws * 0.514444))
+        .map(|(vpd, ws)| (vpd, ws * 0.514444))
         // Choose the max.
-        .fold((0.0, 0.0), |(vpd_max, ws_max),(vpd, ws)|{
+        .fold((0.0, 0.0), |(vpd_max, ws_max), (vpd, ws)| {
             (vpd.max(vpd_max), ws.max(ws_max))
         });
 

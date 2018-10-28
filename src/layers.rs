@@ -197,84 +197,88 @@ fn temperature_layer(
     izip!(p_profile, t_profile)
         // remove levels with missing values
         .filter_map(|pair| {
-            if pair.0.is_some() && pair.1.is_some(){
-                let (p,t) = (pair.0.unpack(), pair.1.unpack());
-                Some((p,t))
+            if pair.0.is_some() && pair.1.is_some() {
+                let (p, t) = (pair.0.unpack(), pair.1.unpack());
+                Some((p, t))
             } else {
                 None
             }
         })
         // Stop above a certain level
-        .take_while(|&(p,_)| p > top_pressure)
+        .take_while(|&(p, _)| p > top_pressure)
         // find temperature layers
-        .fold(Ok((None,None,None)), |acc: Result<(Option<f64>, Option<f64>, Option<_>)>, (p,t)|{
-            match acc {
-                // We're not in a target layer currently
-                Ok((Some(last_p), Some(last_t), None)) => {
-                    if last_t < cold_side && t >= cold_side && t <= warm_side{
-                        // We crossed into a target layer from the cold side
-                        let target_p = linear_interp(cold_side, last_t, t, last_p, p);
-                        let bottom = linear_interpolate_sounding(snd, target_p)?;
-                        Ok((Some(p), Some(t), Some(bottom)))
-                    } else if last_t > warm_side && t >= cold_side && t <= warm_side{
-                        // We crossed into a target layer from the warm side
-                        let target_p = linear_interp(warm_side, last_t, t, last_p, p);
-                        let bottom = linear_interpolate_sounding(snd, target_p)?;
-                        Ok((Some(p), Some(t), Some(bottom)))
-                    } else if (last_t < cold_side && t >= warm_side)
-                        || (last_t > warm_side && t <= cold_side){
-                        // We crossed completely through a target layer
-                        let warm_p = linear_interp(warm_side, last_t, t, last_p, p);
-                        let cold_p = linear_interp(cold_side, last_t, t, last_p, p);
-                        let bottom = linear_interpolate_sounding(snd, warm_p.max(cold_p))?;
-                        let top = linear_interpolate_sounding(snd, warm_p.min(cold_p))?;
-                        to_return.push(Layer{bottom, top});
-                        Ok((Some(p), Some(t), None))
-                    } else {
-                        // We weren't in a target layer
-                        Ok((Some(p), Some(t), None))
+        .fold(
+            Ok((None, None, None)),
+            |acc: Result<(Option<f64>, Option<f64>, Option<_>)>, (p, t)| {
+                match acc {
+                    // We're not in a target layer currently
+                    Ok((Some(last_p), Some(last_t), None)) => {
+                        if last_t < cold_side && t >= cold_side && t <= warm_side {
+                            // We crossed into a target layer from the cold side
+                            let target_p = linear_interp(cold_side, last_t, t, last_p, p);
+                            let bottom = linear_interpolate_sounding(snd, target_p)?;
+                            Ok((Some(p), Some(t), Some(bottom)))
+                        } else if last_t > warm_side && t >= cold_side && t <= warm_side {
+                            // We crossed into a target layer from the warm side
+                            let target_p = linear_interp(warm_side, last_t, t, last_p, p);
+                            let bottom = linear_interpolate_sounding(snd, target_p)?;
+                            Ok((Some(p), Some(t), Some(bottom)))
+                        } else if (last_t < cold_side && t >= warm_side)
+                            || (last_t > warm_side && t <= cold_side)
+                        {
+                            // We crossed completely through a target layer
+                            let warm_p = linear_interp(warm_side, last_t, t, last_p, p);
+                            let cold_p = linear_interp(cold_side, last_t, t, last_p, p);
+                            let bottom = linear_interpolate_sounding(snd, warm_p.max(cold_p))?;
+                            let top = linear_interpolate_sounding(snd, warm_p.min(cold_p))?;
+                            to_return.push(Layer { bottom, top });
+                            Ok((Some(p), Some(t), None))
+                        } else {
+                            // We weren't in a target layer
+                            Ok((Some(p), Some(t), None))
+                        }
                     }
-                },
 
-                // We're in a target layer, let's see if we passed out
-                Ok((Some(last_p), Some(last_t), Some(bottom))) => {
-                    if t < cold_side {
-                        // We crossed out of a target layer on the cold side
-                        let target_p = linear_interp(cold_side, last_t, t, last_p, p);
-                        let top = linear_interpolate_sounding(snd, target_p)?;
-                        to_return.push(Layer{bottom, top});
-                        Ok((Some(p), Some(t), None))
-                    } else if t > warm_side {
-                        // We crossed out of a target layer on the warm side
-                        let target_p = linear_interp(warm_side, last_t, t, last_p, p);
-                        let top = linear_interpolate_sounding(snd, target_p)?;
-                        to_return.push(Layer{bottom, top});
-                        Ok((Some(p), Some(t), None))
-                    } else {
-                        // We're still in a target layer
-                        Ok((Some(p), Some(t), Some(bottom)))
+                    // We're in a target layer, let's see if we passed out
+                    Ok((Some(last_p), Some(last_t), Some(bottom))) => {
+                        if t < cold_side {
+                            // We crossed out of a target layer on the cold side
+                            let target_p = linear_interp(cold_side, last_t, t, last_p, p);
+                            let top = linear_interpolate_sounding(snd, target_p)?;
+                            to_return.push(Layer { bottom, top });
+                            Ok((Some(p), Some(t), None))
+                        } else if t > warm_side {
+                            // We crossed out of a target layer on the warm side
+                            let target_p = linear_interp(warm_side, last_t, t, last_p, p);
+                            let top = linear_interpolate_sounding(snd, target_p)?;
+                            to_return.push(Layer { bottom, top });
+                            Ok((Some(p), Some(t), None))
+                        } else {
+                            // We're still in a target layer
+                            Ok((Some(p), Some(t), Some(bottom)))
+                        }
                     }
-                },
 
-                // Propagate errors
-                e@Err(_) => e,
+                    // Propagate errors
+                    e @ Err(_) => e,
 
-                // First row, lets get started
-                Ok((None,None,None)) => {
-                    if t <= warm_side && t >= cold_side {
-                        // Starting out in a target layer
-                        let dr = linear_interpolate_sounding(snd, p)?;
-                        Ok((Some(p),Some(t),Some(dr)))
-                    } else {
-                        // Not starting out in a target layer
-                        Ok((Some(p),Some(t),None))
+                    // First row, lets get started
+                    Ok((None, None, None)) => {
+                        if t <= warm_side && t >= cold_side {
+                            // Starting out in a target layer
+                            let dr = linear_interpolate_sounding(snd, p)?;
+                            Ok((Some(p), Some(t), Some(dr)))
+                        } else {
+                            // Not starting out in a target layer
+                            Ok((Some(p), Some(t), None))
+                        }
                     }
-                },
 
-                // No other combinations are possible
-                _ => unreachable!(),
-            }
-        })
+                    // No other combinations are possible
+                    _ => unreachable!(),
+                }
+            },
+        )
         // Swap my list into the result.
         .and_then(|_| Ok(to_return))
 }
@@ -307,36 +311,40 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<Layers> {
 
     izip!(p_profile, t_profile)
         // Remove levels without pressure AND temperature data
-        .filter_map(|pair|{
-            if pair.0.is_some() && pair.1.is_some(){
-                let (p,t) = (pair.0.unpack(), pair.1.unpack());
-                Some((p,t))
+        .filter_map(|pair| {
+            if pair.0.is_some() && pair.1.is_some() {
+                let (p, t) = (pair.0.unpack(), pair.1.unpack());
+                Some((p, t))
             } else {
                 None
             }
         })
         // Ignore anything above 500 hPa, extremely unlikely for a warm layer up there.
-        .take_while(|&(p,_)| p > 500.0 )
+        .take_while(|&(p, _)| p > 500.0)
         // Find the warm layers!
-        .fold(Ok((MAX, MAX, None)), |last_iter_res: Result<(_,_,_)>, (p,t)|{
-            let (last_p, last_t, mut bottom) = last_iter_res?;
-            if last_t <= FREEZING && t > FREEZING && bottom.is_none() {
-                // Entering a warm layer.
-                let bottom_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
-                bottom = Some(::interpolation::linear_interpolate_sounding(snd, bottom_p)?);
-            }
-            if bottom.is_some() && last_t > FREEZING && t <= FREEZING {
-                // Crossed out of a warm layer
-                let top_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
-                let top = ::interpolation::linear_interpolate_sounding(snd, top_p)?;
-                {
-                let bottom = bottom.unwrap();
-                to_return.push(Layer{bottom, top});}
-                bottom = None;
-            }
+        .fold(
+            Ok((MAX, MAX, None)),
+            |last_iter_res: Result<(_, _, _)>, (p, t)| {
+                let (last_p, last_t, mut bottom) = last_iter_res?;
+                if last_t <= FREEZING && t > FREEZING && bottom.is_none() {
+                    // Entering a warm layer.
+                    let bottom_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
+                    bottom = Some(::interpolation::linear_interpolate_sounding(snd, bottom_p)?);
+                }
+                if bottom.is_some() && last_t > FREEZING && t <= FREEZING {
+                    // Crossed out of a warm layer
+                    let top_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
+                    let top = ::interpolation::linear_interpolate_sounding(snd, top_p)?;
+                    {
+                        let bottom = bottom.unwrap();
+                        to_return.push(Layer { bottom, top });
+                    }
+                    bottom = None;
+                }
 
-            Ok((p,t,bottom))
-        })?;
+                Ok((p, t, bottom))
+            },
+        )?;
 
     Ok(to_return)
 }
@@ -364,15 +372,15 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Re
     izip!(0usize.., p_profile, t_profile)
         // Remove levels with missing data
         .filter_map(|triplet| {
-            if triplet.1.is_some() && triplet.2.is_some(){
-                let (i,t) = (triplet.0, triplet.2.unpack());
-                Some((i,t))
+            if triplet.1.is_some() && triplet.2.is_some() {
+                let (i, t) = (triplet.0, triplet.2.unpack());
+                Some((i, t))
             } else {
                 None
             }
         })
         // Map it to an error if the temperature is above freezing.
-        .map(|(i,t)| {
+        .map(|(i, t)| {
             if t > FREEZING {
                 Err(InvalidInput)
             } else {
@@ -386,7 +394,10 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Re
         // Map the result into a data row!
         .and_then(|index| snd.get_data_row(index).ok_or(InvalidInput))
         // Package it up in a layer
-        .map(|bottom| Layer{bottom, top:warm_layers[0].bottom})
+        .map(|bottom| Layer {
+            bottom,
+            top: warm_layers[0].bottom,
+        })
 }
 
 /// Get a layer that has a certain thickness, like 3km or 6km.
@@ -414,41 +425,45 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
     izip!(p_profile, h_profile)
         // filter out levels with missing data
         .filter_map(|pair| {
-            if pair.0.is_some() && pair.1.is_some(){
-                let (p,h) = (pair.0.unpack(), pair.1.unpack());
+            if pair.0.is_some() && pair.1.is_some() {
+                let (p, h) = (pair.0.unpack(), pair.1.unpack());
                 Some((p, h))
             } else {
                 None
             }
         })
         // find the pressure at the target geopotential height, to be used later for interpolation.
-        .fold(Ok((MAX, 0.0f64, None)), |acc: Result<(_,_,Option<_>)>, (p, h)|{
-            match acc {
-                // We have not yet found the target pressure to interpolate everything to, so
-                // check the current values.
-                Ok((last_p, last_h, None)) => {
-                    if h > tgt_elev {
-                        // If we finally jumped above our target, we have it bracketed, interpolate
-                        // and find target pressure.
-                        let tgt_p = ::interpolation::linear_interp(tgt_elev, last_h, h, last_p, p);
-                        Ok((MAX,MAX,Some(tgt_p)))
-                    } else {
-                        // Keep climbing up the profile.
-                        Ok((p,h,None))
+        .fold(
+            Ok((MAX, 0.0f64, None)),
+            |acc: Result<(_, _, Option<_>)>, (p, h)| {
+                match acc {
+                    // We have not yet found the target pressure to interpolate everything to, so
+                    // check the current values.
+                    Ok((last_p, last_h, None)) => {
+                        if h > tgt_elev {
+                            // If we finally jumped above our target, we have it bracketed, interpolate
+                            // and find target pressure.
+                            let tgt_p =
+                                ::interpolation::linear_interp(tgt_elev, last_h, h, last_p, p);
+                            Ok((MAX, MAX, Some(tgt_p)))
+                        } else {
+                            // Keep climbing up the profile.
+                            Ok((p, h, None))
+                        }
                     }
-                },
-                // We have found the target pressure on the last iteration, pass it through
-                ok@Ok((_,_,Some(_))) => ok,
-                // There was an error, keep passing it through.
-                e@Err(_) => e,
-            }
-        })
+                    // We have found the target pressure on the last iteration, pass it through
+                    ok @ Ok((_, _, Some(_))) => ok,
+                    // There was an error, keep passing it through.
+                    e @ Err(_) => e,
+                }
+            },
+        )
         // Extract the target pressure
-        .and_then(|(_,_,opt)| opt.ok_or(NotEnoughData))
+        .and_then(|(_, _, opt)| opt.ok_or(NotEnoughData))
         // Do the interpolation.
         .and_then(|target_p| ::interpolation::linear_interpolate_sounding(snd, target_p))
         // Compose into a layer
-        .map(|top| Layer{bottom, top})
+        .map(|top| Layer { bottom, top })
 }
 
 /// Get a layer defined by two pressure levels. `bottom_p` > `top_p`
@@ -481,7 +496,7 @@ pub fn inversions(snd: &Sounding, top_p: f64) -> Result<Layers> {
     izip!(0usize.., p_profile, t_profile)
         // Filter out rows without both temperature and pressure.
         .filter_map(|triple| {
-            if triple.1.is_some() && triple.2.is_some(){
+            if triple.1.is_some() && triple.2.is_some() {
                 let (i, p, t) = (triple.0, triple.1.unpack(), triple.2.unpack());
                 Some((i, p, t))
             } else {
@@ -489,32 +504,27 @@ pub fn inversions(snd: &Sounding, top_p: f64) -> Result<Layers> {
             }
         })
         // Filter out rows above the top pressure
-        .filter_map(|(i, p, t)|{
-            if p < top_p {
-                None
-            } else {
-                Some((i, t))
-            }
-        })
+        .filter_map(|(i, p, t)| if p < top_p { None } else { Some((i, t)) })
         // Capture the inversion layers
-        .fold((0, MAX, None), |(last_i, last_t, mut bottom_opt), (i,t)|{
-
+        .fold(
+            (0, MAX, None),
+            |(last_i, last_t, mut bottom_opt), (i, t)| {
                 if bottom_opt.is_none() && last_t < t {
                     // Coming into an inversion
                     bottom_opt = snd.get_data_row(last_i);
                 } else if bottom_opt.is_some() && last_t > t {
                     // Leaving an inversion
-                    if let Some(layer) = bottom_opt.and_then(|bottom|{
-                        snd.get_data_row(last_i).and_then(|top| {
-                            Some(Layer{bottom, top})
-                        })
-                    }){
+                    if let Some(layer) = bottom_opt.and_then(|bottom| {
+                        snd.get_data_row(last_i)
+                            .and_then(|top| Some(Layer { bottom, top }))
+                    }) {
                         to_return.push(layer);
                         bottom_opt = None;
                     }
                 }
                 (i, t, bottom_opt)
-            });
+            },
+        );
 
     Ok(to_return)
 }
@@ -545,16 +555,16 @@ pub fn sfc_based_inversion(snd: &Sounding) -> Result<Option<Layer>> {
         // Map the result into a data row
         .and_then(|index| snd.get_data_row(index).ok_or(AnalysisError::MissingValue))
         // Now find the top
-        .and_then(|bottom_row|{
+        .and_then(|bottom_row| {
             let sfc_t = bottom_row.temperature;
             if sfc_t.is_some() {
                 let sfc_t = sfc_t.unpack();
-                let val = izip!(0usize..,p_profile, t_profile, h_profile)
+                let val = izip!(0usize.., p_profile, t_profile, h_profile)
                     // Remove levels with missing data
                     .filter_map(|tuple| {
                         if tuple.1.is_some() && tuple.2.is_some() && tuple.3.is_some() {
                             let (i, p, t) = (tuple.0, tuple.1.unpack(), tuple.2.unpack());
-                            Some((i,p,t))
+                            Some((i, p, t))
                         } else {
                             None
                         }
@@ -562,15 +572,13 @@ pub fn sfc_based_inversion(snd: &Sounding) -> Result<Option<Layer>> {
                     // This is the first one!
                     .skip(1)
                     // Only look up to about 700 hPa
-                    .take_while(|(_,p,_)| *p > 690.0)
+                    .take_while(|(_, p, _)| *p > 690.0)
                     // Remove those cooler than the surface
-                    .filter(|(_,_,t)|{
-                        *t > sfc_t
-                    })
-                    .fold(None, |max_t_info, (i, _, t)|{
+                    .filter(|(_, _, t)| *t > sfc_t)
+                    .fold(None, |max_t_info, (i, _, t)| {
                         if let Some((max_t, _max_t_idx)) = max_t_info {
                             if t > max_t {
-                                Some((t,i))
+                                Some((t, i))
                             } else {
                                 max_t_info
                             }
@@ -580,14 +588,16 @@ pub fn sfc_based_inversion(snd: &Sounding) -> Result<Option<Layer>> {
                     });
 
                 match val {
-                    Some((_,idx))=>{
-                        snd.get_data_row(idx)
-                            .ok_or(AnalysisError::MissingValue)
-                            .and_then(|top_row|
-                                Ok(Some(Layer{bottom: bottom_row, top: top_row}))
-                            )
-                    },
-                    None => Ok(None)
+                    Some((_, idx)) => snd
+                        .get_data_row(idx)
+                        .ok_or(AnalysisError::MissingValue)
+                        .and_then(|top_row| {
+                            Ok(Some(Layer {
+                                bottom: bottom_row,
+                                top: top_row,
+                            }))
+                        }),
+                    None => Ok(None),
                 }
             } else {
                 Err(AnalysisError::MissingValue)

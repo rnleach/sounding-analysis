@@ -60,20 +60,23 @@ fn find_temperature_levels(snd: &Sounding, var: Profile, target_t: f64) -> Resul
 
     iter
         // Don't bother looking above a certain level
-        .take_while(|&(p,_)| p >= TOP_PRESSURE)
+        .take_while(|&(p, _)| p >= TOP_PRESSURE)
         // Reduce to get the temperature levels
-        .fold(Ok((bottom_p,bottom_t)), |acc:Result<(f64,f64)>, (p,t)|{
-            if let Ok((last_p, last_t)) = acc {
-                if last_t <= target_t && t > target_t || last_t > target_t && t <= target_t {
-                    let target_p = linear_interp(target_t, last_t, t, last_p, p);
-                    to_return.push(linear_interpolate_sounding(snd, target_p)?);
+        .fold(
+            Ok((bottom_p, bottom_t)),
+            |acc: Result<(f64, f64)>, (p, t)| {
+                if let Ok((last_p, last_t)) = acc {
+                    if last_t <= target_t && t > target_t || last_t > target_t && t <= target_t {
+                        let target_p = linear_interp(target_t, last_t, t, last_p, p);
+                        to_return.push(linear_interpolate_sounding(snd, target_p)?);
+                    }
+                    Ok((p, t))
+                } else {
+                    // Pass the error through
+                    acc
                 }
-                Ok((p,t))
-            } else {
-                // Pass the error through
-                acc
-            }
-        })
+            },
+        )
         // Swap my vector into the result
         .map(|_| to_return)
 }
@@ -105,21 +108,20 @@ fn max_t_aloft(snd: &Sounding, var: Profile) -> Result<Level> {
 
     izip!(0usize.., p_profile, t_profile)
         .filter_map(|triple| {
-            if triple.1.is_some() && triple.2.is_some(){
-                let (i,p,t) = (triple.0, triple.1.unpack(), triple.2.unpack());
+            if triple.1.is_some() && triple.2.is_some() {
+                let (i, p, t) = (triple.0, triple.1.unpack(), triple.2.unpack());
                 if p >= TOP_PRESSURE {
-                    Some((i,t))
+                    Some((i, t))
                 } else {
                     None
                 }
             } else {
                 None
             }
-        })
-        .fold(Ok((0, ::std::f64::MIN)), |acc: Result<_>, (i,t)| {
-            if let Ok((_, mx_t)) = acc{
+        }).fold(Ok((0, ::std::f64::MIN)), |acc: Result<_>, (i, t)| {
+            if let Ok((_, mx_t)) = acc {
                 if t > mx_t {
-                    Ok((i,t))
+                    Ok((i, t))
                 } else {
                     // Propagate most recent result through
                     acc
@@ -130,7 +132,7 @@ fn max_t_aloft(snd: &Sounding, var: Profile) -> Result<Level> {
             }
         })
         // Retrive the row
-        .and_then(|(idx,_)| snd.get_data_row(idx).ok_or(InvalidInput))
+        .and_then(|(idx, _)| snd.get_data_row(idx).ok_or(InvalidInput))
 }
 
 /// Maximum temperature in a layer.
@@ -163,21 +165,20 @@ fn max_t_in_layer(snd: &Sounding, var: Profile, lyr: &Layer) -> Result<Level> {
 
     izip!(0usize.., p_profile, t_profile)
         .filter_map(|triple| {
-            if triple.1.is_some() && triple.2.is_some(){
+            if triple.1.is_some() && triple.2.is_some() {
                 let (i, p, t) = (triple.0, triple.1.unpack(), triple.2.unpack());
                 if p >= top_p && p <= bottom_p {
-                    Some((i,t))
+                    Some((i, t))
                 } else {
                     None
                 }
             } else {
                 None
             }
-        })
-        .fold(Ok((0, ::std::f64::MIN)), |acc: Result<_>, (i,t)| {
-            if let Ok((_, mx_t)) = acc{
+        }).fold(Ok((0, ::std::f64::MIN)), |acc: Result<_>, (i, t)| {
+            if let Ok((_, mx_t)) = acc {
                 if t > mx_t {
-                    Ok((i,t))
+                    Ok((i, t))
                 } else {
                     // Propagate most recent result through
                     acc
@@ -188,5 +189,5 @@ fn max_t_in_layer(snd: &Sounding, var: Profile, lyr: &Layer) -> Result<Level> {
             }
         })
         // Retrive the row
-        .and_then(|(idx,_)| snd.get_data_row(idx).ok_or(InvalidInput))
+        .and_then(|(idx, _)| snd.get_data_row(idx).ok_or(InvalidInput))
 }
