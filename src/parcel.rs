@@ -82,7 +82,7 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
     let bottom_p = press
         .iter()
         // Remove None values
-        .filter_map(|&p| p.clone().take())
+        .filter_map(|&p| p.into_option())
         // Get the first of the non-None values
         .nth(0)
         // Check to make sure we got one, return error if not.
@@ -186,11 +186,7 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
     let (idx, _) = izip!(0.., press, theta_e)
         .take_while(|&(_, press_opt, _)| {
             if press_opt.is_some() {
-                if press_opt.unpack() >= top_pressure {
-                    true
-                } else {
-                    false // only stop if we are sure we are above 300.0 hPa
-                }
+                press_opt.unpack() >= top_pressure
             } else {
                 true // Don't stop just because one is missing or the none value
             }

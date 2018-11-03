@@ -700,11 +700,7 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
     // - for integration direction should be top down, 9.81 for gravity, and 2.0 for trapezoid rule.
     dcape *= -9.81 / 2.0;
 
-    let downrush_t = *profile
-        .parcel_t
-        .iter()
-        .nth(0)
-        .ok_or(AnalysisError::MissingValue)?;
+    let downrush_t = *profile.parcel_t.get(0).ok_or(AnalysisError::MissingValue)?;
 
     Ok((profile, dcape, downrush_t))
 }

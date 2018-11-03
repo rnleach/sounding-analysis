@@ -151,7 +151,7 @@ pub fn haines_low(snd: &Sounding) -> Result<f64> {
         1.0
     };
 
-    return Ok(stability_term + moisture_term);
+    Ok(stability_term + moisture_term)
 }
 
 /// The mid level version of the Haines index for fire weather.
@@ -184,7 +184,7 @@ pub fn haines_mid(snd: &Sounding) -> Result<f64> {
         1.0
     };
 
-    return Ok(stability_term + moisture_term);
+    Ok(stability_term + moisture_term)
 }
 
 /// The high level version of the Haines index for fire weather.
@@ -217,7 +217,7 @@ pub fn haines_high(snd: &Sounding) -> Result<f64> {
         1.0
     };
 
-    return Ok(stability_term + moisture_term);
+    Ok(stability_term + moisture_term)
 }
 
 /// The Hot-Dry-Windy index
@@ -225,22 +225,15 @@ pub fn haines_high(snd: &Sounding) -> Result<f64> {
 pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
     let elevation = if let Some(sfc_h) = snd.get_station_info().elevation().into_option() {
         sfc_h
+    } else if let Some(lowest_h) = snd
+        .get_profile(Profile::GeopotentialHeight)
+        .iter()
+        .filter_map(|optd| optd.into_option())
+        .nth(0)
+    {
+        lowest_h
     } else {
-        if let Some(lowest_h) = snd
-            .get_profile(Profile::GeopotentialHeight)
-            .iter()
-            .filter_map(|optd| {
-                if optd.is_some() {
-                    Some(optd.unpack())
-                } else {
-                    None
-                }
-            }).nth(0)
-        {
-            lowest_h
-        } else {
-            return Err(AnalysisError::NotEnoughData);
-        }
+        return Err(AnalysisError::NotEnoughData);
     };
 
     let h_profile = snd.get_profile(Profile::GeopotentialHeight); // Meters
@@ -268,7 +261,7 @@ pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
             Err(_) => None,
         })
         // Convert knots to m/s
-        .map(|(vpd, ws)| (vpd, ws * 0.514444))
+        .map(|(vpd, ws)| (vpd, ws * 0.514_444))
         // Choose the max.
         .fold((0.0, 0.0), |(vpd_max, ws_max), (vpd, ws)| {
             (vpd.max(vpd_max), ws.max(ws_max))
