@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use sounding_base::Sounding;
 
-use indexes::{haines, kindex, precipitable_water, swet, total_totals};
+use indexes::{haines_low, haines_mid, haines_high, hot_dry_windy, kindex, precipitable_water, swet, total_totals};
 use keys::ProfileIndex;
 use parcel::{convective_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel};
 use parcel_profile::{dcape, lift_parcel, ParcelAnalysis, ParcelProfile};
@@ -23,11 +23,12 @@ pub struct Analysis {
     k_index: Option<f64>,
     precipitable_water: Option<f64>,
     total_totals: Option<f64>,
-    haines: Option<f64>,
 
-    //
-    // TODO: Add all three of the haines indexes?
-    //
+    // Fire weather indicies
+    haines_low: Option<f64>,
+    haines_mid: Option<f64>,
+    haines_high: Option<f64>,
+    hdw: Option<f64>,
 
     // Downburst
     dcape: Option<f64>,
@@ -53,7 +54,11 @@ impl Analysis {
             k_index: None,
             precipitable_water: None,
             total_totals: None,
-            haines: None,
+
+            haines_low: None,
+            haines_mid: None,
+            haines_high: None,
+            hdw: None,
 
             dcape: None,
             downrush_t: None,
@@ -96,8 +101,20 @@ impl Analysis {
                 downrush_t: opt,
                 ..self
             },
-            Haines => Analysis {
-                haines: opt,
+            HainesLow => Analysis {
+                haines_low: opt,
+                ..self
+            },
+            HainesMid => Analysis {
+                haines_mid: opt,
+                ..self
+            },
+            HainesHigh => Analysis {
+                haines_high: opt,
+                ..self
+            },
+            Hdw => Analysis {
+                hdw: opt,
                 ..self
             },
         }
@@ -114,7 +131,10 @@ impl Analysis {
             TotalTotals => self.total_totals,
             DCAPE => self.dcape,
             DownrushT => self.downrush_t,
-            Haines => self.haines,
+            HainesLow => self.haines_low,
+            HainesMid => self.haines_mid,
+            HainesHigh => self.haines_high,
+            Hdw => self.hdw,
         }
     }
 
@@ -232,7 +252,11 @@ impl Analysis {
         self.precipitable_water = self
             .precipitable_water
             .or_else(|| precipitable_water(&self.sounding).ok());
-        self.haines = self.haines.or_else(|| haines(&self.sounding).ok());
+        self.haines_low = self.haines_low.or_else(|| haines_low(&self.sounding).ok());
+        self.haines_mid = self.haines_mid.or_else(|| haines_mid(&self.sounding).ok());
+        self.haines_high = self.haines_high.or_else(|| haines_high(&self.sounding).ok());
+        self.hdw = self.hdw.or_else(|| hot_dry_windy(&self.sounding).ok());
+        
         if self.dcape.is_none() || self.downrush_t.is_none() || self.downburst_profile.is_none() {
             let result = dcape(&self.sounding);
 

@@ -11,8 +11,14 @@ pub enum ProfileIndex {
     PWAT,
     /// Total-Totals
     TotalTotals,
-    /// Haines index
-    Haines,
+    /// Haines index, low version
+    HainesLow,
+    /// Haines index, mid level version
+    HainesMid,
+    /// Haines index, high version
+    HainesHigh,
+    /// Hot-dry-windy index
+    Hdw,
     /// Downward CAPE
     DCAPE,
     /// Downrush temperature. The temperature of a saturated downburst from parcel theory.
