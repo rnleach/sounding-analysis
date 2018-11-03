@@ -238,7 +238,13 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
             let mw = metfor::mixing_ratio(t, p).ok()?;
 
             Some((p, t, mw))
-        }).skip_while(|(_, _, mw)| *mw <= tgt_mw)
+        })
+        // Get past a cool surface layer where mw < tgt_mw possible due to using a mixed parcel for
+        // the target mw in combination with a surface based inversion.
+        .skip_while(|(_, _, mw)| *mw <= tgt_mw)
+        // Scan to find the level where the environmental mixing ratio becomes less than our parcel
+        // (surface or mixed layer parcel) mixing ratio. This is the CCL, the level where a cloud
+        // first forms.
         .scan((0.0, 0.0, 0.0), |(old_p, old_t, old_mw), (p, t, mw)| {
             let result = if mw < tgt_mw && *old_mw >= tgt_mw {
                 // found the crossing
@@ -256,10 +262,16 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
             *old_mw = mw;
 
             result
-        }).filter_map(|opt_opt| opt_opt)
+        })
+        // Each layer that is not the CCL will be a Some(None), so skip past it
+        .filter_map(|opt_opt| opt_opt)
+        // Grab the first (and only) layer where the mixing ratios meet.
         .nth(0)
+        // Probably a bad choice to use an error to signal this, but it is impossible to tell if
+        // we never found it because there wasn't enough data, or it just didn't exist.
         .ok_or(AnalysisError::NotEnoughData)?;
 
+    // Extrapolate dry adiabatically back to the parcel level.
     let tgt_theta = metfor::theta_kelvin(tgt_p, tgt_t)?;
     let tgt_t = metfor::temperature_c_from_theta(tgt_theta, initial_p)?;
 
