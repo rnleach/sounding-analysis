@@ -21,8 +21,6 @@ pub struct ParcelProfile {
     pub environment_t: Vec<f64>,
 }
 
-impl ParcelProfile {}
-
 /// Parcel analysis, this is a way to package the analysis of a parcel.
 #[derive(Debug, Clone)]
 pub struct ParcelAnalysis {
@@ -80,7 +78,9 @@ impl ParcelAnalysis {
     }
 
     /// Calculate the parcel velocity at the equilibrium level. Note that this is most likely an
-    /// over estimate due to the effects of entrainment and water/ice loading.
+    /// over estimate due to the effects of entrainment and water/ice loading. 
+    ///
+    /// Units are meters per second.
     #[inline]
     pub fn calculate_cape_velocity(&self) -> Option<f64> {
         self.cape.map(|cape| f64::sqrt(2.0 * cape))
@@ -389,7 +389,7 @@ fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<(DataRow, P
 ///
 /// The resulting `ParcelProfile` has actual temperatures and not virtual temperatures. This is for
 /// analyzing inversions and visualizing what a sounding would look like if deep, dry mixing were
-/// to occur. This function assumes that the profile would be heated from below.
+/// to occur from surface heating alone.
 pub fn mix_down(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta()?;
     descend_parcel(
@@ -456,7 +456,7 @@ where
                 if p_opt.is_some() {
                     p_opt.unpack() >= parcel.pressure
                 } else {
-                    true
+                    true // Just skip over levels with missing data
                 }
             })
             // Remove levels with missing data
@@ -610,7 +610,7 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
     let dp = snd.get_profile(DewPoint);
     let p = snd.get_profile(Pressure);
 
-    // Find the lowest pressure
+    // Find the lowest pressure, 400 mb above the surface (or starting level)
     let top_p = -400.0 + p
         .iter()
         .filter_map(|p| p.into_option())
