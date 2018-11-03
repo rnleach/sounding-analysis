@@ -5,7 +5,10 @@ use std::collections::HashMap;
 
 use sounding_base::Sounding;
 
-use indexes::{haines_low, haines_mid, haines_high, hot_dry_windy, kindex, precipitable_water, swet, total_totals};
+use indexes::{
+    haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water, swet,
+    total_totals,
+};
 use keys::ProfileIndex;
 use parcel::{convective_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel};
 use parcel_profile::{dcape, lift_parcel, ParcelAnalysis, ParcelProfile};
@@ -113,10 +116,7 @@ impl Analysis {
                 haines_high: opt,
                 ..self
             },
-            Hdw => Analysis {
-                hdw: opt,
-                ..self
-            },
+            Hdw => Analysis { hdw: opt, ..self },
         }
     }
 
@@ -254,9 +254,11 @@ impl Analysis {
             .or_else(|| precipitable_water(&self.sounding).ok());
         self.haines_low = self.haines_low.or_else(|| haines_low(&self.sounding).ok());
         self.haines_mid = self.haines_mid.or_else(|| haines_mid(&self.sounding).ok());
-        self.haines_high = self.haines_high.or_else(|| haines_high(&self.sounding).ok());
+        self.haines_high = self
+            .haines_high
+            .or_else(|| haines_high(&self.sounding).ok());
         self.hdw = self.hdw.or_else(|| hot_dry_windy(&self.sounding).ok());
-        
+
         if self.dcape.is_none() || self.downrush_t.is_none() || self.downburst_profile.is_none() {
             let result = dcape(&self.sounding);
 

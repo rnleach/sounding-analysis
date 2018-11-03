@@ -78,7 +78,7 @@ impl ParcelAnalysis {
     }
 
     /// Calculate the parcel velocity at the equilibrium level. Note that this is most likely an
-    /// over estimate due to the effects of entrainment and water/ice loading. 
+    /// over estimate due to the effects of entrainment and water/ice loading.
     ///
     /// Units are meters per second.
     #[inline]
