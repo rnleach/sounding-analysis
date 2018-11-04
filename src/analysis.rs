@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use sounding_base::Sounding;
 
 use indexes::{
-    haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water, swet,
+    haines, haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water, swet,
     total_totals,
 };
 use keys::ProfileIndex;
@@ -28,6 +28,7 @@ pub struct Analysis {
     total_totals: Option<f64>,
 
     // Fire weather indicies
+    haines: Option<f64>,
     haines_low: Option<f64>,
     haines_mid: Option<f64>,
     haines_high: Option<f64>,
@@ -58,6 +59,7 @@ impl Analysis {
             precipitable_water: None,
             total_totals: None,
 
+            haines: None,
             haines_low: None,
             haines_mid: None,
             haines_high: None,
@@ -104,6 +106,10 @@ impl Analysis {
                 downrush_t: opt,
                 ..self
             },
+            Haines => Analysis {
+                haines: opt,
+                ..self
+            },
             HainesLow => Analysis {
                 haines_low: opt,
                 ..self
@@ -131,6 +137,7 @@ impl Analysis {
             TotalTotals => self.total_totals,
             DCAPE => self.dcape,
             DownrushT => self.downrush_t,
+            Haines => self.haines,
             HainesLow => self.haines_low,
             HainesMid => self.haines_mid,
             HainesHigh => self.haines_high,
@@ -252,6 +259,7 @@ impl Analysis {
         self.precipitable_water = self
             .precipitable_water
             .or_else(|| precipitable_water(&self.sounding).ok());
+        self.haines = self.haines.or_else(|| haines(&self.sounding).ok());
         self.haines_low = self.haines_low.or_else(|| haines_low(&self.sounding).ok());
         self.haines_mid = self.haines_mid.or_else(|| haines_mid(&self.sounding).ok());
         self.haines_high = self

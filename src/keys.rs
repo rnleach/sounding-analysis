@@ -11,6 +11,8 @@ pub enum ProfileIndex {
     PWAT,
     /// Total-Totals
     TotalTotals,
+    /// Haines index, whichever version is auto-calculated from the sounding elevation.
+    Haines,
     /// Haines index, low version
     HainesLow,
     /// Haines index, mid level version
