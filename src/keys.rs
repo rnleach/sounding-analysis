@@ -25,6 +25,12 @@ pub enum ProfileIndex {
     DCAPE,
     /// Downrush temperature. The temperature of a saturated downburst from parcel theory.
     DownrushT,
+    /// Mixed layer temperatures for the convective parcel.
+    ConvectiveT,
+    /// Differenence in `ConvectiveT` and the temperature of the mixed layer parcel.
+    ConvectiveDeficit,
+    /// Ratio of wet/dry cape from the convective parcel analysis.
+    CapeRatio,
 }
 
 /// Indexes from a parcel analysis of a sounding.
