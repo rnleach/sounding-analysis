@@ -256,7 +256,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
                     }
                 } else {
                     // EL crossing into negative bouyancy
-                    if el_pressure.is_none(){
+                    if el_pressure.is_none() {
                         el_pressure = Some(tgt_pres);
                     }
                 }

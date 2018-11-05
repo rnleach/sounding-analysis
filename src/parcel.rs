@@ -243,29 +243,32 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
         // Scan to find the level where the environmental mixing ratio becomes less than our parcel
         // (surface or mixed layer parcel) mixing ratio. This is the CCL, the level where a cloud
         // first forms.
-        .scan((0.0, 0.0, 0.0, 0.0, 0.0), |(old_p, old_t, old_mw, old_theta_v, max_theta_v), (p, t, mw, theta_v)| {
-            let result = if mw < tgt_mw && *old_mw >= tgt_mw {
-                // found the crossing
-                let tgt_theta_v = linear_interp(tgt_mw, *old_mw, mw, *old_theta_v, theta_v);
+        .scan(
+            (0.0, 0.0, 0.0, 0.0, 0.0),
+            |(old_p, old_t, old_mw, old_theta_v, max_theta_v), (p, t, mw, theta_v)| {
+                let result = if mw < tgt_mw && *old_mw >= tgt_mw {
+                    // found the crossing
+                    let tgt_theta_v = linear_interp(tgt_mw, *old_mw, mw, *old_theta_v, theta_v);
 
-                *max_theta_v = f64::max(*max_theta_v, tgt_theta_v);
-                let max_theta = *max_theta_v/ (1.0 + 0.61 * tgt_mw) + 0.1;
+                    *max_theta_v = f64::max(*max_theta_v, tgt_theta_v);
+                    let max_theta = *max_theta_v / (1.0 + 0.61 * tgt_mw) + 0.1;
 
-                Some(Some(max_theta))
-            } else {
-                Some(None)
-            };
+                    Some(Some(max_theta))
+                } else {
+                    Some(None)
+                };
 
-            *max_theta_v = max_theta_v.max(theta_v);
+                *max_theta_v = max_theta_v.max(theta_v);
 
-            // save these as the new ones
-            *old_p = p;
-            *old_t = t;
-            *old_mw = mw;
-            *old_theta_v = theta_v;
+                // save these as the new ones
+                *old_p = p;
+                *old_t = t;
+                *old_mw = mw;
+                *old_theta_v = theta_v;
 
-            result
-        })
+                result
+            },
+        )
         // Each layer that is not the CCL will be a Some(None), so skip past it
         .filter_map(|opt_opt| opt_opt)
         // Grab the first (and only) layer where the mixing ratios meet.
