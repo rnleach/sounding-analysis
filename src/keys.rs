@@ -11,12 +11,26 @@ pub enum ProfileIndex {
     PWAT,
     /// Total-Totals
     TotalTotals,
-    /// Haines index
+    /// Haines index, whichever version is auto-calculated from the sounding elevation.
     Haines,
+    /// Haines index, low version
+    HainesLow,
+    /// Haines index, mid level version
+    HainesMid,
+    /// Haines index, high version
+    HainesHigh,
+    /// Hot-dry-windy index
+    Hdw,
     /// Downward CAPE
     DCAPE,
     /// Downrush temperature. The temperature of a saturated downburst from parcel theory.
     DownrushT,
+    /// Mixed layer temperatures for the convective parcel.
+    ConvectiveT,
+    /// Differenence in `ConvectiveT` and the temperature of the mixed layer parcel.
+    ConvectiveDeficit,
+    /// Ratio of wet/dry cape from the convective parcel analysis.
+    CapeRatio,
 }
 
 /// Indexes from a parcel analysis of a sounding.

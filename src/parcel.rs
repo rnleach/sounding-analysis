@@ -82,7 +82,7 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
     let bottom_p = press
         .iter()
         // Remove None values
-        .filter_map(|&p| p.clone().take())
+        .filter_map(|&p| p.into_option())
         // Get the first of the non-None values
         .nth(0)
         // Check to make sure we got one, return error if not.
@@ -186,11 +186,7 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
     let (idx, _) = izip!(0.., press, theta_e)
         .take_while(|&(_, press_opt, _)| {
             if press_opt.is_some() {
-                if press_opt.unpack() >= top_pressure {
-                    true
-                } else {
-                    false // only stop if we are sure we are above 300.0 hPa
-                }
+                press_opt.unpack() >= top_pressure
             } else {
                 true // Don't stop just because one is missing or the none value
             }
@@ -231,36 +227,57 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
     let pressure = snd.get_profile(Pressure);
     let temperature = snd.get_profile(Temperature);
 
-    let (tgt_p, tgt_t) = izip!(pressure, temperature)
+    let tgt_theta = izip!(pressure, temperature)
         .filter_map(|(p, t)| {
             let p = p.into_option()?;
             let t = t.into_option()?;
             let mw = metfor::mixing_ratio(t, p).ok()?;
+            let theta = metfor::theta_kelvin(p, t).ok()?;
+            let theta_v = theta * (1.0 + 0.61 * mw);
 
-            Some((p, t, mw))
-        }).skip_while(|(_, _, mw)| *mw <= tgt_mw)
-        .scan((0.0, 0.0, 0.0), |(old_p, old_t, old_mw), (p, t, mw)| {
-            let result = if mw < tgt_mw && *old_mw >= tgt_mw {
-                // found the crossing
-                let tgt_p = linear_interp(tgt_mw, *old_mw, mw, *old_p, p);
-                let tgt_t = linear_interp(tgt_mw, *old_mw, mw, *old_t, t);
+            Some((p, t, mw, theta_v))
+        })
+        // Get past a cool surface layer where mw < tgt_mw possible due to using a mixed parcel for
+        // the target mw in combination with a surface based inversion.
+        .skip_while(|(_, _, mw, _)| *mw <= tgt_mw)
+        // Scan to find the level where the environmental mixing ratio becomes less than our parcel
+        // (surface or mixed layer parcel) mixing ratio. This is the CCL, the level where a cloud
+        // first forms.
+        .scan(
+            (0.0, 0.0, 0.0, 0.0, 0.0),
+            |(old_p, old_t, old_mw, old_theta_v, max_theta_v), (p, t, mw, theta_v)| {
+                let result = if mw < tgt_mw && *old_mw >= tgt_mw {
+                    // found the crossing
+                    let tgt_theta_v = linear_interp(tgt_mw, *old_mw, mw, *old_theta_v, theta_v);
 
-                Some(Some((tgt_p, tgt_t)))
-            } else {
-                Some(None)
-            };
+                    *max_theta_v = f64::max(*max_theta_v, tgt_theta_v);
+                    let max_theta = *max_theta_v / (1.0 + 0.61 * tgt_mw) + 0.1;
 
-            // save these as the new ones
-            *old_p = p;
-            *old_t = t;
-            *old_mw = mw;
+                    Some(Some(max_theta))
+                } else {
+                    Some(None)
+                };
 
-            result
-        }).filter_map(|opt_opt| opt_opt)
+                *max_theta_v = max_theta_v.max(theta_v);
+
+                // save these as the new ones
+                *old_p = p;
+                *old_t = t;
+                *old_mw = mw;
+                *old_theta_v = theta_v;
+
+                result
+            },
+        )
+        // Each layer that is not the CCL will be a Some(None), so skip past it
+        .filter_map(|opt_opt| opt_opt)
+        // Grab the first (and only) layer where the mixing ratios meet.
         .nth(0)
+        // Probably a bad choice to use an error to signal this, but it is impossible to tell if
+        // we never found it because there wasn't enough data, or it just didn't exist.
         .ok_or(AnalysisError::NotEnoughData)?;
 
-    let tgt_theta = metfor::theta_kelvin(tgt_p, tgt_t)?;
+    // Extrapolate dry adiabatically back to the parcel level.
     let tgt_t = metfor::temperature_c_from_theta(tgt_theta, initial_p)?;
 
     Ok(Parcel {

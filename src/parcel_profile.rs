@@ -21,8 +21,6 @@ pub struct ParcelProfile {
     pub environment_t: Vec<f64>,
 }
 
-impl ParcelProfile {}
-
 /// Parcel analysis, this is a way to package the analysis of a parcel.
 #[derive(Debug, Clone)]
 pub struct ParcelAnalysis {
@@ -81,6 +79,8 @@ impl ParcelAnalysis {
 
     /// Calculate the parcel velocity at the equilibrium level. Note that this is most likely an
     /// over estimate due to the effects of entrainment and water/ice loading.
+    ///
+    /// Units are meters per second.
     #[inline]
     pub fn calculate_cape_velocity(&self) -> Option<f64> {
         self.cape.map(|cape| f64::sqrt(2.0 * cape))
@@ -250,8 +250,11 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
 
                 if pcl_t0 < env_t0 && pcl_t > env_t {
                     // LFC crossing into positive bouyancy
-                    lfc_pressure = Some(tgt_pres);
-                } else {
+                    if el_pressure.is_none() || el_pressure.unwrap() > lcl_pressure {
+                        lfc_pressure = Some(tgt_pres);
+                        el_pressure = None;
+                    }
+                } else if el_pressure.is_none() {
                     // EL crossing into negative bouyancy
                     el_pressure = Some(tgt_pres);
                 }
@@ -389,7 +392,7 @@ fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<(DataRow, P
 ///
 /// The resulting `ParcelProfile` has actual temperatures and not virtual temperatures. This is for
 /// analyzing inversions and visualizing what a sounding would look like if deep, dry mixing were
-/// to occur. This function assumes that the profile would be heated from below.
+/// to occur from surface heating alone.
 pub fn mix_down(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta()?;
     descend_parcel(
@@ -456,7 +459,7 @@ where
                 if p_opt.is_some() {
                     p_opt.unpack() >= parcel.pressure
                 } else {
-                    true
+                    true // Just skip over levels with missing data
                 }
             })
             // Remove levels with missing data
@@ -610,7 +613,7 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
     let dp = snd.get_profile(DewPoint);
     let p = snd.get_profile(Pressure);
 
-    // Find the lowest pressure
+    // Find the lowest pressure, 400 mb above the surface (or starting level)
     let top_p = -400.0 + p
         .iter()
         .filter_map(|p| p.into_option())
@@ -700,11 +703,7 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
     // - for integration direction should be top down, 9.81 for gravity, and 2.0 for trapezoid rule.
     dcape *= -9.81 / 2.0;
 
-    let downrush_t = *profile
-        .parcel_t
-        .iter()
-        .nth(0)
-        .ok_or(AnalysisError::MissingValue)?;
+    let downrush_t = *profile.parcel_t.get(0).ok_or(AnalysisError::MissingValue)?;
 
     Ok((profile, dcape, downrush_t))
 }
@@ -745,7 +744,7 @@ pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
         metfor::temperature_c_from_theta(parcel_theta, *p)
             .and_then(|t| metfor::virtual_temperature_c(t, t, *p))
             .ok()
-            .and_then(|pt| Some((*p, *h, pt, *et)))
+            .map(|pt| (*p, *h, pt, *et))
     }).take_while(|(_, _, pt, et)| pt >= et)
     .map(|(_, h, pt, et)| (h, pt, et));
 
@@ -774,7 +773,7 @@ pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
             }
         }).0;
 
-    let dry_cape = dry_cape / 2.0 * 9.81;
+    let dry_cape = (dry_cape / 2.0 * 9.81).min(total_cape);
     let wet_cape = total_cape - dry_cape;
 
     Ok((dry_cape, wet_cape))

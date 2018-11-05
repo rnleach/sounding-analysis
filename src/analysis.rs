@@ -5,10 +5,13 @@ use std::collections::HashMap;
 
 use sounding_base::Sounding;
 
-use indexes::{haines, kindex, precipitable_water, swet, total_totals};
+use indexes::{
+    haines, haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water, swet,
+    total_totals,
+};
 use keys::ProfileIndex;
 use parcel::{convective_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel};
-use parcel_profile::{dcape, lift_parcel, ParcelAnalysis, ParcelProfile};
+use parcel_profile::{dcape, lift_parcel, partition_cape, ParcelAnalysis, ParcelProfile};
 
 /// Convenient package for commonly requested analysis values.
 ///
@@ -21,13 +24,18 @@ pub struct Analysis {
     // Profile specific indicies
     swet: Option<f64>,
     k_index: Option<f64>,
-    precipitable_water: Option<f64>,
     total_totals: Option<f64>,
-    haines: Option<f64>,
+    precipitable_water: Option<f64>,
+    convective_t: Option<f64>,
 
-    //
-    // TODO: Add all three of the haines indexes?
-    //
+    // Fire weather indicies
+    haines: Option<f64>,
+    haines_low: Option<f64>,
+    haines_mid: Option<f64>,
+    haines_high: Option<f64>,
+    hdw: Option<f64>,
+    convective_deficit: Option<f64>,
+    cape_ratio: Option<f64>,
 
     // Downburst
     dcape: Option<f64>,
@@ -51,9 +59,17 @@ impl Analysis {
             sounding: snd,
             swet: None,
             k_index: None,
-            precipitable_water: None,
             total_totals: None,
+            precipitable_water: None,
+            convective_t: None,
+
             haines: None,
+            haines_low: None,
+            haines_mid: None,
+            haines_high: None,
+            hdw: None,
+            convective_deficit: None,
+            cape_ratio: None,
 
             dcape: None,
             downrush_t: None,
@@ -83,21 +99,46 @@ impl Analysis {
                 k_index: opt,
                 ..self
             },
+            TotalTotals => Analysis {
+                total_totals: opt,
+                ..self
+            },
             PWAT => Analysis {
                 precipitable_water: opt,
                 ..self
             },
-            TotalTotals => Analysis {
-                total_totals: opt,
+            ConvectiveT => Analysis {
+                convective_t: opt,
+                ..self
+            },
+            Haines => Analysis {
+                haines: opt,
+                ..self
+            },
+            HainesLow => Analysis {
+                haines_low: opt,
+                ..self
+            },
+            HainesMid => Analysis {
+                haines_mid: opt,
+                ..self
+            },
+            HainesHigh => Analysis {
+                haines_high: opt,
+                ..self
+            },
+            Hdw => Analysis { hdw: opt, ..self },
+            ConvectiveDeficit => Analysis {
+                convective_deficit: opt,
+                ..self
+            },
+            CapeRatio => Analysis {
+                cape_ratio: opt,
                 ..self
             },
             DCAPE => Analysis { dcape: opt, ..self },
             DownrushT => Analysis {
                 downrush_t: opt,
-                ..self
-            },
-            Haines => Analysis {
-                haines: opt,
                 ..self
             },
         }
@@ -110,11 +151,18 @@ impl Analysis {
         match var {
             SWeT => self.swet,
             K => self.k_index,
-            PWAT => self.precipitable_water,
             TotalTotals => self.total_totals,
-            DCAPE => self.dcape,
+            PWAT => self.precipitable_water,
+            ConvectiveT => self.convective_t,
             DownrushT => self.downrush_t,
             Haines => self.haines,
+            HainesLow => self.haines_low,
+            HainesMid => self.haines_mid,
+            HainesHigh => self.haines_high,
+            Hdw => self.hdw,
+            ConvectiveDeficit => self.convective_deficit,
+            CapeRatio => self.cape_ratio,
+            DCAPE => self.dcape,
         }
     }
 
@@ -232,7 +280,15 @@ impl Analysis {
         self.precipitable_water = self
             .precipitable_water
             .or_else(|| precipitable_water(&self.sounding).ok());
+
         self.haines = self.haines.or_else(|| haines(&self.sounding).ok());
+        self.haines_low = self.haines_low.or_else(|| haines_low(&self.sounding).ok());
+        self.haines_mid = self.haines_mid.or_else(|| haines_mid(&self.sounding).ok());
+        self.haines_high = self
+            .haines_high
+            .or_else(|| haines_high(&self.sounding).ok());
+        self.hdw = self.hdw.or_else(|| hot_dry_windy(&self.sounding).ok());
+
         if self.dcape.is_none() || self.downrush_t.is_none() || self.downburst_profile.is_none() {
             let result = dcape(&self.sounding);
 
@@ -266,6 +322,32 @@ impl Analysis {
                 Ok(parcel) => lift_parcel(parcel, &self.sounding).ok(),
                 Err(_) => None,
             };
+        }
+
+        // Convective T
+        if self.convective_t.is_none() {
+            self.convective_t = self
+                .convective
+                .as_ref()
+                .map(|parcel_anal| parcel_anal.get_parcel().temperature);
+        }
+
+        // Convective deficit
+        if self.convective_deficit.is_none() {
+            self.convective_deficit = self.convective_t.and_then(|ct| {
+                self.mixed_layer
+                    .as_ref()
+                    .map(|parcel_anal| ct - parcel_anal.get_parcel().temperature)
+            });
+        }
+
+        // Cape ratio
+        if self.cape_ratio.is_none() {
+            self.cape_ratio = self
+                .convective
+                .as_ref()
+                .and_then(|parcel_anal| partition_cape(parcel_anal).ok())
+                .map(|(dry, wet)| wet / dry);
         }
 
         self
