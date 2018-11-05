@@ -250,10 +250,15 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
 
                 if pcl_t0 < env_t0 && pcl_t > env_t {
                     // LFC crossing into positive bouyancy
-                    lfc_pressure = Some(tgt_pres);
+                    if el_pressure.is_none() || el_pressure.unwrap() > lcl_pressure {
+                        lfc_pressure = Some(tgt_pres);
+                        el_pressure = None;
+                    }
                 } else {
                     // EL crossing into negative bouyancy
-                    el_pressure = Some(tgt_pres);
+                    if el_pressure.is_none(){
+                        el_pressure = Some(tgt_pres);
+                    }
                 }
             }
 
@@ -741,7 +746,7 @@ pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
         metfor::temperature_c_from_theta(parcel_theta, *p)
             .and_then(|t| metfor::virtual_temperature_c(t, t, *p))
             .ok()
-            .and_then(|pt| Some((*p, *h, pt, *et)))
+            .map(|pt| (*p, *h, pt, *et))
     }).take_while(|(_, _, pt, et)| pt >= et)
     .map(|(_, h, pt, et)| (h, pt, et));
 
@@ -770,7 +775,7 @@ pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
             }
         }).0;
 
-    let dry_cape = dry_cape / 2.0 * 9.81;
+    let dry_cape = (dry_cape / 2.0 * 9.81).min(total_cape);
     let wet_cape = total_cape - dry_cape;
 
     Ok((dry_cape, wet_cape))
