@@ -246,12 +246,12 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
         .scan(
             (0.0, 0.0, 0.0, 0.0, 0.0),
             |(old_p, old_t, old_mw, old_theta_v, max_theta_v), (p, t, mw, theta_v)| {
-                let result = if mw < tgt_mw && *old_mw >= tgt_mw {
+                let result = if mw <= tgt_mw && *old_mw >= tgt_mw {
                     // found the crossing
                     let tgt_theta_v = linear_interp(tgt_mw, *old_mw, mw, *old_theta_v, theta_v);
 
                     *max_theta_v = f64::max(*max_theta_v, tgt_theta_v);
-                    let max_theta = *max_theta_v / (1.0 + 0.61 * tgt_mw) + 0.1;
+                    let max_theta = *max_theta_v / (1.0 + 0.61 * tgt_mw);
 
                     Some(Some(max_theta))
                 } else {
