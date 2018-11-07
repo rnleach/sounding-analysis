@@ -230,24 +230,48 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         // Pack the resulting values into their vectors and handle special levels
         //
         for (p, h, env_t, pcl_t) in iter {
+            let mut lcl_data = None;
             // Check to see if we are passing the lcl
             if p0 > lcl_pressure && p < lcl_pressure {
-                add_row(
+                lcl_data = Some((
                     lcl_pressure,
                     lcl_height,
                     metfor::virtual_temperature_c(lcl_temperature, lcl_temperature, lcl_pressure)?,
                     metfor::virtual_temperature_c(lcl_env_temperature, lcl_env_dp, lcl_pressure)?,
-                );
+                ));
             }
 
+            let mut prof_cross_data = None;
             // Check to see if the parcel and environment soundings have crossed
             if (pcl_t0 < env_t0 && pcl_t > env_t) || (pcl_t0 > env_t0 && pcl_t < env_t) {
                 let tgt_pres = linear_interp(0.0, pcl_t - env_t, pcl_t0 - env_t0, p, p0);
                 let h2 = linear_interp(tgt_pres, p0, p, h0, h);
                 let env_t2 = linear_interp(tgt_pres, p0, p, env_t0, env_t);
 
-                add_row(tgt_pres, h2, env_t2, env_t2);
+                prof_cross_data = Some((tgt_pres, h2, env_t2, env_t2));
+            }
 
+            if let (Some((lclp, lclh, lclpt, lclet)), Some((cp, ch, cpt, cet))) =
+                (lcl_data, prof_cross_data)
+            {
+                // Handle both with proper ordering
+                if lclp > cp {
+                    add_row(lclp, lclh, lclpt, lclet);
+                    add_row(cp, ch, cpt, cet);
+                } else {
+                    add_row(cp, ch, cpt, cet);
+                    add_row(lclp, lclh, lclpt, lclet);
+                }
+            } else if let Some((p, h, pt, et)) = lcl_data {
+                // Just handle the lcl level alone
+                add_row(p, h, pt, et);
+            } else if let Some((p, h, pt, et)) = prof_cross_data {
+                // Just handle adding the crossing level alone
+                add_row(p, h, pt, et);
+            }
+
+            // In any ordering, deal with LFC and EL for crossings here
+            if let Some((tgt_pres, _, _, _)) = prof_cross_data {
                 if pcl_t0 < env_t0 && pcl_t > env_t {
                     // LFC crossing into positive bouyancy
                     if el_pressure.is_none() || el_pressure.unwrap() > lcl_pressure {
@@ -722,8 +746,8 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
 ///
 /// Returns a tuple with `(dry_cape, wet_cape)`
 pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
-    let total_cape = pa.cape.ok_or(AnalysisError::MissingValue)?;
     let lcl = pa.lcl_pressure.ok_or(AnalysisError::MissingValue)?;
+    let el = pa.el_pressure.ok_or(AnalysisError::MissingValue)?;
 
     let parcel_theta = pa.parcel.theta()?;
 
@@ -750,30 +774,44 @@ pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
 
     let dry_profile = lower_dry_profile.chain(upper_dry_profile);
 
-    let dry_cape = dry_profile
-        .fold((0.0, 1_000_000.0, 0.0, 0.0), |acc, (h, pt, et)| {
-            let (mut cape, prev_h, prev_pt, prev_et) = acc;
+    let full_profile = izip!(
+        &pa.profile.pressure,
+        &pa.profile.height,
+        &pa.profile.parcel_t,
+        &pa.profile.environment_t
+    ).take_while(|(p, _, _, _)| **p >= el)
+    .map(|(_, h, pt, et)| (*h, *pt, *et));
 
-            let (pt, et) = match (metfor::celsius_to_kelvin(pt), metfor::celsius_to_kelvin(et)) {
-                (Ok(pt), Ok(et)) => (pt, et),
-                _ => return (cape, prev_h, prev_pt, prev_et),
-            };
+    fn calc_cape<T: Iterator<Item = (f64, f64, f64)>>(iter: T) -> f64 {
+        let cape = iter
+            .fold((0.0, 1_000_000.0, 0.0, 0.0), |acc, (h, pt, et)| {
+                let (mut cape, prev_h, prev_pt, prev_et) = acc;
 
-            let dz = h - prev_h;
+                let (pt, et) = match (metfor::celsius_to_kelvin(pt), metfor::celsius_to_kelvin(et))
+                {
+                    (Ok(pt), Ok(et)) => (pt, et),
+                    _ => return (cape, prev_h, prev_pt, prev_et),
+                };
 
-            if dz <= 0.0 {
-                // Must be just starting out, save the previous layer and move on
-                (cape, h, pt, et)
-            } else {
-                let bouyancy = ((pt - et) / et + (prev_pt - prev_et) / prev_et) * dz;
-                if bouyancy > 0.0 {
+                let dz = h - prev_h;
+
+                if dz <= 0.0 {
+                    // Must be just starting out, save the previous layer and move on
+                    (cape, h, pt, et)
+                } else {
+                    let bouyancy = ((pt - et) / et + (prev_pt - prev_et) / prev_et) * dz;
                     cape += bouyancy;
-                }
-                (cape, h, pt, et)
-            }
-        }).0;
 
-    let dry_cape = (dry_cape / 2.0 * 9.81).min(total_cape);
+                    (cape, h, pt, et)
+                }
+            }).0;
+
+        cape / 2.0 * 9.81
+    }
+
+    let total_cape = calc_cape(full_profile).max(0.0);
+    let dry_cape = calc_cape(dry_profile).max(0.0).min(total_cape);
+
     let wet_cape = total_cape - dry_cape;
 
     Ok((dry_cape, wet_cape))
