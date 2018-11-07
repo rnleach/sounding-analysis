@@ -151,6 +151,15 @@ pub fn surface_parcel(snd: &Sounding) -> Result<Parcel> {
     })
 }
 
+/// Get the lowest level parcel. This should be the surface parcel, but some files do not have
+/// complete information at the surface, so the first level above the ground is best you can do.
+pub fn lowest_level_parcel(snd: &Sounding) -> Result<Parcel> {
+    snd.bottom_up()
+        .filter_map(Parcel::from_datarow)
+        .nth(0)
+        .ok_or(AnalysisError::NotEnoughData)
+}
+
 /// Get the parcel at a specific pressure.
 pub fn pressure_parcel(snd: &Sounding, pressure: f64) -> Result<Parcel> {
     let row = linear_interpolate_sounding(snd, pressure)?;
@@ -219,7 +228,7 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
     let Parcel {
         dew_point: dp,
         pressure: initial_p,
-        ..
+        temperature: initial_t,
     } = mixed_layer_parcel(snd)?;
 
     let tgt_mw = metfor::mixing_ratio(dp, initial_p)?;
@@ -227,48 +236,38 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
     let pressure = snd.get_profile(Pressure);
     let temperature = snd.get_profile(Temperature);
 
-    let tgt_theta = izip!(pressure, temperature)
+    let (tgt_p, tgt_t) = izip!(pressure, temperature)
         .filter_map(|(p, t)| {
             let p = p.into_option()?;
             let t = t.into_option()?;
             let mw = metfor::mixing_ratio(t, p).ok()?;
-            let theta = metfor::theta_kelvin(p, t).ok()?;
-            let theta_v = theta * (1.0 + 0.61 * mw);
 
-            Some((p, t, mw, theta_v))
+            Some((p, t, mw))
         })
         // Get past a cool surface layer where mw < tgt_mw possible due to using a mixed parcel for
         // the target mw in combination with a surface based inversion.
-        .skip_while(|(_, _, mw, _)| *mw <= tgt_mw)
+        .skip_while(|(_, _, mw)| *mw <= tgt_mw)
         // Scan to find the level where the environmental mixing ratio becomes less than our parcel
         // (surface or mixed layer parcel) mixing ratio. This is the CCL, the level where a cloud
         // first forms.
-        .scan(
-            (0.0, 0.0, 0.0, 0.0, 0.0),
-            |(old_p, old_t, old_mw, old_theta_v, max_theta_v), (p, t, mw, theta_v)| {
-                let result = if mw <= tgt_mw && *old_mw >= tgt_mw {
-                    // found the crossing
-                    let tgt_theta_v = linear_interp(tgt_mw, *old_mw, mw, *old_theta_v, theta_v);
+        .scan((0.0, 0.0, 0.0), |(old_p, old_t, old_mw), (p, t, mw)| {
+            let result = if mw <= tgt_mw && *old_mw >= tgt_mw {
+                // found the crossing
+                let tgt_p = linear_interp(tgt_mw, *old_mw, mw, *old_p, p);
+                let tgt_t = linear_interp(tgt_mw, *old_mw, mw, *old_t, t);
 
-                    *max_theta_v = f64::max(*max_theta_v, tgt_theta_v);
-                    let max_theta = *max_theta_v / (1.0 + 0.61 * tgt_mw);
+                Some(Some((tgt_p, tgt_t)))
+            } else {
+                Some(None)
+            };
 
-                    Some(Some(max_theta))
-                } else {
-                    Some(None)
-                };
+            // save these as the new ones
+            *old_p = p;
+            *old_t = t;
+            *old_mw = mw;
 
-                *max_theta_v = max_theta_v.max(theta_v);
-
-                // save these as the new ones
-                *old_p = p;
-                *old_t = t;
-                *old_mw = mw;
-                *old_theta_v = theta_v;
-
-                result
-            },
-        )
+            result
+        })
         // Each layer that is not the CCL will be a Some(None), so skip past it
         .filter_map(|opt_opt| opt_opt)
         // Grab the first (and only) layer where the mixing ratios meet.
@@ -278,7 +277,8 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
         .ok_or(AnalysisError::NotEnoughData)?;
 
     // Extrapolate dry adiabatically back to the parcel level.
-    let tgt_t = metfor::temperature_c_from_theta(tgt_theta, initial_p)?;
+    let tgt_theta = metfor::theta_kelvin(tgt_p, tgt_t)?;
+    let tgt_t = metfor::temperature_c_from_theta(tgt_theta, initial_p)?.max(initial_t);
 
     Ok(Parcel {
         pressure: initial_p,
