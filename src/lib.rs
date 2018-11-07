@@ -46,9 +46,6 @@ pub use profile::{
 //
 
 // 3rd party libs
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
 #[macro_use]
 extern crate itertools;
 extern crate smallvec;

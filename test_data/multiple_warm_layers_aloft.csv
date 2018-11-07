@@ -184,12 +184,12 @@ num wet bulb zeros,2
 dendritic zone pressures,604.2,534.7
 warm dry bulb layer pressures,1019,850,826,765
 cold surface layer pressures,1080,1019
-warm wet bulb layer pressures,995,876
+warm wet bulb layer pressures,994,876
 inversion layer pressures,1080,932,835,805
 6km agl layer pressures,1080,508.5
 700-500 hPa layer heights,3013,5575
 freezing level pressures,1019,851,827,765
-wet bulb zero pressures,995,876
+wet bulb zero pressures,994,877
 max wet bulb aloft,6.5
 max wet bulb pressure,932
 max temperature aloft,10
