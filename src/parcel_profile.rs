@@ -36,10 +36,11 @@ pub struct ParcelAnalysis {
     lcl_pressure: Option<f64>,    // plotting on skew-t
     lcl_temperature: Option<f64>, // ice or ice/water cloud?
     cin: Option<f64>,
-    el_pressure: Option<f64>,    // plotting on skew-t
-    el_height_asl: Option<f64>,  // Calculating convective cloud tops for aviation
-    el_temperature: Option<f64>, // useful for comparing to satellite
-    lfc_pressure: Option<f64>,   // plotting on skew-t
+    el_pressure: Option<f64>,          // plotting on skew-t
+    el_height_asl: Option<f64>,        // Calculating convective cloud tops for aviation
+    el_temperature: Option<f64>,       // useful for comparing to satellite
+    lfc_pressure: Option<f64>,         // plotting on skew-t
+    lfc_virt_temperature: Option<f64>, // plotting on skew-t
     lifted_index: Option<f64>,
 }
 
@@ -61,6 +62,7 @@ impl ParcelAnalysis {
             ELHeightASL => self.el_height_asl,
             ELTemperature => self.el_temperature,
             LFC => self.lfc_pressure,
+            LFCVirtualTemperature => self.lfc_virt_temperature,
             LI => self.lifted_index,
         }
     }
@@ -150,6 +152,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
     // Initialize some special levels/values we'll want to find during lifting
     //
     let mut lfc_pressure: Option<f64> = None;
+    let mut lfc_virt_temperature: Option<f64> = None;
     let mut el_pressure: Option<f64> = None;
     let mut lifted_index: Option<f64> = None;
 
@@ -271,11 +274,12 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
             }
 
             // In any ordering, deal with LFC and EL for crossings here
-            if let Some((tgt_pres, _, _, _)) = prof_cross_data {
+            if let Some((tgt_pres, _, vt, _)) = prof_cross_data {
                 if pcl_t0 < env_t0 && pcl_t > env_t {
                     // LFC crossing into positive bouyancy
                     if el_pressure.is_none() || el_pressure.unwrap() > lcl_pressure {
                         lfc_pressure = Some(tgt_pres);
+                        lfc_virt_temperature = Some(vt);
                         el_pressure = None;
                     }
                 } else if el_pressure.is_none() {
@@ -322,11 +326,13 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         (Some(lfcp), Some(elp)) => {
             if lfcp < elp {
                 lfc_pressure = None;
+                lfc_virt_temperature = None;
                 el_pressure = None;
             }
         }
         (None, Some(_)) | (Some(_), None) => {
             lfc_pressure = None;
+            lfc_virt_temperature = None;
             el_pressure = None;
         }
         _ => unreachable!(),
@@ -372,6 +378,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         el_height_asl,
         el_temperature,
         lfc_pressure,
+        lfc_virt_temperature,
         lifted_index,
     })
 }

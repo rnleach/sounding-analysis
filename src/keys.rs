@@ -54,8 +54,11 @@ pub enum ParcelIndex {
     ELHeightASL,
     /// Equilibrium level temperature (degrees C)
     ELTemperature,
-    /// Level of Free Convection (hPa), pressure vertical coordinate
+    /// Level of free convection (hPa), pressure vertical coordinate
     LFC,
+    /// Level of free convection in the temperature coordinate.
+    // Useful for plotting on skew-t
+    LFCVirtualTemperature,
     /// Normalized CAPE
     NCAPE,
     /// Lifted Index
