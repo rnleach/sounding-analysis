@@ -199,6 +199,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
             el_pressure = Some(p0);
         } else {
             lfc_pressure = Some(p0);
+            lfc_virt_temperature = Some(pcl_t0);
         }
 
         //
