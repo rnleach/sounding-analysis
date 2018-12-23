@@ -49,16 +49,6 @@ pub use crate::wind::{bunkers_storm_motion, mean_wind, sr_helicity};
 // 3rd party libs
 #[macro_use]
 extern crate itertools;
-extern crate smallvec;
-
-// framework libs
-extern crate metfor;
-extern crate optional;
-extern crate sounding_base;
-
-// dev only libs
-#[cfg(test)]
-extern crate sounding_validate;
 
 // Modules
 mod analysis;
