@@ -21,9 +21,9 @@ pub use indexes::{
 pub use interpolation::{linear_interpolate, linear_interpolate_sounding};
 pub use keys::{ParcelIndex, ProfileIndex};
 pub use layers::{
-    cold_surface_temperature_layer, dendritic_snow_zone, hail_growth_zone, inversions, layer_agl,
-    pressure_layer, sfc_based_inversion, warm_temperature_layer_aloft, warm_wet_bulb_layer_aloft,
-    Layer, Layers,
+    cold_surface_temperature_layer, dendritic_snow_zone, effective_inflow_layer, hail_growth_zone,
+    inversions, layer_agl, pressure_layer, sfc_based_inversion, warm_temperature_layer_aloft,
+    warm_wet_bulb_layer_aloft, Layer, Layers,
 };
 pub use levels::{
     freezing_levels, max_temperature_in_layer, max_temperature_in_profile, max_wet_bulb_in_layer,
@@ -39,6 +39,9 @@ pub use parcel_profile::{
 pub use profile::{
     equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,
     sfc_to_level_temperature_lapse_rate, temperature_lapse_rate, theta_e_lapse_rate, wet_bulb,
+};
+pub use wind::{
+    mean_wind, bunkers_storm_motion, sr_helicity,
 };
 
 //
@@ -70,5 +73,6 @@ mod levels;
 mod parcel;
 mod parcel_profile;
 mod profile;
+mod wind;
 
 pub(crate) const VEC_SIZE: usize = 2;

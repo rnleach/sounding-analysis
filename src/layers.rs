@@ -2,11 +2,16 @@
 //! zone, and inversions.
 use smallvec::SmallVec;
 
+use metfor;
 use sounding_base::Profile::*;
 use sounding_base::{DataRow, Profile, Sounding};
 
 use error::AnalysisError::*;
 use error::*;
+use keys;
+use levels::height_level;
+use parcel;
+use parcel_profile;
 
 const FREEZING: f64 = 0.0;
 
@@ -35,7 +40,6 @@ impl Layer {
     }
 
     /// Get the height thickness in meters
-    #[cfg_attr(feature = "cargo-clippy", allow(float_cmp))]
     pub fn height_thickness(&self) -> Result<f64> {
         let top = self.top.height.ok_or(MissingValue)?;
         let bottom = self.bottom.height.ok_or(MissingValue)?;
@@ -47,7 +51,6 @@ impl Layer {
     }
 
     /// Get the pressure thickness.
-    #[cfg_attr(feature = "cargo-clippy", allow(float_cmp))]
     pub fn pressure_thickness(&self) -> Result<f64> {
         let bottom_p = self.bottom.pressure.ok_or(MissingValue)?;
         let top_p = self.top.pressure.ok_or(MissingValue)?;
@@ -61,27 +64,17 @@ impl Layer {
     /// Get the bulk wind shear (spd kts, direction degrees)
     pub fn wind_shear(&self) -> Result<(f64, f64)> {
         let top_spd = self.top.speed.ok_or(MissingValue)?;
-        let top_dir = -(90.0 + self.top.direction.ok_or(MissingValue)?);
+        let top_dir = self.top.direction.ok_or(MissingValue)?;
         let bottom_spd = self.bottom.speed.ok_or(MissingValue)?;
-        let bottom_dir = -(90.0 + self.bottom.direction.ok_or(MissingValue)?);
+        let bottom_dir = self.bottom.direction.ok_or(MissingValue)?;
 
-        let top_u = top_dir.to_radians().cos() * top_spd;
-        let top_v = top_dir.to_radians().sin() * top_spd;
-        let bottom_u = bottom_dir.to_radians().cos() * bottom_spd;
-        let bottom_v = bottom_dir.to_radians().sin() * bottom_spd;
+        let (top_u, top_v) = metfor::spd_dir_to_uv(top_dir, top_spd);
+        let (bottom_u, bottom_v) = metfor::spd_dir_to_uv(bottom_dir, bottom_spd);
 
         let du = top_u - bottom_u;
         let dv = top_v - bottom_v;
 
-        let shear_spd = du.hypot(dv);
-        let mut shear_dir = -(90.0 + dv.atan2(du).to_degrees());
-
-        while shear_dir < 0.0 {
-            shear_dir += 360.0;
-        }
-        while shear_dir > 360.0 {
-            shear_dir -= 360.0;
-        }
+        let (shear_dir, shear_spd) = metfor::uv_to_spd_dir(du, dv);
 
         Ok((shear_spd, shear_dir))
     }
@@ -402,7 +395,6 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Re
 
 /// Get a layer that has a certain thickness, like 3km or 6km.
 pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
-    use std::f64::MAX;
 
     let tgt_elev = {
         let elev = snd.get_station_info().elevation();
@@ -413,57 +405,9 @@ pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
         }
     };
 
-    let h_profile = snd.get_profile(GeopotentialHeight);
-    let p_profile = snd.get_profile(Pressure);
-
-    if h_profile.is_empty() || p_profile.is_empty() {
-        return Err(MissingProfile);
-    }
-
     let bottom = snd.surface_as_data_row();
-
-    izip!(p_profile, h_profile)
-        // filter out levels with missing data
-        .filter_map(|pair| {
-            if pair.0.is_some() && pair.1.is_some() {
-                let (p, h) = (pair.0.unpack(), pair.1.unpack());
-                Some((p, h))
-            } else {
-                None
-            }
-        })
-        // find the pressure at the target geopotential height, to be used later for interpolation.
-        .fold(
-            Ok((MAX, 0.0f64, None)),
-            |acc: Result<(_, _, Option<_>)>, (p, h)| {
-                match acc {
-                    // We have not yet found the target pressure to interpolate everything to, so
-                    // check the current values.
-                    Ok((last_p, last_h, None)) => {
-                        if h > tgt_elev {
-                            // If we finally jumped above our target, we have it bracketed, interpolate
-                            // and find target pressure.
-                            let tgt_p =
-                                ::interpolation::linear_interp(tgt_elev, last_h, h, last_p, p);
-                            Ok((MAX, MAX, Some(tgt_p)))
-                        } else {
-                            // Keep climbing up the profile.
-                            Ok((p, h, None))
-                        }
-                    }
-                    // We have found the target pressure on the last iteration, pass it through
-                    ok @ Ok((_, _, Some(_))) => ok,
-                    // There was an error, keep passing it through.
-                    e @ Err(_) => e,
-                }
-            },
-        )
-        // Extract the target pressure
-        .and_then(|(_, _, opt)| opt.ok_or(NotEnoughData))
-        // Do the interpolation.
-        .and_then(|target_p| ::interpolation::linear_interpolate_sounding(snd, target_p))
-        // Compose into a layer
-        .map(|top| Layer { bottom, top })
+    let top = height_level(tgt_elev, snd)?;
+    Ok(Layer { bottom, top })
 }
 
 /// Get a layer defined by two pressure levels. `bottom_p` > `top_p`
@@ -603,4 +547,51 @@ pub fn sfc_based_inversion(snd: &Sounding) -> Result<Option<Layer>> {
                 Err(AnalysisError::MissingValue)
             }
         })
+}
+
+/// Get the effective inflow layer.
+pub fn effective_inflow_layer(snd: &Sounding) -> Result<Option<Layer>> {
+    let mut bottom: Option<DataRow> = None;
+    let mut top: Option<DataRow> = None;
+
+    for row in snd.bottom_up() {
+        let pcl = if let Some(p) = parcel::Parcel::from_datarow(row) {
+            p
+        } else {
+            continue;
+        };
+
+        let pcl_anal = parcel_profile::lift_parcel(pcl, snd)?;
+
+        let cape = if let Some(cape) = pcl_anal.get_index(keys::ParcelIndex::CAPE) {
+            cape
+        } else {
+            continue;
+        };
+        let cin = if let Some(cin) = pcl_anal.get_index(keys::ParcelIndex::CIN) {
+            cin
+        } else {
+            continue;
+        };
+
+        if cape < 100.0 || cin < -250.0 {
+            if top.is_some() {
+                break;
+            }
+            
+            continue;
+        }
+
+        if bottom.is_none() {
+            bottom = Some(row);
+        } else {
+            top = Some(row);
+        }
+    }
+
+    if let (Some(bottom), Some(top)) = (bottom, top) {
+        Ok(Some(Layer { bottom, top }))
+    } else {
+        Ok(None)
+    }
 }

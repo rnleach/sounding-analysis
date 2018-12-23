@@ -191,3 +191,56 @@ fn max_t_in_layer(snd: &Sounding, var: Profile, lyr: &Layer) -> Result<Level> {
         // Retrive the row
         .and_then(|(idx, _)| snd.get_data_row(idx).ok_or(InvalidInput))
 }
+
+/// Find a level at a specific geopotential height.
+pub(crate) fn height_level(tgt_height_m: f64, snd: &Sounding) -> Result<Level> {
+    use std::f64::MAX;
+
+    let h_profile = snd.get_profile(GeopotentialHeight);
+    let p_profile = snd.get_profile(Pressure);
+
+    if h_profile.is_empty() || p_profile.is_empty() {
+        return Err(MissingProfile);
+    }
+
+    izip!(p_profile, h_profile)
+        // filter out levels with missing data
+        .filter_map(|pair| {
+            if pair.0.is_some() && pair.1.is_some() {
+                let (p, h) = (pair.0.unpack(), pair.1.unpack());
+                Some((p, h))
+            } else {
+                None
+            }
+        })
+        // find the pressure at the target geopotential height, to be used later for interpolation.
+        .fold(
+            Ok((MAX, 0.0f64, None)),
+            |acc: Result<(_, _, Option<_>)>, (p, h)| {
+                match acc {
+                    // We have not yet found the target pressure to interpolate everything to, so
+                    // check the current values.
+                    Ok((last_p, last_h, None)) => {
+                        if h > tgt_height_m {
+                            // If we finally jumped above our target, we have it bracketed, interpolate
+                            // and find target pressure.
+                            let tgt_p =
+                                ::interpolation::linear_interp(tgt_height_m, last_h, h, last_p, p);
+                            Ok((MAX, MAX, Some(tgt_p)))
+                        } else {
+                            // Keep climbing up the profile.
+                            Ok((p, h, None))
+                        }
+                    }
+                    // We have found the target pressure on the last iteration, pass it through
+                    ok @ Ok((_, _, Some(_))) => ok,
+                    // There was an error, keep passing it through.
+                    e @ Err(_) => e,
+                }
+            },
+        )
+        // Extract the target pressure
+        .and_then(|(_, _, opt)| opt.ok_or(NotEnoughData))
+        // Do the interpolation.
+        .and_then(|target_p| ::interpolation::linear_interpolate_sounding(snd, target_p))
+}
