@@ -3,10 +3,10 @@
 use metfor;
 use sounding_base::{DataRow, Profile::*, Sounding};
 
-use error::*;
-use interpolation::{linear_interp, linear_interpolate_sounding};
-use keys::ParcelIndex;
-use parcel::Parcel;
+use crate::error::*;
+use crate::interpolation::{linear_interp, linear_interpolate_sounding};
+use crate::keys::ParcelIndex;
+use crate::parcel::Parcel;
 
 /// Hold profiles for a parcel and it's environment.
 #[derive(Debug, Clone)]
@@ -546,7 +546,8 @@ where
                 };
 
                 Some((p, h, pcl_t, e_t))
-            }).for_each(|(p, h, pt, et)| {
+            })
+            .for_each(|(p, h, pt, et)| {
                 add_row(p, h, pt, et);
             });
 
@@ -625,7 +626,8 @@ fn cape_cin(
                     ((cape, cin, hail_cape), h, pt, et)
                 }
             },
-        ).0;
+        )
+        .0;
 
     Ok((
         cape / 2.0 * 9.81,
@@ -646,11 +648,11 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
     let p = snd.get_profile(Pressure);
 
     // Find the lowest pressure, 400 mb above the surface (or starting level)
-    let top_p = -400.0 + p
-        .iter()
-        .filter_map(|p| p.into_option())
-        .nth(0)
-        .ok_or(AnalysisError::NotEnoughData)?;
+    let top_p = -400.0
+        + p.iter()
+            .filter_map(|p| p.into_option())
+            .nth(0)
+            .ok_or(AnalysisError::NotEnoughData)?;
 
     // Find the starting parcel.
     let pcl = izip!(p, t, dp)
@@ -660,7 +662,8 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, f64, f64)> {
             } else {
                 None
             }
-        }).take_while(|(p, _, _)| *p >= top_p)
+        })
+        .take_while(|(p, _, _)| *p >= top_p)
         .fold(
             Err(AnalysisError::NotEnoughData),
             |acc: Result<Parcel>, (p, t, dp)| match metfor::theta_e_kelvin(t, dp, p) {
@@ -764,20 +767,23 @@ pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
         &pa.profile.height,
         &pa.profile.parcel_t,
         &pa.profile.environment_t
-    ).take_while(|(p, _, _, _)| **p >= lcl)
+    )
+    .take_while(|(p, _, _, _)| **p >= lcl)
     .map(|(_, h, pt, et)| (*h, *pt, *et));
 
     let upper_dry_profile = izip!(
         &pa.profile.pressure,
         &pa.profile.height,
         &pa.profile.environment_t
-    ).skip_while(|(p, _, _)| **p >= lcl)
+    )
+    .skip_while(|(p, _, _)| **p >= lcl)
     .filter_map(|(p, h, et)| {
         metfor::temperature_c_from_theta(parcel_theta, *p)
             .and_then(|t| metfor::virtual_temperature_c(t, t, *p))
             .ok()
             .map(|pt| (*p, *h, pt, *et))
-    }).take_while(|(_, _, pt, et)| pt >= et)
+    })
+    .take_while(|(_, _, pt, et)| pt >= et)
     .map(|(_, h, pt, et)| (h, pt, et));
 
     let dry_profile = lower_dry_profile.chain(upper_dry_profile);
@@ -787,7 +793,8 @@ pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
         &pa.profile.height,
         &pa.profile.parcel_t,
         &pa.profile.environment_t
-    ).take_while(|(p, _, _, _)| **p >= el)
+    )
+    .take_while(|(p, _, _, _)| **p >= el)
     .map(|(_, h, pt, et)| (*h, *pt, *et));
 
     fn calc_cape<T: Iterator<Item = (f64, f64, f64)>>(iter: T) -> f64 {
@@ -812,7 +819,8 @@ pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(f64, f64)> {
 
                     (cape, h, pt, et)
                 }
-            }).0;
+            })
+            .0;
 
         cape / 2.0 * 9.81
     }

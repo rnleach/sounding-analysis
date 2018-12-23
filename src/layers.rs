@@ -6,12 +6,12 @@ use metfor;
 use sounding_base::Profile::*;
 use sounding_base::{DataRow, Profile, Sounding};
 
-use error::AnalysisError::*;
-use error::*;
-use keys;
-use levels::height_level;
-use parcel;
-use parcel_profile;
+use crate::error::AnalysisError::*;
+use crate::error::*;
+use crate::keys;
+use crate::levels::height_level;
+use crate::parcel;
+use crate::parcel_profile;
 
 const FREEZING: f64 = 0.0;
 
@@ -25,7 +25,7 @@ pub struct Layer {
 }
 
 /// A list of layers.
-pub type Layers = SmallVec<[Layer; ::VEC_SIZE]>;
+pub type Layers = SmallVec<[Layer; crate::VEC_SIZE]>;
 
 impl Layer {
     /// Get the average lapse rate in C/km
@@ -177,7 +177,7 @@ fn temperature_layer(
     cold_side: f64,
     top_pressure: f64,
 ) -> Result<Layers> {
-    use interpolation::{linear_interp, linear_interpolate_sounding};
+    use crate::interpolation::{linear_interp, linear_interpolate_sounding};
     let mut to_return: Layers = Layers::new();
 
     let t_profile = snd.get_profile(Temperature);
@@ -321,13 +321,16 @@ fn warm_layer_aloft(snd: &Sounding, var: Profile) -> Result<Layers> {
                 let (last_p, last_t, mut bottom) = last_iter_res?;
                 if last_t <= FREEZING && t > FREEZING && bottom.is_none() {
                     // Entering a warm layer.
-                    let bottom_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
-                    bottom = Some(::interpolation::linear_interpolate_sounding(snd, bottom_p)?);
+                    let bottom_p =
+                        crate::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
+                    bottom = Some(crate::interpolation::linear_interpolate_sounding(
+                        snd, bottom_p,
+                    )?);
                 }
                 if bottom.is_some() && last_t > FREEZING && t <= FREEZING {
                     // Crossed out of a warm layer
-                    let top_p = ::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
-                    let top = ::interpolation::linear_interpolate_sounding(snd, top_p)?;
+                    let top_p = crate::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
+                    let top = crate::interpolation::linear_interpolate_sounding(snd, top_p)?;
                     {
                         let bottom = bottom.unwrap();
                         to_return.push(Layer { bottom, top });
@@ -395,7 +398,6 @@ fn cold_surface_layer(snd: &Sounding, var: Profile, warm_layers: &[Layer]) -> Re
 
 /// Get a layer that has a certain thickness, like 3km or 6km.
 pub fn layer_agl(snd: &Sounding, meters_agl: f64) -> Result<Layer> {
-
     let tgt_elev = {
         let elev = snd.get_station_info().elevation();
         if elev.is_some() {
@@ -418,8 +420,8 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: f64, top_p: f64) -> Result<Layer
         return Err(InvalidInput);
     }
 
-    let bottom = ::interpolation::linear_interpolate_sounding(snd, bottom_p)?;
-    let top = ::interpolation::linear_interpolate_sounding(snd, top_p)?;
+    let bottom = crate::interpolation::linear_interpolate_sounding(snd, bottom_p)?;
+    let top = crate::interpolation::linear_interpolate_sounding(snd, top_p)?;
 
     Ok(Layer { bottom, top })
 }
@@ -578,7 +580,7 @@ pub fn effective_inflow_layer(snd: &Sounding) -> Result<Option<Layer>> {
             if top.is_some() {
                 break;
             }
-            
+
             continue;
         }
 

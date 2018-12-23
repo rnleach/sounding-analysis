@@ -5,9 +5,9 @@ use optional::Optioned;
 use metfor;
 use sounding_base::{DataRow, Profile::*, Sounding};
 
-use error::*;
-use interpolation::{linear_interp, linear_interpolate_sounding};
-use profile::equivalent_potential_temperature;
+use crate::error::*;
+use crate::interpolation::{linear_interp, linear_interpolate_sounding};
+use crate::profile::equivalent_potential_temperature;
 
 /// Variables defining a parcel as used in parcel analysis.
 #[derive(Debug, Clone, Copy)]
@@ -199,13 +199,15 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
             } else {
                 true // Don't stop just because one is missing or the none value
             }
-        }).filter_map(|(idx, _, theta_e_opt)| {
+        })
+        .filter_map(|(idx, _, theta_e_opt)| {
             if theta_e_opt.is_some() {
                 Some((idx, theta_e_opt.unpack()))
             } else {
                 None
             }
-        }).fold(
+        })
+        .fold(
             (::std::usize::MAX, ::std::f64::MIN),
             |(max_idx, max_val), (i, theta_e)| {
                 if theta_e > max_val {

@@ -1,8 +1,8 @@
 //! Indexes that are specific to a sounding, but not a particular parcel analysis of that sounding.
 use sounding_base::{Profile, Sounding};
 
-use error::*;
-use interpolation::linear_interpolate_sounding;
+use crate::error::*;
+use crate::interpolation::linear_interpolate_sounding;
 use metfor::vapor_pressure_liquid_water;
 
 /// The Total Totals index
@@ -87,11 +87,13 @@ pub fn precipitable_water(snd: &Sounding) -> Result<f64> {
             } else {
                 None
             }
-        }).filter_map(|(p, dp)| {
+        })
+        .filter_map(|(p, dp)| {
             ::metfor::mixing_ratio(dp, p)
                 .ok()
                 .and_then(|mw| Some((p, mw)))
-        }).fold((0.0, 0.0, 0.0), |(mut acc_mw, prev_p, prev_mw), (p, mw)| {
+        })
+        .fold((0.0, 0.0, 0.0), |(mut acc_mw, prev_p, prev_mw), (p, mw)| {
             let dp = prev_p - p;
             if dp > 0.0 {
                 acc_mw += (mw + prev_mw) * dp;

@@ -26,7 +26,7 @@ pub enum AnalysisError {
 
 impl Display for AnalysisError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
-        use AnalysisError::*;
+        use crate::AnalysisError::*;
         match self {
             MissingProfile => write!(f, "missing profile required for the analysis"),
             MissingValue => write!(f, "missing value required for analysis"),

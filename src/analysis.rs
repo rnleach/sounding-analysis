@@ -5,13 +5,13 @@ use std::collections::HashMap;
 
 use sounding_base::Sounding;
 
-use indexes::{
+use crate::indexes::{
     haines, haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water, swet,
     total_totals,
 };
-use keys::ProfileIndex;
-use parcel::{convective_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel};
-use parcel_profile::{dcape, lift_parcel, partition_cape, ParcelAnalysis, ParcelProfile};
+use crate::keys::ProfileIndex;
+use crate::parcel::{convective_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel};
+use crate::parcel_profile::{dcape, lift_parcel, partition_cape, ParcelAnalysis, ParcelProfile};
 
 /// Convenient package for commonly requested analysis values.
 ///

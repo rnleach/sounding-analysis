@@ -8,10 +8,10 @@ use smallvec::SmallVec;
 use sounding_base::Profile::*;
 use sounding_base::{DataRow, Profile, Sounding};
 
-use error::AnalysisError::*;
-use error::*;
+use crate::error::AnalysisError::*;
+use crate::error::*;
 
-use layers::Layer;
+use crate::layers::Layer;
 
 const FREEZING: f64 = 0.0;
 
@@ -19,7 +19,7 @@ const FREEZING: f64 = 0.0;
 pub type Level = DataRow;
 
 /// A list of levels.
-pub type Levels = SmallVec<[Level; ::VEC_SIZE]>;
+pub type Levels = SmallVec<[Level; crate::VEC_SIZE]>;
 
 /// Find the freezing/melting levels below 500 hPa.
 pub fn freezing_levels(snd: &Sounding) -> Result<Levels> {
@@ -32,7 +32,7 @@ pub fn wet_bulb_zero_levels(snd: &Sounding) -> Result<Levels> {
 }
 
 fn find_temperature_levels(snd: &Sounding, var: Profile, target_t: f64) -> Result<Levels> {
-    use interpolation::{linear_interp, linear_interpolate_sounding};
+    use crate::interpolation::{linear_interp, linear_interpolate_sounding};
 
     debug_assert!(var == Temperature || var == WetBulb);
 
@@ -118,7 +118,8 @@ fn max_t_aloft(snd: &Sounding, var: Profile) -> Result<Level> {
             } else {
                 None
             }
-        }).fold(Ok((0, ::std::f64::MIN)), |acc: Result<_>, (i, t)| {
+        })
+        .fold(Ok((0, ::std::f64::MIN)), |acc: Result<_>, (i, t)| {
             if let Ok((_, mx_t)) = acc {
                 if t > mx_t {
                     Ok((i, t))
@@ -175,7 +176,8 @@ fn max_t_in_layer(snd: &Sounding, var: Profile, lyr: &Layer) -> Result<Level> {
             } else {
                 None
             }
-        }).fold(Ok((0, ::std::f64::MIN)), |acc: Result<_>, (i, t)| {
+        })
+        .fold(Ok((0, ::std::f64::MIN)), |acc: Result<_>, (i, t)| {
             if let Ok((_, mx_t)) = acc {
                 if t > mx_t {
                     Ok((i, t))
@@ -224,8 +226,13 @@ pub(crate) fn height_level(tgt_height_m: f64, snd: &Sounding) -> Result<Level> {
                         if h > tgt_height_m {
                             // If we finally jumped above our target, we have it bracketed, interpolate
                             // and find target pressure.
-                            let tgt_p =
-                                ::interpolation::linear_interp(tgt_height_m, last_h, h, last_p, p);
+                            let tgt_p = crate::interpolation::linear_interp(
+                                tgt_height_m,
+                                last_h,
+                                h,
+                                last_p,
+                                p,
+                            );
                             Ok((MAX, MAX, Some(tgt_p)))
                         } else {
                             // Keep climbing up the profile.
@@ -242,5 +249,5 @@ pub(crate) fn height_level(tgt_height_m: f64, snd: &Sounding) -> Result<Level> {
         // Extract the target pressure
         .and_then(|(_, _, opt)| opt.ok_or(NotEnoughData))
         // Do the interpolation.
-        .and_then(|target_p| ::interpolation::linear_interpolate_sounding(snd, target_p))
+        .and_then(|target_p| crate::interpolation::linear_interpolate_sounding(snd, target_p))
 }

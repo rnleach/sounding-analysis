@@ -87,16 +87,16 @@ macro_rules! test_file {
 
             use std::collections::HashMap;
 
+            use crate::utils;
             use sounding_base::Sounding;
-            use utils;
 
             fn load_data() -> (Sounding, HashMap<String, i64>, HashMap<String, Vec<f64>>) {
                 utils::load_test_file($fname)
             }
 
             mod levels {
-                use utils::level_tests;
-                use $test_mod_name::load_data;
+                use crate::utils::level_tests;
+                use crate::$test_mod_name::load_data;
 
                 #[test]
                 fn freezing_level() {
@@ -124,8 +124,8 @@ macro_rules! test_file {
             }
 
             mod layers {
-                use utils::layer_tests;
-                use $test_mod_name::load_data;
+                use crate::utils::layer_tests;
+                use crate::$test_mod_name::load_data;
 
                 #[test]
                 fn dendritic_layers() {
@@ -165,9 +165,9 @@ macro_rules! test_file {
             }
 
             mod indexes {
+                use crate::utils::index_tests;
+                use crate::$test_mod_name::load_data;
                 use sounding_analysis;
-                use utils::index_tests;
-                use $test_mod_name::load_data;
 
                 #[test]
                 fn test_haines_low() {
@@ -430,7 +430,8 @@ fn load_test_csv_sounding(
                 } else {
                     None
                 }
-            }).collect();
+            })
+            .collect();
 
         if tokens.len() < 2 {
             continue;
@@ -454,7 +455,8 @@ fn load_test_csv_sounding(
                 } else {
                     None
                 }
-            }).collect();
+            })
+            .collect();
         if tokens.len() < 1 {
             continue;
         }
