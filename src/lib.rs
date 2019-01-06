@@ -19,7 +19,6 @@ pub use crate::indexes::{
     total_totals,
 };
 pub use crate::interpolation::{linear_interpolate, linear_interpolate_sounding};
-pub use crate::keys::{ParcelIndex, ProfileIndex};
 pub use crate::layers::{
     cold_surface_temperature_layer, dendritic_snow_zone, effective_inflow_layer, hail_growth_zone,
     inversions, layer_agl, pressure_layer, sfc_based_inversion, warm_temperature_layer_aloft,
@@ -55,7 +54,6 @@ mod analysis;
 mod error;
 mod indexes;
 mod interpolation;
-mod keys;
 mod layers;
 mod levels;
 mod parcel;

@@ -4,9 +4,9 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use metfor;
-use optional::{none, Optioned};
-use sounding_base::{Profile, Sounding, StationInfo, Surface};
+use metfor::{self, Celsius, HectoPascal, WindSpdDir, Knots, Meters};
+use optional::{Optioned};
+use sounding_base::{Sounding, StationInfo};
 
 pub mod index_tests;
 pub mod layer_tests;
@@ -177,8 +177,8 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::haines_low,
                         "haines_low",
-                        0.5,
-                        0.0,
+                        0,
+                        0,
                     );
                 }
 
@@ -190,8 +190,8 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::haines_mid,
                         "haines_mid",
-                        0.5,
-                        0.0,
+                        0,
+                        0,
                     );
                 }
 
@@ -203,8 +203,8 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::haines_high,
                         "haines_high",
-                        0.5,
-                        0.0,
+                        0,
+                        0,
                     );
                 }
 
@@ -216,8 +216,8 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::haines,
                         "haines",
-                        0.5,
-                        0.0,
+                        0,
+                        0,
                     );
                 }
 
@@ -242,8 +242,8 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::kindex,
                         "kindex",
-                        0.1,
-                        -1000.0,
+                        metfor::Celsius(0.1),
+                        metfor::Celsius(-1000.0),
                     );
                 }
 
@@ -281,8 +281,8 @@ macro_rules! test_file {
                         &fvals,
                         sounding_analysis::precipitable_water,
                         "precipitable_water",
-                        0.5,
-                        0.0,
+                        metfor::Mm(0.5),
+                        metfor::Mm(0.0),
                     );
                 }
             }
@@ -328,14 +328,12 @@ fn load_test_csv_sounding(
     //
     // Parse profile data
     //
-    let mut height: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
-    let mut temp: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
-    let mut wb: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
-    let mut dp: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
-    let mut press: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
-    let mut wspd: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
-    let mut wdir: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
-    let mut wet_bulb: Vec<Optioned<f64>> = Vec::with_capacity(lines.len());
+    let mut height: Vec<Optioned<Meters>> = Vec::with_capacity(lines.len());
+    let mut temp: Vec<Optioned<Celsius>> = Vec::with_capacity(lines.len());
+    let mut wb: Vec<Optioned<Celsius>> = Vec::with_capacity(lines.len());
+    let mut dp: Vec<Optioned<Celsius>> = Vec::with_capacity(lines.len());
+    let mut press: Vec<Optioned<HectoPascal>> = Vec::with_capacity(lines.len());
+    let mut wind: Vec<Optioned<WindSpdDir<Knots>>> = Vec::with_capacity(lines.len());
 
     for line in line_iter.by_ref() {
         if line.starts_with("### Surface Data ###")
@@ -349,37 +347,32 @@ fn load_test_csv_sounding(
         if tokens.len() < 6 {
             continue;
         }
-        let t_c = f64::from_str(tokens[1]).ok();
-        let dp_c = f64::from_str(tokens[2]).ok();
-        let press_hpa = f64::from_str(tokens[3]).ok();
-        let wb_c = t_c.and_then(|t| {
-            dp_c.and_then(|dp| press_hpa.and_then(|p| metfor::wet_bulb_c(t, dp, p).ok()))
+        let t_c: Option<Celsius> = f64::from_str(tokens[1]).ok().map(Celsius);
+        let dp_c: Option<Celsius> = f64::from_str(tokens[2]).ok().map(Celsius);
+        let press_hpa: Option<HectoPascal> = f64::from_str(tokens[3]).ok().map(HectoPascal).into();
+        let wb_c: Option<Celsius> = t_c.and_then(|t| {
+            dp_c.and_then(|dp| press_hpa.and_then(|p| metfor::wet_bulb(t, dp, p)))
         });
+        let wspd = f64::from_str(tokens[4]).ok();
+        let wdir = f64::from_str(tokens[5]).ok();
+        let wind_val: Option<WindSpdDir<Knots>> = wspd.and_then(|wspd| wdir.map(|wdir| WindSpdDir{speed: Knots(wspd), direction: wdir}));
 
-        height.push(f64::from_str(tokens[0]).ok().into());
+        height.push(f64::from_str(tokens[0]).ok().map(Meters).into());
         temp.push(t_c.into());
         wb.push(wb_c.into());
         dp.push(dp_c.into());
         press.push(press_hpa.into());
-        wspd.push(f64::from_str(tokens[4]).ok().into());
-        wdir.push(f64::from_str(tokens[5]).ok().into());
-
-        if let (Some(t_c), Some(dp_c), Some(press_hpa)) = (t_c, dp_c, press_hpa) {
-            wet_bulb.push(metfor::wet_bulb_c(t_c, dp_c, press_hpa).ok().into());
-        } else {
-            wet_bulb.push(none());
-        }
+        wind.push(wind_val.into());
+        
     }
 
     let mut snd = Sounding::new()
-        .set_profile(Profile::GeopotentialHeight, height)
-        .set_profile(Profile::Temperature, temp)
-        .set_profile(Profile::WetBulb, wb)
-        .set_profile(Profile::DewPoint, dp)
-        .set_profile(Profile::Pressure, press)
-        .set_profile(Profile::WetBulb, wet_bulb)
-        .set_profile(Profile::WindSpeed, wspd)
-        .set_profile(Profile::WindDirection, wdir);
+        .with_height_profile(height)
+        .with_temperature_profile(temp)
+        .with_wet_bulb_profile(wb)
+        .with_dew_point_profile(dp)
+        .with_pressure_profile(press)
+        .with_wind_profile(wind);
 
     //
     // Surface data
@@ -396,20 +389,22 @@ fn load_test_csv_sounding(
             continue;
         }
 
-        let height = f64::from_str(tokens[0]).ok();
-        let t_c = f64::from_str(tokens[1]).ok();
-        let dp_c = f64::from_str(tokens[2]).ok();
-        let press_hpa = f64::from_str(tokens[3]).ok();
+        let height = f64::from_str(tokens[0]).ok().map(Meters);
+        let t_c = f64::from_str(tokens[1]).ok().map(Celsius);
+        let dp_c = f64::from_str(tokens[2]).ok().map(Celsius);
+        let press_hpa = f64::from_str(tokens[3]).ok().map(HectoPascal);
         let wspd = f64::from_str(tokens[4]).ok();
         let wdir = f64::from_str(tokens[5]).ok();
+        let wind = wspd
+            .and_then(|wspd| wdir
+                .map(|wdir| WindSpdDir{speed: Knots(wspd), direction: wdir}));
 
         snd = snd
-            .set_surface_value(Surface::Temperature, t_c)
-            .set_station_info(StationInfo::new().with_elevation(height))
-            .set_surface_value(Surface::DewPoint, dp_c)
-            .set_surface_value(Surface::StationPressure, press_hpa)
-            .set_surface_value(Surface::WindSpeed, wspd)
-            .set_surface_value(Surface::WindDirection, wdir)
+            .with_sfc_temperature(t_c)
+            .with_station_info(StationInfo::new().with_elevation(height))
+            .with_sfc_dew_point(dp_c)
+            .with_station_pressure(press_hpa)
+            .with_sfc_wind(wind)
     }
 
     //

@@ -6,17 +6,17 @@
 //! sounding is missing, the result cannot be calculated and an empty vector is returned.
 //!
 
-use metfor;
+use metfor::{self, Celsius, Kelvin, CelsiusPKm, Meters, Quantity, Km, CelsiusDiff, KelvinPKm, 
+    Temperature, HydrolapsePKm};
 use optional::{none, some, Optioned};
-use sounding_base::Profile::{DewPoint, GeopotentialHeight, Pressure, Temperature, ThetaE};
 use sounding_base::Sounding;
-use sounding_base::Surface;
+use std::ops::Sub;
 
 /// Given a sounding, calculate a profile of wet bulb temperature.
-pub fn wet_bulb(snd: &Sounding) -> Vec<Optioned<f64>> {
-    let p_profile = snd.get_profile(Pressure);
-    let t_profile = snd.get_profile(Temperature);
-    let dp_profile = snd.get_profile(DewPoint);
+pub fn wet_bulb(snd: &Sounding) -> Vec<Optioned<Celsius>> {
+    let p_profile = snd.pressure_profile();
+    let t_profile = snd.temperature_profile();
+    let dp_profile = snd.dew_point_profile();
 
     if p_profile.len().min(t_profile.len()).min(dp_profile.len()) == 0 {
         return vec![];
@@ -27,10 +27,7 @@ pub fn wet_bulb(snd: &Sounding) -> Vec<Optioned<f64>> {
             p_opt.and_then(|p| {
                 t_opt.and_then(|t| {
                     dp_opt.and_then(|dp| {
-                        metfor::wet_bulb_c(t, dp, p)
-                            // Ignore errors, if not possible to calculate just use missing value.
-                            .ok()
-                            .into()
+                        Optioned::<Celsius>::from(metfor::wet_bulb(t, dp, p))
                     })
                 })
             })
@@ -40,8 +37,8 @@ pub fn wet_bulb(snd: &Sounding) -> Vec<Optioned<f64>> {
 
 /// Given a sounding, calculate a profile of relative humidity.
 pub fn relative_humidity(snd: &Sounding) -> Vec<Optioned<f64>> {
-    let t_profile = snd.get_profile(Temperature);
-    let dp_profile = snd.get_profile(DewPoint);
+    let t_profile = snd.temperature_profile();
+    let dp_profile = snd.dew_point_profile();
 
     if t_profile.len().min(dp_profile.len()) == 0 {
         return vec![];
@@ -51,10 +48,7 @@ pub fn relative_humidity(snd: &Sounding) -> Vec<Optioned<f64>> {
         .map(|(t_opt, dp_opt)| {
             t_opt.and_then(|t| {
                 dp_opt.and_then(|dp| {
-                    metfor::rh(t, dp)
-                        // Ignore errors, if not possible to calculate just use missing value.
-                        .ok()
-                        .into()
+                    Optioned::from(metfor::rh(t, dp))
                 })
             })
         })
@@ -62,22 +56,19 @@ pub fn relative_humidity(snd: &Sounding) -> Vec<Optioned<f64>> {
 }
 
 /// Given a sounding, calculate a profile of the potential temperature.
-pub fn potential_temperature(snd: &Sounding) -> Vec<Optioned<f64>> {
-    let p_profile = snd.get_profile(Pressure);
-    let t_profile = snd.get_profile(Temperature);
+pub fn potential_temperature(snd: &Sounding) -> Vec<Optioned<Kelvin>> {
+    let p_profile = snd.pressure_profile();
+    let t_profile = snd.temperature_profile();
 
     if p_profile.len().min(t_profile.len()) == 0 {
         return vec![];
     }
 
-    izip!(p_profile, p_profile)
+    izip!(p_profile, t_profile)
         .map(|(p_opt, t_opt)| {
             p_opt.and_then(|p| {
                 t_opt.and_then(|t| {
-                    metfor::theta_kelvin(p, t)
-                        // Ignore errors, if not possible to calculate just use missing value.
-                        .ok()
-                        .into()
+                    Optioned::<Kelvin>::from(metfor::theta(p, t))
                 })
             })
         })
@@ -85,10 +76,10 @@ pub fn potential_temperature(snd: &Sounding) -> Vec<Optioned<f64>> {
 }
 
 /// Given a sounding, calculate a profile of the equivalent potential temperature.
-pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Optioned<f64>> {
-    let p_profile = snd.get_profile(Pressure);
-    let t_profile = snd.get_profile(Temperature);
-    let dp_profile = snd.get_profile(DewPoint);
+pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Optioned<Kelvin>> {
+    let p_profile = snd.pressure_profile();
+    let t_profile = snd.temperature_profile();
+    let dp_profile = snd.dew_point_profile();
 
     if p_profile.len().min(t_profile.len()).min(dp_profile.len()) == 0 {
         return vec![];
@@ -99,10 +90,7 @@ pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Optioned<f64>> {
             p_opt.and_then(|p| {
                 t_opt.and_then(|t| {
                     dp_opt.and_then(|dp| {
-                        metfor::theta_e_kelvin(t, dp, p)
-                            // Ignore errors, if not possible to calculate just use missing value.
-                            .ok()
-                            .into()
+                        Optioned::<Kelvin>::from(metfor::theta_e(t, dp, p))
                     })
                 })
             })
@@ -111,19 +99,19 @@ pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Optioned<f64>> {
 }
 
 /// Get a profile of the lapse rate between layers in &deg;C / km.
-pub fn temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>> {
-    let t_profile = snd.get_profile(Temperature).iter().cloned();
+pub fn temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<CelsiusPKm>> {
+    let t_profile = snd.temperature_profile().iter().cloned();
     lapse_rate(snd, t_profile)
 }
 
 /// Get a profile of the average lapse rate from the surface to *, or the level on the y axis.
-pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>> {
-    let z_profile = snd.get_profile(GeopotentialHeight);
-    let t_profile = snd.get_profile(Temperature);
+pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<CelsiusPKm>> {
+    let z_profile = snd.height_profile();
+    let t_profile = snd.temperature_profile();
 
-    let (t_sfc, z_sfc): (f64, f64) = if let (Some(t_sfc), Some(z_sfc)) = (
-        snd.get_surface_value(Surface::Temperature).into(),
-        snd.get_station_info().elevation().into(),
+    let (t_sfc, z_sfc): (Celsius, Meters) = if let (Some(t_sfc), Some(z_sfc)) = (
+        snd.sfc_temperature().into(),
+        snd.station_info().elevation().into(),
     ) {
         (t_sfc, z_sfc)
     } else {
@@ -132,13 +120,13 @@ pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>>
 
     izip!(z_profile, t_profile)
         .map(|(z_opt, t_opt)| {
-            let z_opt: Option<f64> = (*z_opt).into();
-            let t_opt: Option<f64> = (*t_opt).into();
-            if let (Some(z), Some(t)) = (z_opt, t_opt) {
-                if (z - z_sfc).abs() < ::std::f64::EPSILON {
+            if let (Some(z), Some(t)) = (z_opt.into_option(), t_opt.into_option()) {
+                if (z - z_sfc).unpack().abs() < ::std::f64::EPSILON {
                     none()
                 } else {
-                    some((t - t_sfc) / (z - z_sfc) * 1000.0)
+                    let CelsiusDiff(dt) = t - t_sfc;
+                    let Km(dz) = Km::from(z -z_sfc);
+                    some(CelsiusPKm(dt/dz))
                 }
             } else {
                 none()
@@ -148,28 +136,35 @@ pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>>
 }
 
 /// Get the lapse rate of equivalent potential temperature in &deg;K / km.
-pub fn theta_e_lapse_rate(snd: &Sounding) -> Vec<Optioned<f64>> {
-    let theta_e = snd.get_profile(ThetaE).iter().cloned();
+pub fn theta_e_lapse_rate(snd: &Sounding) -> Vec<Optioned<KelvinPKm>> {
+    let theta_e = snd.theta_e_profile().iter().cloned();
     lapse_rate(snd, theta_e)
 }
 
-fn lapse_rate<I: Iterator<Item = Optioned<f64>>>(
+fn lapse_rate<I, T>(
     snd: &Sounding,
     v_profile: I,
-) -> Vec<Optioned<f64>> {
-    let z_profile = snd.get_profile(GeopotentialHeight);
+) -> Vec<Optioned<CelsiusPKm>>
+where
+    I:Iterator<Item = Optioned<T>>, 
+    T: Temperature + Sub<T> + optional::Noned,
+    CelsiusDiff: From<<T as Sub<T>>::Output>
+{
+    let z_profile = snd.height_profile();
 
     izip!(z_profile, v_profile)
         .scan((None, None), |prev_pair, (&z, v)| {
             let &mut (ref mut prev_z, ref mut prev_v) = prev_pair;
 
-            let z: Option<f64> = z.into();
-            let v: Option<f64> = v.into();
+            let z: Option<Meters> = z.into_option();
+            let v: Option<T> = v.into_option();
 
             let lapse_rate = if let (Some(ref prev_z), Some(ref prev_v), Some(ref z), Some(ref v)) =
                 (*prev_z, *prev_v, z, v)
             {
-                some((v - prev_v) / (z - prev_z) * 1000.0)
+                let CelsiusDiff(dt) = CelsiusDiff::from(*v - *prev_v);
+                let Km(dz) = Km::from(*z - *prev_z);
+                some(CelsiusPKm(dt/dz))
             } else {
                 none()
             };
@@ -183,28 +178,30 @@ fn lapse_rate<I: Iterator<Item = Optioned<f64>>>(
 }
 
 /// Get the hydrolapse in (kg/kg)/km
-pub fn hydrolapse(snd: &Sounding) -> Vec<Optioned<f64>> {
-    let z_profile = snd.get_profile(GeopotentialHeight);
-    let dp_profile = snd.get_profile(DewPoint);
-    let p_profile = snd.get_profile(Pressure);
+pub fn hydrolapse(snd: &Sounding) -> Vec<Optioned<HydrolapsePKm>> {
+    let z_profile = snd.height_profile();
+    let dp_profile = snd.dew_point_profile();
+    let p_profile = snd.pressure_profile();
 
     izip!(p_profile, z_profile, dp_profile)
         .scan((None, None), |prev_pair, (&p, &z, &dp)| {
             let &mut (ref mut prev_z, ref mut prev_mw) = prev_pair;
 
-            let p: Option<f64> = p.into();
-            let z: Option<f64> = z.into();
-            let dp: Option<f64> = dp.into();
+            let p: Option<_> = p.into_option();
+            let z: Option<_> = z.into_option();
+            let dp: Option<_> = dp.into_option();
 
             let mw = if let (Some(p), Some(dp)) = (p, dp) {
-                ::metfor::mixing_ratio(dp, p).ok()
+                metfor::mixing_ratio(dp, p)
             } else {
                 None
             };
 
             let mw_lapse_rate =
                 if let (Some(p_z), Some(p_mw), Some(z), Some(mw)) = (*prev_z, *prev_mw, z, mw) {
-                    some((mw - p_mw) / (z - p_z) * 1000.0)
+                    let dmw = mw - p_mw;
+                    let Km(dz) = Km::from(z - p_z);
+                    some(HydrolapsePKm(dmw / dz))
                 } else {
                     none()
                 };
@@ -220,14 +217,12 @@ pub fn hydrolapse(snd: &Sounding) -> Vec<Optioned<f64>> {
 #[cfg(test)]
 mod test_sounding_profiles {
     use super::*;
+    use metfor::{Meters, Celsius};
 
     fn make_test_sounding() -> Sounding {
         Sounding::new()
-            .set_profile(Temperature, vec![some(9.8), some(0.0), some(-5.0)])
-            .set_profile(
-                GeopotentialHeight,
-                vec![some(1000.0), some(2000.0), some(3000.0)],
-            )
+            .with_temperature_profile(vec![some(Celsius(9.8)), some(Celsius(0.0)), some(Celsius(-5.0))])
+            .with_height_profile(vec![some(Meters(1000.0)), some(Meters(2000.0)), some(Meters(3000.0))])
     }
 
     #[test]
@@ -236,7 +231,7 @@ mod test_sounding_profiles {
 
         let lapse_rate = temperature_lapse_rate(&snd);
         println!("{:#?}", lapse_rate);
-        assert!(lapse_rate.contains(&some(-9.8)));
-        assert!(lapse_rate.contains(&some(-5.0)));
+        assert!(lapse_rate.contains(&some(CelsiusPKm(-9.8))));
+        assert!(lapse_rate.contains(&some(CelsiusPKm(-5.0))));
     }
 }

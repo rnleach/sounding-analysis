@@ -21,7 +21,7 @@ pub enum AnalysisError {
     /// Missing data during interpolation, or it would have been extrapolation
     InterpolationError,
     /// Forward an error from the metfor crate
-    MetForError(metfor::MetForErr),
+    MetForError,
 }
 
 impl Display for AnalysisError {
@@ -34,13 +34,7 @@ impl Display for AnalysisError {
             NoDataProfile => write!(f, "profile is full of missing values, cannot do analysis"),
             InvalidInput => write!(f, "invalid input"),
             InterpolationError => write!(f, "none value encountered during interpolation"),
-            MetForError(err) => write!(f, "error bubbled up from metfor crate: {}", err),
+            MetForError => write!(f, "error bubbled up from metfor crate"),
         }
-    }
-}
-
-impl From<metfor::MetForErr> for AnalysisError {
-    fn from(err: metfor::MetForErr) -> Self {
-        AnalysisError::MetForError(err)
     }
 }
