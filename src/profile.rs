@@ -6,8 +6,10 @@
 //! sounding is missing, the result cannot be calculated and an empty vector is returned.
 //!
 
-use metfor::{self, Celsius, Kelvin, CelsiusPKm, Meters, Quantity, Km, CelsiusDiff, KelvinPKm, 
-    Temperature, HydrolapsePKm};
+use metfor::{
+    self, Celsius, CelsiusDiff, CelsiusPKm, HydrolapsePKm, Kelvin, KelvinPKm, Km, Meters, Quantity,
+    Temperature,
+};
 use optional::{none, some, Optioned};
 use sounding_base::Sounding;
 use std::ops::Sub;
@@ -26,9 +28,7 @@ pub fn wet_bulb(snd: &Sounding) -> Vec<Optioned<Celsius>> {
         .map(|(p_opt, t_opt, dp_opt)| {
             p_opt.and_then(|p| {
                 t_opt.and_then(|t| {
-                    dp_opt.and_then(|dp| {
-                        Optioned::<Celsius>::from(metfor::wet_bulb(t, dp, p))
-                    })
+                    dp_opt.and_then(|dp| Optioned::<Celsius>::from(metfor::wet_bulb(t, dp, p)))
                 })
             })
         })
@@ -46,11 +46,7 @@ pub fn relative_humidity(snd: &Sounding) -> Vec<Optioned<f64>> {
 
     izip!(t_profile, dp_profile)
         .map(|(t_opt, dp_opt)| {
-            t_opt.and_then(|t| {
-                dp_opt.and_then(|dp| {
-                    Optioned::from(metfor::rh(t, dp))
-                })
-            })
+            t_opt.and_then(|t| dp_opt.and_then(|dp| Optioned::from(metfor::rh(t, dp))))
         })
         .collect()
 }
@@ -66,11 +62,7 @@ pub fn potential_temperature(snd: &Sounding) -> Vec<Optioned<Kelvin>> {
 
     izip!(p_profile, t_profile)
         .map(|(p_opt, t_opt)| {
-            p_opt.and_then(|p| {
-                t_opt.and_then(|t| {
-                    Optioned::<Kelvin>::from(metfor::theta(p, t))
-                })
-            })
+            p_opt.and_then(|p| t_opt.and_then(|t| Optioned::<Kelvin>::from(metfor::theta(p, t))))
         })
         .collect()
 }
@@ -89,9 +81,7 @@ pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Optioned<Kelvin>>
         .map(|(p_opt, t_opt, dp_opt)| {
             p_opt.and_then(|p| {
                 t_opt.and_then(|t| {
-                    dp_opt.and_then(|dp| {
-                        Optioned::<Kelvin>::from(metfor::theta_e(t, dp, p))
-                    })
+                    dp_opt.and_then(|dp| Optioned::<Kelvin>::from(metfor::theta_e(t, dp, p)))
                 })
             })
         })
@@ -125,8 +115,8 @@ pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<Celsi
                     none()
                 } else {
                     let CelsiusDiff(dt) = t - t_sfc;
-                    let Km(dz) = Km::from(z -z_sfc);
-                    some(CelsiusPKm(dt/dz))
+                    let Km(dz) = Km::from(z - z_sfc);
+                    some(CelsiusPKm(dt / dz))
                 }
             } else {
                 none()
@@ -141,14 +131,11 @@ pub fn theta_e_lapse_rate(snd: &Sounding) -> Vec<Optioned<KelvinPKm>> {
     lapse_rate(snd, theta_e)
 }
 
-fn lapse_rate<I, T>(
-    snd: &Sounding,
-    v_profile: I,
-) -> Vec<Optioned<CelsiusPKm>>
+fn lapse_rate<I, T>(snd: &Sounding, v_profile: I) -> Vec<Optioned<CelsiusPKm>>
 where
-    I:Iterator<Item = Optioned<T>>, 
+    I: Iterator<Item = Optioned<T>>,
     T: Temperature + Sub<T> + optional::Noned,
-    CelsiusDiff: From<<T as Sub<T>>::Output>
+    CelsiusDiff: From<<T as Sub<T>>::Output>,
 {
     let z_profile = snd.height_profile();
 
@@ -164,7 +151,7 @@ where
             {
                 let CelsiusDiff(dt) = CelsiusDiff::from(*v - *prev_v);
                 let Km(dz) = Km::from(*z - *prev_z);
-                some(CelsiusPKm(dt/dz))
+                some(CelsiusPKm(dt / dz))
             } else {
                 none()
             };
@@ -217,12 +204,20 @@ pub fn hydrolapse(snd: &Sounding) -> Vec<Optioned<HydrolapsePKm>> {
 #[cfg(test)]
 mod test_sounding_profiles {
     use super::*;
-    use metfor::{Meters, Celsius};
+    use metfor::{Celsius, Meters};
 
     fn make_test_sounding() -> Sounding {
         Sounding::new()
-            .with_temperature_profile(vec![some(Celsius(9.8)), some(Celsius(0.0)), some(Celsius(-5.0))])
-            .with_height_profile(vec![some(Meters(1000.0)), some(Meters(2000.0)), some(Meters(3000.0))])
+            .with_temperature_profile(vec![
+                some(Celsius(9.8)),
+                some(Celsius(0.0)),
+                some(Celsius(-5.0)),
+            ])
+            .with_height_profile(vec![
+                some(Meters(1000.0)),
+                some(Meters(2000.0)),
+                some(Meters(3000.0)),
+            ])
     }
 
     #[test]

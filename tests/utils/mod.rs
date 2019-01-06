@@ -4,8 +4,8 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use metfor::{self, Celsius, HectoPascal, WindSpdDir, Knots, Meters};
-use optional::{Optioned};
+use metfor::{self, Celsius, HectoPascal, Knots, Meters, WindSpdDir};
+use optional::Optioned;
 use sounding_base::{Sounding, StationInfo};
 
 pub mod index_tests;
@@ -350,12 +350,16 @@ fn load_test_csv_sounding(
         let t_c: Option<Celsius> = f64::from_str(tokens[1]).ok().map(Celsius);
         let dp_c: Option<Celsius> = f64::from_str(tokens[2]).ok().map(Celsius);
         let press_hpa: Option<HectoPascal> = f64::from_str(tokens[3]).ok().map(HectoPascal).into();
-        let wb_c: Option<Celsius> = t_c.and_then(|t| {
-            dp_c.and_then(|dp| press_hpa.and_then(|p| metfor::wet_bulb(t, dp, p)))
-        });
+        let wb_c: Option<Celsius> = t_c
+            .and_then(|t| dp_c.and_then(|dp| press_hpa.and_then(|p| metfor::wet_bulb(t, dp, p))));
         let wspd = f64::from_str(tokens[4]).ok();
         let wdir = f64::from_str(tokens[5]).ok();
-        let wind_val: Option<WindSpdDir<Knots>> = wspd.and_then(|wspd| wdir.map(|wdir| WindSpdDir{speed: Knots(wspd), direction: wdir}));
+        let wind_val: Option<WindSpdDir<Knots>> = wspd.and_then(|wspd| {
+            wdir.map(|wdir| WindSpdDir {
+                speed: Knots(wspd),
+                direction: wdir,
+            })
+        });
 
         height.push(f64::from_str(tokens[0]).ok().map(Meters).into());
         temp.push(t_c.into());
@@ -363,7 +367,6 @@ fn load_test_csv_sounding(
         dp.push(dp_c.into());
         press.push(press_hpa.into());
         wind.push(wind_val.into());
-        
     }
 
     let mut snd = Sounding::new()
@@ -395,9 +398,12 @@ fn load_test_csv_sounding(
         let press_hpa = f64::from_str(tokens[3]).ok().map(HectoPascal);
         let wspd = f64::from_str(tokens[4]).ok();
         let wdir = f64::from_str(tokens[5]).ok();
-        let wind = wspd
-            .and_then(|wspd| wdir
-                .map(|wdir| WindSpdDir{speed: Knots(wspd), direction: wdir}));
+        let wind = wspd.and_then(|wspd| {
+            wdir.map(|wdir| WindSpdDir {
+                speed: Knots(wspd),
+                direction: wdir,
+            })
+        });
 
         snd = snd
             .with_sfc_temperature(t_c)

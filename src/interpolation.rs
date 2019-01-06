@@ -1,4 +1,4 @@
-use metfor::{HectoPascal, WindSpdDir, Quantity, WindUV, Knots};
+use metfor::{HectoPascal, Knots, Quantity, WindSpdDir, WindUV};
 use optional::{none, Optioned};
 use sounding_base::{DataRow, Sounding};
 use std::ops::Sub;
@@ -9,8 +9,8 @@ use crate::error::*;
 /// Interpolate values from the vertical sounding using pressure as the primary coordinate.
 ///
 /// Returns a `DataRow` struct with interpolated values.
-pub fn linear_interpolate_sounding(snd: &Sounding, target_p: HectoPascal) -> Result<DataRow> 
-where 
+pub fn linear_interpolate_sounding(snd: &Sounding, target_p: HectoPascal) -> Result<DataRow>
+where
 {
     let tgt_p: HectoPascal = HectoPascal::from(target_p);
 
@@ -32,7 +32,6 @@ where
     let mut found_bottom: bool = false;
     for (i, p) in pressure.iter().enumerate() {
         if let Some(p) = p.into_option() {
-            
             if p > tgt_p {
                 below_idx = i;
                 found_bottom = true;
@@ -60,10 +59,17 @@ where
 
         // Special interpolation for vectors
         if wind.len() > above_idx {
-            if let (Some(w_below), Some(w_above)) = (wind[below_idx].into_option(), wind[above_idx].into_option())
+            if let (Some(w_below), Some(w_above)) =
+                (wind[below_idx].into_option(), wind[above_idx].into_option())
             {
-                let WindUV::<Knots> {u: x_below, v: y_below} = WindUV::from(w_below);
-                let WindUV::<Knots> {u: x_above, v: y_above} = WindUV::from(w_above);
+                let WindUV::<Knots> {
+                    u: x_below,
+                    v: y_below,
+                } = WindUV::from(w_below);
+                let WindUV::<Knots> {
+                    u: x_above,
+                    v: y_above,
+                } = WindUV::from(w_above);
                 let dp = dp.unpack();
                 let run = run.unpack();
 
@@ -73,7 +79,7 @@ where
                 let x = x_below + rise_x * (dp / run);
                 let y = y_below + rise_y * (dp / run);
 
-                let interped_wind = WindSpdDir::from(WindUV{ u: x, v: y});
+                let interped_wind = WindSpdDir::from(WindUV { u: x, v: y });
 
                 result.wind = interped_wind.into();
             }
@@ -92,11 +98,7 @@ where
 /// Interpolate values given two parallel vectors of data and a target value.
 // FIXME: Currently assume xs are sorted in descending order, change to just assuming monotonic
 #[inline]
-pub fn linear_interpolate<X, Y>(
-    xs: &[Optioned<X>],
-    ys: &[Optioned<Y>],
-    target_x: X,
-) -> Optioned<Y> 
+pub fn linear_interpolate<X, Y>(xs: &[Optioned<X>], ys: &[Optioned<Y>], target_x: X) -> Optioned<Y>
 where
     X: Quantity + optional::Noned + PartialOrd + Sub<X>,
     <X as Sub<X>>::Output: Quantity + optional::Noned,
@@ -143,14 +145,17 @@ fn eval_linear_interp<QX, QY>(
     run: QX,
     dp: QX,
     array: &[Optioned<QY>],
-) -> Optioned<QY> 
-where 
+) -> Optioned<QY>
+where
     QX: Quantity + optional::Noned,
     QY: Quantity + optional::Noned,
 {
     if array.len() > abv_idx {
         if array[blw_idx].is_some() && array[abv_idx].is_some() {
-            let (val_below, val_above) = (array[blw_idx].unpack().unpack(), array[abv_idx].unpack().unpack());
+            let (val_below, val_above) = (
+                array[blw_idx].unpack().unpack(),
+                array[abv_idx].unpack().unpack(),
+            );
             let rise: f64 = (val_above - val_below).unpack();
             let run: f64 = run.unpack();
             let dp: f64 = dp.unpack();
@@ -164,7 +169,7 @@ where
 }
 
 #[inline]
-pub(crate) fn linear_interp<X, Y>(x_val: X, x1: X, x2: X, y1: Y, y2: Y) -> Y 
+pub(crate) fn linear_interp<X, Y>(x_val: X, x1: X, x2: X, y1: Y, y2: Y) -> Y
 where
     X: Sub<X> + Copy,
     <X as Sub<X>>::Output: Quantity,

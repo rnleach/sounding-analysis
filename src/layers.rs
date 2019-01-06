@@ -1,8 +1,9 @@
 //! This module finds significant layers such as the dendritic snow growth zone, the hail growth
 //! zone, and inversions.
 
-use metfor::{CelsiusPKm, Km, Meters, HectoPascal, FREEZING, Quantity, WindUV, MetersPSec,
-    Celsius, JpKg};
+use metfor::{
+    Celsius, CelsiusPKm, HectoPascal, JpKg, Km, Meters, MetersPSec, Quantity, WindUV, FREEZING,
+};
 use optional::Optioned;
 use smallvec::SmallVec;
 use sounding_base::{DataRow, Sounding};
@@ -80,13 +81,19 @@ mod layer_tests {
         bottom.pressure = some(HectoPascal(1000.0));
         bottom.temperature = some(Celsius(20.0));
         bottom.height = some(Meters(5.0));
-        bottom.wind = some(WindSpdDir::<Knots>{speed: Knots(1.0), direction: 180.0});
+        bottom.wind = some(WindSpdDir::<Knots> {
+            speed: Knots(1.0),
+            direction: 180.0,
+        });
 
         let mut top = DataRow::default();
         top.pressure = some(HectoPascal(700.0));
         top.temperature = some(Celsius(-2.0));
         top.height = some(Meters(3012.0));
-        top.wind = some(WindSpdDir::<Knots>{speed: Knots(1.0), direction: 90.0});
+        top.wind = some(WindSpdDir::<Knots> {
+            speed: Knots(1.0),
+            direction: 90.0,
+        });
 
         Layer { bottom, top }
     }
@@ -99,14 +106,20 @@ mod layer_tests {
     fn test_height_thickness() {
         let lyr = make_test_layer();
         println!("{:#?}", lyr);
-        assert!(lyr.height_thickness().unwrap().approx_eq(Meters(3007.0), Meters(std::f64::EPSILON)));
+        assert!(lyr
+            .height_thickness()
+            .unwrap()
+            .approx_eq(Meters(3007.0), Meters(std::f64::EPSILON)));
     }
 
     #[test]
     fn test_pressure_thickness() {
         let lyr = make_test_layer();
         println!("{:#?}", lyr);
-        assert!(lyr.pressure_thickness().unwrap().approx_eq(HectoPascal(300.0), HectoPascal(std::f64::EPSILON)));
+        assert!(lyr
+            .pressure_thickness()
+            .unwrap()
+            .approx_eq(HectoPascal(300.0), HectoPascal(std::f64::EPSILON)));
     }
 
     #[test]
@@ -117,7 +130,10 @@ mod layer_tests {
             lyr,
             lyr.lapse_rate().unwrap()
         );
-        assert!(lyr.lapse_rate().unwrap().approx_eq(CelsiusPKm(-7.31626), CelsiusPKm(1.0e-5)));
+        assert!(lyr
+            .lapse_rate()
+            .unwrap()
+            .approx_eq(CelsiusPKm(-7.31626), CelsiusPKm(1.0e-5)));
     }
 
     #[test]
@@ -130,7 +146,10 @@ mod layer_tests {
         );
         let shear = WindSpdDir::<Knots>::from(lyr.wind_shear().unwrap());
         let speed_shear = shear.abs();
-        let WindSpdDir{direction: direction_shear, ..} = shear;
+        let WindSpdDir {
+            direction: direction_shear,
+            ..
+        } = shear;
 
         assert!(speed_shear.approx_eq(Knots(::std::f64::consts::SQRT_2), Knots(1.0e-5)));
         assert!(approx_eq(direction_shear, 45.0, 1.0e-5));
@@ -271,7 +290,6 @@ pub fn warm_wet_bulb_layer_aloft(snd: &Sounding) -> Result<Layers> {
 }
 
 fn warm_layer_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<Layers> {
-
     let mut to_return: Layers = Layers::new();
 
     let p_profile = snd.pressure_profile();
@@ -328,8 +346,11 @@ pub fn cold_surface_temperature_layer(snd: &Sounding, warm_layers: &[Layer]) -> 
     cold_surface_layer(snd, snd.temperature_profile(), warm_layers)
 }
 
-fn cold_surface_layer(snd: &Sounding, t_profile: &[Optioned<Celsius>], warm_layers: &[Layer]) -> Result<Layer> {
-
+fn cold_surface_layer(
+    snd: &Sounding,
+    t_profile: &[Optioned<Celsius>],
+    warm_layers: &[Layer],
+) -> Result<Layer> {
     if warm_layers.is_empty() {
         return Err(InvalidInput);
     }
@@ -383,14 +404,18 @@ pub fn layer_agl(snd: &Sounding, meters_agl: Meters) -> Result<Layer> {
         }
     };
 
-    let bottom = snd.surface_as_data_row().unwrap_or_else(||DataRow::default());
+    let bottom = snd
+        .surface_as_data_row()
+        .unwrap_or_else(|| DataRow::default());
     let top = height_level(tgt_elev, snd)?;
     Ok(Layer { bottom, top })
 }
 
 /// Get a layer defined by two pressure levels. `bottom_p` > `top_p`
 pub fn pressure_layer(snd: &Sounding, bottom_p: HectoPascal, top_p: HectoPascal) -> Result<Layer> {
-    let sfc_pressure = snd.surface_as_data_row().and_then(|row| row.pressure.into_option());
+    let sfc_pressure = snd
+        .surface_as_data_row()
+        .and_then(|row| row.pressure.into_option());
 
     if sfc_pressure.is_some() && sfc_pressure.unwrap() < bottom_p {
         return Err(InvalidInput);
@@ -404,7 +429,6 @@ pub fn pressure_layer(snd: &Sounding, bottom_p: HectoPascal, top_p: HectoPascal)
 
 /// Get all inversion layers up to a specified pressure.
 pub fn inversions(snd: &Sounding, top_p: HectoPascal) -> Result<Layers> {
-
     let mut to_return: Layers = Layers::new();
 
     let t_profile = snd.temperature_profile();

@@ -11,8 +11,8 @@ use crate::indexes::{
 };
 use crate::parcel::{convective_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel};
 use crate::parcel_profile::{dcape, lift_parcel, partition_cape, ParcelAnalysis, ParcelProfile};
-use metfor::{Celsius, Mm, CelsiusDiff, JpKg, Length};
-use optional::{Optioned, some, none, Noned};
+use metfor::{Celsius, CelsiusDiff, JpKg, Length, Mm};
+use optional::{none, some, Noned, Optioned};
 
 /// Convenient package for commonly requested analysis values.
 ///
@@ -86,81 +86,162 @@ impl Analysis {
     }
 
     /// Builder method to set the SWeT
-    pub fn with_swet<T>(self, value: T) -> Self where Optioned<f64>: From<T> {
-        Self {swet: Optioned::from(value), ..self}
+    pub fn with_swet<T>(self, value: T) -> Self
+    where
+        Optioned<f64>: From<T>,
+    {
+        Self {
+            swet: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Builder method to set the K index
-    pub fn with_k_index<T>(self, value:T) -> Self where Optioned<Celsius>: From<T> {
-        Self { k_index: Optioned::from(value), ..self }
+    pub fn with_k_index<T>(self, value: T) -> Self
+    where
+        Optioned<Celsius>: From<T>,
+    {
+        Self {
+            k_index: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Builder method to set the Total Totals
-    pub fn with_total_totals<T>(self, value: T) -> Self where Optioned<f64>: From<T> {
-        Self { total_totals: Optioned::from(value), ..self }
+    pub fn with_total_totals<T>(self, value: T) -> Self
+    where
+        Optioned<f64>: From<T>,
+    {
+        Self {
+            total_totals: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Builder method to set the precipitable water
-    pub fn with_pwat<T, U>(self, value: T) -> Self 
-    where 
+    pub fn with_pwat<T, U>(self, value: T) -> Self
+    where
         Optioned<U>: From<T>,
         U: Length + Noned,
         Mm: From<U>,
     {
         let u: Optioned<U> = Optioned::from(value);
         let pw: Optioned<Mm> = u.map_t(Mm::from);
-        Self { precipitable_water: pw, ..self }
+        Self {
+            precipitable_water: pw,
+            ..self
+        }
     }
 
     /// Builder method to set the convective temperature
-    pub fn with_convective_t<T>(self, value: T) -> Self where Optioned<Celsius>: From<T> {
-        Self { convective_t: Optioned::from(value), ..self }
+    pub fn with_convective_t<T>(self, value: T) -> Self
+    where
+        Optioned<Celsius>: From<T>,
+    {
+        Self {
+            convective_t: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Builder method to set the haines index. High, mid, or low Haines should be based on the
     /// station elevation of the sounding.
-    pub fn with_haines<T>(self, value: T) -> Self where Optioned<u8>: From<T> {
-        Self { haines: Optioned::from(value), ..self }
+    pub fn with_haines<T>(self, value: T) -> Self
+    where
+        Optioned<u8>: From<T>,
+    {
+        Self {
+            haines: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Builder method to set the low level haines index.
-    pub fn with_haines_low<T>(self, value: T) -> Self where Optioned<u8>: From<T> {
-        Self { haines_low: Optioned::from(value), ..self }
+    pub fn with_haines_low<T>(self, value: T) -> Self
+    where
+        Optioned<u8>: From<T>,
+    {
+        Self {
+            haines_low: Optioned::from(value),
+            ..self
+        }
     }
 
-    /// Builder method to set the mid level haines index. 
-    pub fn with_haines_mid<T>(self, value: T) -> Self where Optioned<u8>: From<T> {
-        Self { haines_mid: Optioned::from(value), ..self }
+    /// Builder method to set the mid level haines index.
+    pub fn with_haines_mid<T>(self, value: T) -> Self
+    where
+        Optioned<u8>: From<T>,
+    {
+        Self {
+            haines_mid: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Builder method to set the high level haines index.
-    pub fn with_haines_high<T>(self, value: T) -> Self where Optioned<u8>: From<T> {
-        Self { haines_high: Optioned::from(value), ..self }
+    pub fn with_haines_high<T>(self, value: T) -> Self
+    where
+        Optioned<u8>: From<T>,
+    {
+        Self {
+            haines_high: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Builder method to set the hot-dry-windy index.
-    pub fn with_hdw<T>(self, value: T) -> Self where Optioned<f64>: From<T> {
-        Self { hdw: Optioned::from(value), ..self }
+    pub fn with_hdw<T>(self, value: T) -> Self
+    where
+        Optioned<f64>: From<T>,
+    {
+        Self {
+            hdw: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Builder method to set the wet/dry cape ratio. EXPERIMENTAL
-    pub fn with_cape_ratio<T>(self, value: T) -> Self where Optioned<f64>: From<T> {
-        Self { cape_ratio: Optioned::from(value), ..self }
+    pub fn with_cape_ratio<T>(self, value: T) -> Self
+    where
+        Optioned<f64>: From<T>,
+    {
+        Self {
+            cape_ratio: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Builder method to set the convective temperature deficit. EXPERIMENTAL
-    pub fn with_convective_deficit<T>(self, value: T) -> Self where Optioned<CelsiusDiff>: From<T> {
-        Self { convective_deficit: Optioned::from(value), ..self }
+    pub fn with_convective_deficit<T>(self, value: T) -> Self
+    where
+        Optioned<CelsiusDiff>: From<T>,
+    {
+        Self {
+            convective_deficit: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Builder method to set the DCAPE.
-    pub fn with_dcape<T>(self, value: T) -> Self where Optioned<JpKg>: From<T> {
-        Self { dcape: Optioned::from(value), ..self }
+    pub fn with_dcape<T>(self, value: T) -> Self
+    where
+        Optioned<JpKg>: From<T>,
+    {
+        Self {
+            dcape: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Builder method to set the downrush temperature of a wet micro-burst.
-    pub fn with_downrush_t<T>(self, value: T) -> Self where Optioned<Celsius>: From<T> {
-        Self { downrush_t: Optioned::from(value), ..self }
+    pub fn with_downrush_t<T>(self, value: T) -> Self
+    where
+        Optioned<Celsius>: From<T>,
+    {
+        Self {
+            downrush_t: Optioned::from(value),
+            ..self
+        }
     }
 
     /// Get the Swet
@@ -339,22 +420,34 @@ impl Analysis {
 
     /// Analyze the sounding to get as much information as you can.
     pub fn fill_in_missing_analysis(mut self) -> Self {
-        self.swet = self.swet.or_else(|| Optioned::from(swet(&self.sounding).ok()));
+        self.swet = self
+            .swet
+            .or_else(|| Optioned::from(swet(&self.sounding).ok()));
         self.total_totals = self
             .total_totals
             .or_else(|| Optioned::from(total_totals(&self.sounding).ok()));
-        self.k_index = self.k_index.or_else(|| Optioned::from(kindex(&self.sounding).ok()));
+        self.k_index = self
+            .k_index
+            .or_else(|| Optioned::from(kindex(&self.sounding).ok()));
         self.precipitable_water = self
             .precipitable_water
             .or_else(|| Optioned::from(precipitable_water(&self.sounding).ok()));
 
-        self.haines = self.haines.or_else(|| Optioned::from(haines(&self.sounding).ok()));
-        self.haines_low = self.haines_low.or_else(|| Optioned::from(haines_low(&self.sounding).ok()));
-        self.haines_mid = self.haines_mid.or_else(|| Optioned::from(haines_mid(&self.sounding).ok()));
+        self.haines = self
+            .haines
+            .or_else(|| Optioned::from(haines(&self.sounding).ok()));
+        self.haines_low = self
+            .haines_low
+            .or_else(|| Optioned::from(haines_low(&self.sounding).ok()));
+        self.haines_mid = self
+            .haines_mid
+            .or_else(|| Optioned::from(haines_mid(&self.sounding).ok()));
         self.haines_high = self
             .haines_high
             .or_else(|| Optioned::from(haines_high(&self.sounding).ok()));
-        self.hdw = self.hdw.or_else(|| Optioned::from(hot_dry_windy(&self.sounding).ok()));
+        self.hdw = self
+            .hdw
+            .or_else(|| Optioned::from(hot_dry_windy(&self.sounding).ok()));
 
         if self.dcape.is_none() || self.downrush_t.is_none() || self.downburst_profile.is_none() {
             let result = dcape(&self.sounding);
@@ -396,7 +489,8 @@ impl Analysis {
             self.convective_t = self
                 .convective
                 .as_ref()
-                .map(|parcel_anal| parcel_anal.parcel().temperature).into();
+                .map(|parcel_anal| parcel_anal.parcel().temperature)
+                .into();
         }
 
         // Convective deficit
@@ -404,7 +498,8 @@ impl Analysis {
             self.convective_deficit = self.convective_t.and_then(|ct| {
                 self.mixed_layer
                     .as_ref()
-                    .map(|parcel_anal| ct - parcel_anal.parcel().temperature).into()
+                    .map(|parcel_anal| ct - parcel_anal.parcel().temperature)
+                    .into()
             });
         }
 
@@ -414,7 +509,8 @@ impl Analysis {
                 .convective
                 .as_ref()
                 .and_then(|parcel_anal| partition_cape(parcel_anal).ok())
-                .map(|(dry, wet)| wet / dry).into();
+                .map(|(dry, wet)| wet / dry)
+                .into();
         }
 
         self

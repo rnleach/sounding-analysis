@@ -1,5 +1,5 @@
-use metfor::{WindUV, Meters, Quantity, MetersPSec};
-use sounding_base::{Sounding};
+use metfor::{Meters, MetersPSec, Quantity, WindUV};
+use sounding_base::Sounding;
 
 use crate::error::*;
 use crate::layers::{self, Layer};
@@ -39,23 +39,33 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
         .skip_while(|&(hgt, _)| hgt < min_hgt)
         .take_while(|&(hgt, _)| hgt <= max_hgt)
         .map(|(hgt, wind)| {
-            let WindUV{u, v} = WindUV::<MetersPSec>::from(wind);
+            let WindUV { u, v } = WindUV::<MetersPSec>::from(wind);
             (hgt, u, v)
         })
-        .fold((Meters(f64::MAX), MetersPSec(0.0), MetersPSec(0.0), MetersPSec(0.0), MetersPSec(0.0), Meters(0.0)), |acc, (hgt, u, v)| {
-            let (old_hgt, old_u, old_v, mut iu, mut iv, mut acc_dz) = acc;
+        .fold(
+            (
+                Meters(f64::MAX),
+                MetersPSec(0.0),
+                MetersPSec(0.0),
+                MetersPSec(0.0),
+                MetersPSec(0.0),
+                Meters(0.0),
+            ),
+            |acc, (hgt, u, v)| {
+                let (old_hgt, old_u, old_v, mut iu, mut iv, mut acc_dz) = acc;
 
-            let dz = hgt - old_hgt;
+                let dz = hgt - old_hgt;
 
-            if dz < Meters(0.0) {
-                return (hgt, u, v, iu, iv, acc_dz);
-            }
-            iu += (u + old_u) * dz.unpack();
-            iv += (v + old_v) * dz.unpack();
-            acc_dz += dz;
+                if dz < Meters(0.0) {
+                    return (hgt, u, v, iu, iv, acc_dz);
+                }
+                iu += (u + old_u) * dz.unpack();
+                iv += (v + old_v) * dz.unpack();
+                acc_dz += dz;
 
-            (hgt, u, v, iu, iv, acc_dz)
-        });
+                (hgt, u, v, iu, iv, acc_dz)
+            },
+        );
 
     if dz.unpack().abs() < std::f64::EPSILON {
         return Err(AnalysisError::NotEnoughData);
@@ -64,12 +74,16 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
     iu /= 2.0 * dz.unpack();
     iv /= 2.0 * dz.unpack();
 
-    Ok(WindUV{u: iu, v: iv})
+    Ok(WindUV { u: iu, v: iv })
 }
 
 /// Storm relative helicity.
 #[doc(hidden)]
-pub fn sr_helicity(layer: &Layer, storm_motion_uv_ms: (MetersPSec, MetersPSec), snd: &Sounding) -> Result<f64> {
+pub fn sr_helicity(
+    layer: &Layer,
+    storm_motion_uv_ms: (MetersPSec, MetersPSec),
+    snd: &Sounding,
+) -> Result<f64> {
     let height = snd.height_profile();
     let wind = snd.wind_profile();
 
@@ -78,8 +92,7 @@ pub fn sr_helicity(layer: &Layer, storm_motion_uv_ms: (MetersPSec, MetersPSec), 
 
     let vals: Vec<(f64, f64, f64)> = izip!(height, wind)
         .filter_map(|(h, w)| {
-            if let (Some(h), Some(w)) = (h.into_option(), w.into_option())
-            {
+            if let (Some(h), Some(w)) = (h.into_option(), w.into_option()) {
                 Some((h, w))
             } else {
                 None
@@ -88,8 +101,12 @@ pub fn sr_helicity(layer: &Layer, storm_motion_uv_ms: (MetersPSec, MetersPSec), 
         .skip_while(|(h, _)| *h < bottom)
         .take_while(|(h, _)| *h < top)
         .map(|(h, w)| {
-            let WindUV{u, v} = WindUV::<MetersPSec>::from(w);
-            (h.unpack(), (u - storm_motion_uv_ms.0).unpack(), (v - storm_motion_uv_ms.1).unpack())
+            let WindUV { u, v } = WindUV::<MetersPSec>::from(w);
+            (
+                h.unpack(),
+                (u - storm_motion_uv_ms.0).unpack(),
+                (v - storm_motion_uv_ms.1).unpack(),
+            )
         })
         .collect();
 
@@ -130,17 +147,29 @@ pub fn sr_helicity(layer: &Layer, storm_motion_uv_ms: (MetersPSec, MetersPSec), 
 /// (right mover, left mover)
 pub fn bunkers_storm_motion(snd: &Sounding) -> Result<(WindUV<MetersPSec>, WindUV<MetersPSec>)> {
     let layer = &layers::layer_agl(snd, Meters(6000.0))?;
-    let WindUV {u: mean_u, v: mean_v} = mean_wind(layer, snd)?;
+    let WindUV {
+        u: mean_u,
+        v: mean_v,
+    } = mean_wind(layer, snd)?;
 
-    let WindUV {u: shear_u, v: shear_v} = bulk_shear_half_km(layer, snd)?;
+    let WindUV {
+        u: shear_u,
+        v: shear_v,
+    } = bulk_shear_half_km(layer, snd)?;
     const D: f64 = 7.5; // m/s
 
     let scale = D / shear_u.unpack().hypot(shear_v.unpack());
     let (delta_u, delta_v) = (shear_v * scale, -shear_u * scale);
 
     Ok((
-        WindUV { u: mean_u + delta_u, v: mean_v + delta_v},
-        WindUV { u: mean_u - delta_u, v: mean_v - delta_v},
+        WindUV {
+            u: mean_u + delta_u,
+            v: mean_v + delta_v,
+        },
+        WindUV {
+            u: mean_u - delta_u,
+            v: mean_v - delta_v,
+        },
     ))
 }
 
@@ -173,7 +202,10 @@ pub(crate) fn bulk_shear_half_km(layer: &Layer, snd: &Sounding) -> Result<WindUV
         bottom: layer.bottom,
     };
 
-    let WindUV { u: bottom_u, v: bottom_v} = mean_wind(bottom_layer, snd)?;
+    let WindUV {
+        u: bottom_u,
+        v: bottom_v,
+    } = mean_wind(bottom_layer, snd)?;
 
     let bottom_top_layer = height_level(top - Meters(500.0), snd)?;
     let top_layer = &Layer {
@@ -181,7 +213,10 @@ pub(crate) fn bulk_shear_half_km(layer: &Layer, snd: &Sounding) -> Result<WindUV
         bottom: bottom_top_layer,
     };
 
-    let WindUV { u: top_u, v: top_v} = mean_wind(top_layer, snd)?;
+    let WindUV { u: top_u, v: top_v } = mean_wind(top_layer, snd)?;
 
-    Ok(WindUV { u: top_u - bottom_u, v: top_v - bottom_v })
+    Ok(WindUV {
+        u: top_u - bottom_u,
+        v: top_v - bottom_v,
+    })
 }

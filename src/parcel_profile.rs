@@ -1,7 +1,7 @@
 //! Create and analyze a profile from lifting or descending a parcel.
 
-use metfor::{self, Meters, Celsius, HectoPascal, JpKg, MetersPSec, Quantity, CelsiusDiff, Kelvin};
-use optional::{some, none, Optioned};
+use metfor::{self, Celsius, CelsiusDiff, HectoPascal, JpKg, Kelvin, Meters, MetersPSec, Quantity};
+use optional::{none, some, Optioned};
 use sounding_base::{DataRow, Sounding};
 
 use crate::error::*;
@@ -32,20 +32,19 @@ pub struct ParcelAnalysis {
     cape: Optioned<JpKg>,
     hail_cape: Optioned<JpKg>,
     ncape: Optioned<f64>,
-    lcl_height_agl: Optioned<Meters>,  // cloud base for aviation
-    lcl_pressure: Optioned<HectoPascal>,    // plotting on skew-t
-    lcl_temperature: Optioned<Celsius>, // ice or ice/water cloud?
+    lcl_height_agl: Optioned<Meters>,    // cloud base for aviation
+    lcl_pressure: Optioned<HectoPascal>, // plotting on skew-t
+    lcl_temperature: Optioned<Celsius>,  // ice or ice/water cloud?
     cin: Optioned<JpKg>,
-    el_pressure: Optioned<HectoPascal>,          // plotting on skew-t
-    el_height_asl: Optioned<Meters>,        // Calculating convective cloud tops for aviation
+    el_pressure: Optioned<HectoPascal>,      // plotting on skew-t
+    el_height_asl: Optioned<Meters>,         // Calculating convective cloud tops for aviation
     el_temperature: Optioned<Celsius>,       // useful for comparing to satellite
-    lfc_pressure: Optioned<HectoPascal>,         // plotting on skew-t
+    lfc_pressure: Optioned<HectoPascal>,     // plotting on skew-t
     lfc_virt_temperature: Optioned<Celsius>, // plotting on skew-t
     lifted_index: Optioned<CelsiusDiff>,
 }
 
 impl ParcelAnalysis {
-
     /// Get the CAPE.
     pub fn cape(&self) -> Optioned<JpKg> {
         self.cape
@@ -133,7 +132,8 @@ impl ParcelAnalysis {
     /// an over estimate of updraft speed due to the effects of entrainment and water/ice loading.
     #[inline]
     pub fn calculate_cape_speed(&self) -> Option<MetersPSec> {
-        self.cape.map(|cape| MetersPSec::pack(f64::sqrt(2.0 * cape.unpack())))
+        self.cape
+            .map(|cape| MetersPSec::pack(f64::sqrt(2.0 * cape.unpack())))
     }
 }
 
@@ -149,7 +149,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         parcel.temperature,
         parcel.dew_point,
         parcel.pressure,
-    ).ok_or(AnalysisError::MetForError)?;
+    )
+    .ok_or(AnalysisError::MetForError)?;
 
     let lcl_temperature = Celsius::from(lcl_temperature);
     let lcl_env = linear_interpolate_sounding(snd, lcl_pressure)?;
@@ -178,7 +179,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
                 t_k,
                 metfor::dew_point_from_p_and_mw(tgt_pres, dry_mw)?,
                 tgt_pres,
-            ).map(Celsius::from)
+            )
+            .map(Celsius::from)
         } else {
             // Moist adiabatic lifting
             metfor::temperature_from_theta_e_saturated_and_pressure(tgt_pres, theta_e)
@@ -238,7 +240,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
                         .ok_or(AnalysisError::InterpolationError)?,
                     dp,
                     p0,
-                ).map(Celsius::from)
+                )
+                .map(Celsius::from)
                 .ok_or(AnalysisError::MetForError)?)
             })?;
 
@@ -267,12 +270,14 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
             // Remove rows at or below the parcel level
             .filter(move |(p, _, _, _)| *p < p0)
             // Calculate the parcel temperature, skip this level if there is an error
-            .filter_map(|(p, h, env_t, env_dp)| 
-                calc_parcel_t(p).map(|pcl_t| (p, h, env_t, env_dp, pcl_t)))
+            .filter_map(|(p, h, env_t, env_dp)| {
+                calc_parcel_t(p).map(|pcl_t| (p, h, env_t, env_dp, pcl_t))
+            })
             // Calculate the environment virtual temperature, skip levels with errors
-            .filter_map(|(p, h, env_t, env_dp, pcl_t)| 
+            .filter_map(|(p, h, env_t, env_dp, pcl_t)| {
                 metfor::virtual_temperature(env_t, env_dp, p)
-                    .map(|env_vt| (p, h, Celsius::from(env_vt), pcl_t)));
+                    .map(|env_vt| (p, h, Celsius::from(env_vt), pcl_t))
+            });
 
         //
         // Pack the resulting values into their vectors and handle special levels
@@ -296,7 +301,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
             let mut prof_cross_data = None;
             // Check to see if the parcel and environment soundings have crossed
             if (pcl_t0 < env_t0 && pcl_t > env_t) || (pcl_t0 > env_t0 && pcl_t < env_t) {
-                let tgt_pres = linear_interp(CelsiusDiff(0.0), pcl_t - env_t, pcl_t0 - env_t0, p, p0);
+                let tgt_pres =
+                    linear_interp(CelsiusDiff(0.0), pcl_t - env_t, pcl_t0 - env_t0, p, p0);
                 let h2 = linear_interp(tgt_pres, p0, p, h0, h);
                 let env_t2 = linear_interp(tgt_pres, p0, p, env_t0, env_t);
 
@@ -364,7 +370,8 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
 
     let lcl_pressure = some(lcl_pressure);
     let lcl_temperature = some(lcl_temperature);
-    let lcl_height_agl: Optioned<Meters> = snd.station_info()
+    let lcl_height_agl: Optioned<Meters> = snd
+        .station_info()
         .elevation()
         .into_option()
         .map(|elev| lcl_height - elev)
@@ -383,15 +390,16 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         el_pressure = none();
     }
 
-    let (el_height_asl, el_temperature): (Optioned<Meters>, Optioned<Celsius>) = if let Some(elp) = el_pressure.into_option() {
-        let level = linear_interpolate_sounding(snd, elp);
-        (
-            level.ok().and_then(|lvl| lvl.height.into()).into(),
-            level.ok().and_then(|lvl| lvl.temperature.into()).into(),
-        )
-    } else {
-        (none(), none())
-    };
+    let (el_height_asl, el_temperature): (Optioned<Meters>, Optioned<Celsius>) =
+        if let Some(elp) = el_pressure.into_option() {
+            let level = linear_interpolate_sounding(snd, elp);
+            (
+                level.ok().and_then(|lvl| lvl.height.into()).into(),
+                level.ok().and_then(|lvl| lvl.temperature.into()).into(),
+            )
+        } else {
+            (none(), none())
+        };
 
     let lfc_height_asl: Optioned<Meters> = if let Some(lfc) = lfc_pressure.into_option() {
         let level = linear_interpolate_sounding(snd, lfc);
@@ -405,7 +413,11 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         Err(_) => (none(), none(), none()),
     };
 
-    let ncape = if let (Some(cape), Some(lfc_h), Some(el_h)) = (cape.into_option(), lfc_height_asl.into_option(), el_height_asl.into_option()){
+    let ncape = if let (Some(cape), Some(lfc_h), Some(el_h)) = (
+        cape.into_option(),
+        lfc_height_asl.into_option(),
+        el_height_asl.into_option(),
+    ) {
         some(cape.unpack() / (el_h - lfc_h).unpack())
     } else {
         none()
@@ -456,7 +468,8 @@ fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<(DataRow, P
     let theta = parcel.theta();
     let temperature = Celsius::from(metfor::temperature_from_theta(theta, pressure));
     let mw = parcel.mixing_ratio()?;
-    let dew_point = metfor::dew_point_from_p_and_mw(pressure, mw).ok_or(AnalysisError::MetForError)?;
+    let dew_point =
+        metfor::dew_point_from_p_and_mw(pressure, mw).ok_or(AnalysisError::MetForError)?;
     let new_parcel = Parcel {
         pressure,
         temperature,
@@ -474,17 +487,12 @@ fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<(DataRow, P
 pub fn mix_down(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta();
     let theta_func = |theta_val, press| {
-        Some(Celsius::from(metfor::temperature_from_theta(theta_val, press)))
+        Some(Celsius::from(metfor::temperature_from_theta(
+            theta_val, press,
+        )))
     };
 
-    descend_parcel(
-        parcel,
-        snd,
-        theta,
-        theta_func,
-        false,
-        false,
-    )
+    descend_parcel(parcel, snd, theta, theta_func, false, false)
 }
 
 /// Descend a parcel moist adiabatically.
@@ -494,9 +502,8 @@ pub fn mix_down(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
 fn descend_moist(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta_e()?;
 
-    let theta_func = |theta_e, press| {
-        metfor::temperature_from_theta_e_saturated_and_pressure(press, theta_e)
-    };
+    let theta_func =
+        |theta_e, press| metfor::temperature_from_theta_e_saturated_and_pressure(press, theta_e);
 
     descend_parcel(parcel, snd, theta, theta_func, true, true)
 }
@@ -558,7 +565,9 @@ where
                 }
             })
             // Get the parcel temperature
-            .filter_map(|(p, h, e_t, e_dp)| theta_func(theta, p).map(|pcl_t| (p, h, pcl_t, e_t, e_dp))) 
+            .filter_map(|(p, h, e_t, e_dp)| {
+                theta_func(theta, p).map(|pcl_t| (p, h, pcl_t, e_t, e_dp))
+            })
             // Get the parcel dew point
             .filter_map(|(p, h, pcl_t, e_t, e_dp)| {
                 let p_dp = if saturated {
@@ -616,7 +625,9 @@ fn cape_cin(
     lfc: Optioned<HectoPascal>,
     el: Optioned<HectoPascal>,
 ) -> Result<(JpKg, JpKg, JpKg)> {
-    let (lfc, el) = if let (Some(lcl), Some(lfc), Some(el)) = (lcl.into_option(), lfc.into_option(), el.into_option()) {
+    let (lfc, el) = if let (Some(lcl), Some(lfc), Some(el)) =
+        (lcl.into_option(), lfc.into_option(), el.into_option())
+    {
         // If no LCL, then no moist convection, then don't mention CAPE/CIN
         if el < lcl {
             (lfc, el)
@@ -636,7 +647,12 @@ fn cape_cin(
     let (cape, cin, hail_zone_cape) = izip!(pressure, height, parcel_t, env_t)
         .take_while(|(&p, _h, _pt, _et)| p >= el)
         .fold(
-            ((0.0, 0.0, 0.0), Meters(std::f64::MAX), Kelvin(0.0), Kelvin(0.0)),
+            (
+                (0.0, 0.0, 0.0),
+                Meters(std::f64::MAX),
+                Kelvin(0.0),
+                Kelvin(0.0),
+            ),
             |acc, (&p, &h, &pt, &et)| {
                 let ((mut cape, mut cin, mut hail_cape), prev_h, prev_pt, prev_et) = acc;
 
@@ -648,7 +664,9 @@ fn cape_cin(
                     // Must be just starting out, save the previous layer and move on
                     ((cape, cin, hail_cape), h, pt, et)
                 } else {
-                    let bouyancy = ((pt - et).unpack() / et.unpack() + (prev_pt - prev_et).unpack() / prev_et.unpack()) * dz.unpack();
+                    let bouyancy = ((pt - et).unpack() / et.unpack()
+                        + (prev_pt - prev_et).unpack() / prev_et.unpack())
+                        * dz.unpack();
                     if bouyancy > 0.0 && p <= lfc {
                         cape += bouyancy;
                         if pt <= Celsius(-10.0) && pt >= Celsius(-30.0) {
@@ -682,16 +700,20 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, JpKg, Celsius)> {
     let p = snd.pressure_profile();
 
     // Find the lowest pressure, 400 mb above the surface (or starting level)
-    let top_p = p.iter()
-            .filter_map(|p| p.into_option())
-            .nth(0)
-            .ok_or(AnalysisError::NotEnoughData)? - HectoPascal(400.0);
+    let top_p = p
+        .iter()
+        .filter_map(|p| p.into_option())
+        .nth(0)
+        .ok_or(AnalysisError::NotEnoughData)?
+        - HectoPascal(400.0);
 
     // Check that pressure is positive. This is theoretically possible if the surface pressure is
     // less than 400 hPa. Maybe in the Himalayas? Moisture is insignficant at 100 hPa anyway. This
-    // is a really gross error check. 
-    debug_assert!(top_p.into_option().is_some() && top_p > HectoPascal(100.0), 
-        "surface pressure is below 500 mb");
+    // is a really gross error check.
+    debug_assert!(
+        top_p.into_option().is_some() && top_p > HectoPascal(100.0),
+        "surface pressure is below 500 mb"
+    );
 
     // Find the starting parcel.
     let pcl = izip!(p, t, dp)
@@ -760,7 +782,8 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, JpKg, Celsius)> {
             continue;
         }
 
-        dcape += ((pt - et).unpack() / et.unpack() + (pt0 - et0).unpack() / et0.unpack()) * dz.unpack();
+        dcape +=
+            ((pt - et).unpack() / et.unpack() + (pt0 - et0).unpack() / et0.unpack()) * dz.unpack();
 
         h0 = h;
         pt0 = pt;
@@ -829,21 +852,26 @@ pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(JpKg, JpKg)> {
 
     fn calc_cape<T: Iterator<Item = (Meters, Kelvin, Kelvin)>>(iter: T) -> f64 {
         let cape = iter
-            .fold((0.0, Meters(std::f64::MAX), Kelvin(0.0), Kelvin(0.0)), |acc, (h, pt, et)| {
-                let (mut cape, prev_h, prev_pt, prev_et) = acc;
+            .fold(
+                (0.0, Meters(std::f64::MAX), Kelvin(0.0), Kelvin(0.0)),
+                |acc, (h, pt, et)| {
+                    let (mut cape, prev_h, prev_pt, prev_et) = acc;
 
-                let dz = h - prev_h;
+                    let dz = h - prev_h;
 
-                if dz <= Meters(0.0) {
-                    // Must be just starting out, save the previous layer and move on
-                    (cape, h, pt, et)
-                } else {
-                    let bouyancy = ((pt - et).unpack() / et.unpack() + (prev_pt - prev_et).unpack() / prev_et.unpack()) * dz.unpack();
-                    cape += bouyancy;
+                    if dz <= Meters(0.0) {
+                        // Must be just starting out, save the previous layer and move on
+                        (cape, h, pt, et)
+                    } else {
+                        let bouyancy = ((pt - et).unpack() / et.unpack()
+                            + (prev_pt - prev_et).unpack() / prev_et.unpack())
+                            * dz.unpack();
+                        cape += bouyancy;
 
-                    (cape, h, pt, et)
-                }
-            })
+                        (cape, h, pt, et)
+                    }
+                },
+            )
             .0;
 
         cape / 2.0 * -metfor::g

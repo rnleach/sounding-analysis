@@ -1,5 +1,5 @@
 use super::*;
-use metfor::{Quantity};
+use metfor::Quantity;
 use sounding_analysis::Result;
 use sounding_base::Sounding;
 
@@ -9,10 +9,9 @@ pub fn test_index<F, Q>(
     tgt_float_vals: &HashMap<String, Vec<f64>>,
     anal_func: F,
     index_key: &str,
-    tol: Q,     // tolerance 
+    tol: Q,     // tolerance
     err_val: Q, // Value if result would return Err(_)
-) 
-where
+) where
     F: FnOnce(&Sounding) -> Result<Q>,
     Q: Quantity,
 {

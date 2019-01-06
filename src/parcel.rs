@@ -2,7 +2,7 @@
 //!
 use optional::Optioned;
 
-use metfor::{self, Celsius, Kelvin, HectoPascal, Quantity};
+use metfor::{self, Celsius, HectoPascal, Kelvin, Quantity};
 use sounding_base::{DataRow, Sounding};
 
 use crate::error::*;
@@ -28,7 +28,8 @@ impl Parcel {
 
     /// Get the equivalent potential temperature of the parcel
     pub fn theta_e(&self) -> Result<Kelvin> {
-        metfor::theta_e(self.temperature, self.dew_point, self.pressure).ok_or(AnalysisError::MetForError)
+        metfor::theta_e(self.temperature, self.dew_point, self.pressure)
+            .ok_or(AnalysisError::MetForError)
     }
 
     /// Get the mixing ratio of the parcel
@@ -38,11 +39,8 @@ impl Parcel {
 
     /// Get the virtual temperature of the parcel
     pub fn virtual_temperature(&self) -> Result<Kelvin> {
-        metfor::virtual_temperature(
-            self.temperature,
-            self.dew_point,
-            self.pressure,
-        ).ok_or(AnalysisError::MetForError)
+        metfor::virtual_temperature(self.temperature, self.dew_point, self.pressure)
+            .ok_or(AnalysisError::MetForError)
     }
 
     /// Try to convert a `DataRow` to a `Parcel`.
@@ -65,7 +63,6 @@ impl Parcel {
 /// sounding and calculating a temperature and dew point at the lowest pressure level using those
 /// averaged values.
 pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
-
     let press = snd.pressure_profile();
     let t = snd.temperature_profile();
     let dp = snd.dew_point_profile();
@@ -101,7 +98,11 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
         // calculate the sums and count needed for the average
         .fold((HectoPascal(0.0), 0.0f64, 0.0f64), |acc, (p, theta, mw)| {
             let (sum_p, sum_t, sum_mw) = acc;
-            (sum_p + p, sum_t + theta.unpack() * p.unpack(), sum_mw + mw * p.unpack())
+            (
+                sum_p + p,
+                sum_t + theta.unpack() * p.unpack(),
+                sum_mw + mw * p.unpack(),
+            )
         });
 
     if sum_p == HectoPascal(0.0) {
@@ -110,7 +111,10 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
 
     // convert back to temperature and dew point at the lowest pressure level.
     let pressure = bottom_p;
-    let temperature = Celsius::from(metfor::temperature_from_theta(Kelvin(sum_t / sum_p.unpack()), bottom_p));
+    let temperature = Celsius::from(metfor::temperature_from_theta(
+        Kelvin(sum_t / sum_p.unpack()),
+        bottom_p,
+    ));
     let dew_point = metfor::dew_point_from_p_and_mw(bottom_p, sum_mw / sum_p.unpack())
         .ok_or(AnalysisError::InvalidInput)?;
 
@@ -123,7 +127,6 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
 
 /// Get a surface parcel.
 pub fn surface_parcel(snd: &Sounding) -> Result<Parcel> {
-
     let pressure = snd.station_pressure().ok_or(AnalysisError::MissingValue)?;
     let temperature = snd.sfc_temperature().ok_or(AnalysisError::MissingValue)?;
     let dew_point = snd.sfc_dew_point().ok_or(AnalysisError::MissingValue)?;
@@ -156,7 +159,6 @@ pub fn pressure_parcel(snd: &Sounding, pressure: HectoPascal) -> Result<Parcel> 
 /// This is defined as the parcel in the lowest 300 hPa of the sounding with the highest equivalent
 /// potential temperature.
 pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
-
     let temp_vec: Vec<Optioned<Kelvin>>;
 
     let theta_e = if !snd.theta_e_profile().is_empty() {
@@ -209,7 +211,6 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
 ///
 /// This is based off the mixing ratio of the mixed layer parcel.
 pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
-
     let Parcel {
         dew_point: dp,
         pressure: initial_p,

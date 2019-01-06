@@ -1,5 +1,7 @@
 //! Indexes that are specific to a sounding, but not a particular parcel analysis of that sounding.
-use metfor::{Celsius, WindSpdDir, Mm, HectoPascal, Quantity, Meters, CelsiusDiff, Knots, MetersPSec};
+use metfor::{
+    Celsius, CelsiusDiff, HectoPascal, Knots, Meters, MetersPSec, Mm, Quantity, WindSpdDir,
+};
 use sounding_base::Sounding;
 
 use crate::error::*;
@@ -29,13 +31,20 @@ pub fn swet(snd: &Sounding) -> Result<f64> {
     let h5 = linear_interpolate_sounding(snd, HectoPascal(500.0))?;
     let h85 = linear_interpolate_sounding(snd, HectoPascal(850.0))?;
 
-    let td_850 = h85.dew_point
+    let td_850 = h85
+        .dew_point
         .map_t(|Celsius(dp)| dp)
-        .map_t(|dp| if dp < 0.0 {0.0} else {dp})
+        .map_t(|dp| if dp < 0.0 { 0.0 } else { dp })
         .ok_or(AnalysisError::MissingValue)?;
 
-    let WindSpdDir{ speed: v_850, direction: d_850} = h85.wind.ok_or(AnalysisError::MissingValue)?;
-    let WindSpdDir{ speed: v_500, direction: d_500} = h5.wind.ok_or(AnalysisError::MissingValue)?;
+    let WindSpdDir {
+        speed: v_850,
+        direction: d_850,
+    } = h85.wind.ok_or(AnalysisError::MissingValue)?;
+    let WindSpdDir {
+        speed: v_500,
+        direction: d_500,
+    } = h5.wind.ok_or(AnalysisError::MissingValue)?;
 
     let mut total_totals = total_totals(snd)?;
     if total_totals < 49.0 {
@@ -54,7 +63,11 @@ pub fn swet(snd: &Sounding) -> Result<f64> {
         dir_component = 125.0 * (dir_component + 0.2);
     }
 
-    Ok(12.0 * td_850 + 20.0 * (total_totals - 49.0) + 2.0 * v_850.unpack() + v_500.unpack() + dir_component)
+    Ok(12.0 * td_850
+        + 20.0 * (total_totals - 49.0)
+        + 2.0 * v_850.unpack()
+        + v_500.unpack()
+        + dir_component)
 }
 
 /// The K-index
@@ -89,17 +102,18 @@ pub fn precipitable_water(snd: &Sounding) -> Result<Mm> {
                 None
             }
         })
-        .filter_map(|(p, dp)| {
-            metfor::mixing_ratio(dp, p).and_then(|mw| Some((p, mw)))
-        })
-        .fold((0.0, HectoPascal(0.0), 0.0), |(mut acc_mw, prev_p, prev_mw), (p, mw)| {
-            let dp = prev_p - p;
-            if dp > HectoPascal(0.0) {
-                acc_mw += (mw + prev_mw) * dp.unpack();
-            }
+        .filter_map(|(p, dp)| metfor::mixing_ratio(dp, p).and_then(|mw| Some((p, mw))))
+        .fold(
+            (0.0, HectoPascal(0.0), 0.0),
+            |(mut acc_mw, prev_p, prev_mw), (p, mw)| {
+                let dp = prev_p - p;
+                if dp > HectoPascal(0.0) {
+                    acc_mw += (mw + prev_mw) * dp.unpack();
+                }
 
-            (acc_mw, p, mw)
-        });
+                (acc_mw, p, mw)
+            },
+        );
 
     Ok(Mm(integrated_mw / 9.81 / 997.0 * 100_000.0 / 2.0))
 }
@@ -125,10 +139,10 @@ pub fn haines(snd: &Sounding) -> Result<u8> {
 /// The low level version of the Haines index for fire weather.
 #[inline]
 pub fn haines_low(snd: &Sounding) -> Result<u8> {
-    let level1 =
-        linear_interpolate_sounding(snd, HectoPascal(950.0)).map_err(|_| AnalysisError::MissingValue)?;
-    let level2 =
-        linear_interpolate_sounding(snd, HectoPascal(850.0)).map_err(|_| AnalysisError::MissingValue)?;
+    let level1 = linear_interpolate_sounding(snd, HectoPascal(950.0))
+        .map_err(|_| AnalysisError::MissingValue)?;
+    let level2 = linear_interpolate_sounding(snd, HectoPascal(850.0))
+        .map_err(|_| AnalysisError::MissingValue)?;
 
     let Celsius(t_low) = level1.temperature.ok_or(AnalysisError::MissingValue)?;
     let Celsius(t_hi) = level2.temperature.ok_or(AnalysisError::MissingValue)?;
@@ -158,10 +172,10 @@ pub fn haines_low(snd: &Sounding) -> Result<u8> {
 /// The mid level version of the Haines index for fire weather.
 #[inline]
 pub fn haines_mid(snd: &Sounding) -> Result<u8> {
-    let level1 =
-        linear_interpolate_sounding(snd, HectoPascal(850.0)).map_err(|_| AnalysisError::MissingValue)?;
-    let level2 =
-        linear_interpolate_sounding(snd, HectoPascal(700.0)).map_err(|_| AnalysisError::MissingValue)?;
+    let level1 = linear_interpolate_sounding(snd, HectoPascal(850.0))
+        .map_err(|_| AnalysisError::MissingValue)?;
+    let level2 = linear_interpolate_sounding(snd, HectoPascal(700.0))
+        .map_err(|_| AnalysisError::MissingValue)?;
 
     let Celsius(t_low) = level1.temperature.ok_or(AnalysisError::MissingValue)?;
     let Celsius(t_hi) = level2.temperature.ok_or(AnalysisError::MissingValue)?;
@@ -191,10 +205,10 @@ pub fn haines_mid(snd: &Sounding) -> Result<u8> {
 /// The high level version of the Haines index for fire weather.
 #[inline]
 pub fn haines_high(snd: &Sounding) -> Result<u8> {
-    let level1 =
-        linear_interpolate_sounding(snd, HectoPascal(700.0)).map_err(|_| AnalysisError::MissingValue)?;
-    let level2 =
-        linear_interpolate_sounding(snd, HectoPascal(500.0)).map_err(|_| AnalysisError::MissingValue)?;
+    let level1 = linear_interpolate_sounding(snd, HectoPascal(700.0))
+        .map_err(|_| AnalysisError::MissingValue)?;
+    let level2 = linear_interpolate_sounding(snd, HectoPascal(500.0))
+        .map_err(|_| AnalysisError::MissingValue)?;
 
     let Celsius(t_low) = level1.temperature.ok_or(AnalysisError::MissingValue)?;
     let Celsius(t_hi) = level2.temperature.ok_or(AnalysisError::MissingValue)?;
@@ -237,16 +251,16 @@ pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
         return Err(AnalysisError::NotEnoughData);
     };
 
-    let h_profile = snd.height_profile(); 
-    let t_profile = snd.temperature_profile(); 
-    let dp_profile = snd.dew_point_profile(); 
-    let ws_profile = snd.wind_profile(); 
+    let h_profile = snd.height_profile();
+    let t_profile = snd.temperature_profile();
+    let dp_profile = snd.dew_point_profile();
+    let ws_profile = snd.wind_profile();
 
     let (vpd, ws) = izip!(h_profile, t_profile, dp_profile, ws_profile)
         // Remove rows with missing data
         .filter_map(|(h, t, dp, ws)| {
             if h.is_some() && t.is_some() && dp.is_some() && ws.is_some() {
-                let WindSpdDir{ speed: ws, ..} = ws.unpack();
+                let WindSpdDir { speed: ws, .. } = ws.unpack();
                 Some((h.unpack(), t.unpack(), dp.unpack(), ws)) // unpack optional::Optioned
             } else {
                 None

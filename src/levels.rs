@@ -2,7 +2,7 @@
 //! has functions for finding critical values at a single level, such as the maximum wet bulb
 //! temperature aloft.  It does not include functions for finding levels related to parcel analysis
 //! and convection, those are found in the `parcel` module.
-use metfor::{Meters, HectoPascal, Celsius, FREEZING};
+use metfor::{Celsius, HectoPascal, Meters, FREEZING};
 use optional::Optioned;
 use smallvec::SmallVec;
 use sounding_base::{DataRow, Sounding};
@@ -20,15 +20,30 @@ pub type Levels = SmallVec<[Level; crate::VEC_SIZE]>;
 
 /// Find the freezing/melting levels below 500 hPa.
 pub fn freezing_levels(snd: &Sounding) -> Result<Levels> {
-    find_temperature_levels(FREEZING, snd.pressure_profile(), snd.temperature_profile(), snd)
+    find_temperature_levels(
+        FREEZING,
+        snd.pressure_profile(),
+        snd.temperature_profile(),
+        snd,
+    )
 }
 
 /// Find the wet bulb zero levels
 pub fn wet_bulb_zero_levels(snd: &Sounding) -> Result<Levels> {
-    find_temperature_levels(FREEZING, snd.pressure_profile(), snd.wet_bulb_profile(), snd)
+    find_temperature_levels(
+        FREEZING,
+        snd.pressure_profile(),
+        snd.wet_bulb_profile(),
+        snd,
+    )
 }
 
-fn find_temperature_levels(target_t: Celsius, p_profile: &[Optioned<HectoPascal>], t_profile: &[Optioned<Celsius>], snd: &Sounding) -> Result<Levels> {
+fn find_temperature_levels(
+    target_t: Celsius,
+    p_profile: &[Optioned<HectoPascal>],
+    t_profile: &[Optioned<Celsius>],
+    snd: &Sounding,
+) -> Result<Levels> {
     use crate::interpolation::{linear_interp, linear_interpolate_sounding};
 
     let mut to_return: Levels = Levels::new();
@@ -85,7 +100,6 @@ pub fn max_temperature_in_profile(snd: &Sounding) -> Result<Level> {
 
 // Only searches up to 500 hPa
 fn max_t_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<Level> {
-
     const TOP_PRESSURE: HectoPascal = HectoPascal(500.0); // don't look above here.
 
     let p_profile = snd.pressure_profile();
@@ -107,19 +121,22 @@ fn max_t_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<Level>
                 None
             }
         })
-        .fold(Err(AnalysisError::NotEnoughData), |acc: Result<_>, (i, t)| {
-            if let Ok((_, mx_t)) = acc {
-                if t > mx_t {
-                    Ok((i, t))
+        .fold(
+            Err(AnalysisError::NotEnoughData),
+            |acc: Result<_>, (i, t)| {
+                if let Ok((_, mx_t)) = acc {
+                    if t > mx_t {
+                        Ok((i, t))
+                    } else {
+                        // Propagate most recent result through
+                        acc
+                    }
                 } else {
-                    // Propagate most recent result through
-                    acc
+                    // just starting, so initialize result
+                    Ok((i, t))
                 }
-            } else {
-                // just starting, so initialize result
-                Ok((i, t))
-            }
-        })
+            },
+        )
         // Retrive the row
         .and_then(|(idx, _)| snd.data_row(idx).ok_or(InvalidInput))
 }
@@ -135,7 +152,6 @@ pub fn max_wet_bulb_in_layer(snd: &Sounding, lyr: &Layer) -> Result<Level> {
 }
 
 fn max_t_in_layer(snd: &Sounding, t_profile: &[Optioned<Celsius>], lyr: &Layer) -> Result<Level> {
-
     let (bottom_p, top_p) = if lyr.bottom.pressure.is_some() && lyr.top.pressure.is_some() {
         (lyr.bottom.pressure.unpack(), lyr.top.pressure.unpack())
     } else {
@@ -161,26 +177,28 @@ fn max_t_in_layer(snd: &Sounding, t_profile: &[Optioned<Celsius>], lyr: &Layer) 
                 None
             }
         })
-        .fold(Err(AnalysisError::NotEnoughData), |acc: Result<_>, (i, t)| {
-            if let Ok((_, mx_t)) = acc {
-                if t > mx_t {
-                    Ok((i, t))
+        .fold(
+            Err(AnalysisError::NotEnoughData),
+            |acc: Result<_>, (i, t)| {
+                if let Ok((_, mx_t)) = acc {
+                    if t > mx_t {
+                        Ok((i, t))
+                    } else {
+                        // Propagate most recent result through
+                        acc
+                    }
                 } else {
-                    // Propagate most recent result through
-                    acc
+                    // We're just starting, so populate the result
+                    Ok((i, t))
                 }
-            } else {
-                // We're just starting, so populate the result
-                Ok((i, t))
-            }
-        })
+            },
+        )
         // Retrive the row
         .and_then(|(idx, _)| snd.data_row(idx).ok_or(InvalidInput))
 }
 
 /// Find a level at a specific geopotential height.
 pub(crate) fn height_level(tgt_height: Meters, snd: &Sounding) -> Result<Level> {
-
     let h_profile = snd.height_profile();
     let p_profile = snd.pressure_profile();
 
@@ -210,13 +228,13 @@ pub(crate) fn height_level(tgt_height: Meters, snd: &Sounding) -> Result<Level> 
                             // If we finally jumped above our target, we have it bracketed, interpolate
                             // and find target pressure.
                             let tgt_p = crate::interpolation::linear_interp(
-                                tgt_height,
-                                last_h,
-                                h,
-                                last_p,
-                                p,
+                                tgt_height, last_h, h, last_p, p,
                             );
-                            Ok((HectoPascal(std::f64::MAX), Meters(std::f64::MAX), Some(tgt_p)))
+                            Ok((
+                                HectoPascal(std::f64::MAX),
+                                Meters(std::f64::MAX),
+                                Some(tgt_p),
+                            ))
                         } else {
                             // Keep climbing up the profile.
                             Ok((p, h, None))
