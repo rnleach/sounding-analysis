@@ -404,9 +404,7 @@ pub fn layer_agl(snd: &Sounding, meters_agl: Meters) -> Result<Layer> {
         }
     };
 
-    let bottom = snd
-        .surface_as_data_row()
-        .unwrap_or_else(|| DataRow::default());
+    let bottom = snd.surface_as_data_row().unwrap_or_else(DataRow::default);
     let top = height_level(tgt_elev, snd)?;
     Ok(Layer { bottom, top })
 }

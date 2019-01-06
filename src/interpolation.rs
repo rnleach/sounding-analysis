@@ -9,11 +9,7 @@ use crate::error::*;
 /// Interpolate values from the vertical sounding using pressure as the primary coordinate.
 ///
 /// Returns a `DataRow` struct with interpolated values.
-pub fn linear_interpolate_sounding(snd: &Sounding, target_p: HectoPascal) -> Result<DataRow>
-where
-{
-    let tgt_p: HectoPascal = HectoPascal::from(target_p);
-
+pub fn linear_interpolate_sounding(snd: &Sounding, tgt_p: HectoPascal) -> Result<DataRow> {
     let pressure: &[Optioned<HectoPascal>] = snd.pressure_profile();
     let temperature = snd.temperature_profile();
     let wet_bulb = snd.wet_bulb_profile();
@@ -35,10 +31,10 @@ where
             if p > tgt_p {
                 below_idx = i;
                 found_bottom = true;
-            } else if p < target_p && found_bottom {
+            } else if p < tgt_p && found_bottom {
                 above_idx = i;
                 break;
-            } else if (p - target_p).unpack().abs() <= ::std::f64::EPSILON {
+            } else if (p - tgt_p).unpack().abs() <= ::std::f64::EPSILON {
                 return snd.data_row(i).ok_or(AnalysisError::InvalidInput);
             } else {
                 break; // leave above_idx = 0 to signal error
@@ -50,7 +46,7 @@ where
         let p_below = pressure[below_idx].unwrap();
         let p_above = pressure[above_idx].unwrap();
         let run = p_above - p_below;
-        let dp = target_p - p_below;
+        let dp = tgt_p - p_below;
 
         result.temperature = eval_linear_interp(below_idx, above_idx, run, dp, temperature);
         result.wet_bulb = eval_linear_interp(below_idx, above_idx, run, dp, wet_bulb);

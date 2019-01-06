@@ -104,22 +104,8 @@ impl ParcelAnalysis {
 
     /// Retrieve the parcel's profile
     #[inline]
-    #[deprecated(since = "0.10", note = "use profile instead")]
-    pub fn get_profile(&self) -> &ParcelProfile {
-        self.profile()
-    }
-
-    /// Retrieve the parcel's profile
-    #[inline]
     pub fn profile(&self) -> &ParcelProfile {
         &self.profile
-    }
-
-    /// Retrieve the original parcel.
-    #[inline]
-    #[deprecated(since = "0.10", note = "use parcel instead")]
-    pub fn get_parcel(&self) -> &Parcel {
-        self.parcel()
     }
 
     /// Retrieve the original parcel.
@@ -283,10 +269,9 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         // Pack the resulting values into their vectors and handle special levels
         //
         for (p, h, env_t, pcl_t) in iter {
-            let mut lcl_data = None;
             // Check to see if we are passing the lcl
-            if p0 > lcl_pressure && p < lcl_pressure {
-                lcl_data = Some((
+            let lcl_data = if p0 > lcl_pressure && p < lcl_pressure {
+                Some((
                     lcl_pressure,
                     lcl_height,
                     metfor::virtual_temperature(lcl_temperature, lcl_temperature, lcl_pressure)
@@ -295,19 +280,23 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
                     metfor::virtual_temperature(lcl_env_temperature, lcl_env_dp, lcl_pressure)
                         .map(Celsius::from)
                         .ok_or(AnalysisError::MetForError)?,
-                ));
-            }
+                ))
+            } else {
+                None
+            };
 
-            let mut prof_cross_data = None;
             // Check to see if the parcel and environment soundings have crossed
-            if (pcl_t0 < env_t0 && pcl_t > env_t) || (pcl_t0 > env_t0 && pcl_t < env_t) {
-                let tgt_pres =
-                    linear_interp(CelsiusDiff(0.0), pcl_t - env_t, pcl_t0 - env_t0, p, p0);
-                let h2 = linear_interp(tgt_pres, p0, p, h0, h);
-                let env_t2 = linear_interp(tgt_pres, p0, p, env_t0, env_t);
+            let prof_cross_data =
+                if (pcl_t0 < env_t0 && pcl_t > env_t) || (pcl_t0 > env_t0 && pcl_t < env_t) {
+                    let tgt_pres =
+                        linear_interp(CelsiusDiff(0.0), pcl_t - env_t, pcl_t0 - env_t0, p, p0);
+                    let h2 = linear_interp(tgt_pres, p0, p, h0, h);
+                    let env_t2 = linear_interp(tgt_pres, p0, p, env_t0, env_t);
 
-                prof_cross_data = Some((tgt_pres, h2, env_t2, env_t2));
-            }
+                    Some((tgt_pres, h2, env_t2, env_t2))
+                } else {
+                    None
+                };
 
             if let (Some((lclp, lclh, lclpt, lclet)), Some((cp, ch, cpt, cet))) =
                 (lcl_data, prof_cross_data)
