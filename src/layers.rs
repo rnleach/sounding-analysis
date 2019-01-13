@@ -126,7 +126,7 @@ mod layer_tests {
     fn test_lapse_rate() {
         let lyr = make_test_layer();
         println!(
-            "{:#?}\n\n -- \n\n {} \n\n --",
+            "{:#?}\n\n -- \n\n {:#?} \n\n --",
             lyr,
             lyr.lapse_rate().unwrap()
         );

@@ -171,7 +171,7 @@ pub fn test_max_temperature(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec
                 let max_t_in_this_layer = layer_anal.temperature.unwrap();
 
                 println!(
-                    "tgt_temp = {} and found value = {} in layer {:#?}",
+                    "tgt_temp = {:#?} and found value = {:#?} in layer {:#?}",
                     tgt_temp, max_t_in_this_layer, lyr
                 );
                 assert!(layer_anal
