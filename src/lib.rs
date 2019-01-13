@@ -7,6 +7,7 @@ Provides analysis capabilities for the [sounding-base](https://github.com/rnleac
 crate.
 
 */
+#![doc(test(attr(deny(warnings))))]
 #![warn(missing_docs)]
 
 //
