@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use super::*;
+use metfor::{HectoPascal, Meters, Quantity};
 use sounding_analysis::Layers;
 use sounding_analysis::Result;
 use sounding_base::Sounding;
@@ -35,12 +36,20 @@ fn test_layers<F: FnOnce(&Sounding) -> Result<Layers>>(
                     println!(
                         "\nbottom {:#?}  ---  {:#?}",
                         lyr.bottom.pressure.unwrap(),
-                        it[0]
+                        HectoPascal(it[0])
                     );
-                    assert!(approx_equal(lyr.bottom.pressure.unwrap(), it[0], 1.0));
+                    assert!(lyr
+                        .bottom
+                        .pressure
+                        .unwrap()
+                        .approx_eq(HectoPascal(it[0]), HectoPascal(1.0)));
 
                     println!("top {:#?}  ---  {:#?}", lyr.top.pressure.unwrap(), it[1]);
-                    assert!(approx_equal(lyr.top.pressure.unwrap(), it[1], 1.0));
+                    assert!(lyr
+                        .top
+                        .pressure
+                        .unwrap()
+                        .approx_eq(HectoPascal(it[1]), HectoPascal(1.0)));
                     count_layers_compared += 1;
                 }
                 assert_eq!(count_layers_compared, num_layers);
@@ -116,10 +125,18 @@ pub fn test_warm_dry_bulb_aloft_and_cold_sfc_layers(
                         lyr.bottom.pressure.unwrap(),
                         it[0]
                     );
-                    assert!(approx_equal(lyr.bottom.pressure.unwrap(), it[0], 1.0));
+                    assert!(lyr
+                        .bottom
+                        .pressure
+                        .unwrap()
+                        .approx_eq(HectoPascal(it[0]), HectoPascal(1.0)));
 
                     println!("top {:#?}  ---  {:#?}", lyr.top.pressure.unwrap(), it[1]);
-                    assert!(approx_equal(lyr.top.pressure.unwrap(), it[1], 1.0));
+                    assert!(lyr
+                        .top
+                        .pressure
+                        .unwrap()
+                        .approx_eq(HectoPascal(it[1]), HectoPascal(1.0)));
                 }
             } else {
                 panic!("No pressure levels given for cold surface layer.");
@@ -150,7 +167,7 @@ pub fn test_warm_wet_bulb_aloft(
 pub fn test_layer_agl(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>) {
     use sounding_analysis::layer_agl;
 
-    let analysis = layer_agl(snd, 6000.0).unwrap();
+    let analysis = layer_agl(snd, Meters(6000.0)).unwrap();
     println!("\n6km AGL layer: {:#?}", analysis);
     if let Some(agl_layer_pressures) = tgt_float_vals.get("6km agl layer pressures") {
         assert_eq!(agl_layer_pressures.len(), 2);
@@ -161,10 +178,18 @@ pub fn test_layer_agl(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>
                 lyr.bottom.pressure.unwrap(),
                 it[0]
             );
-            assert!(approx_equal(lyr.bottom.pressure.unwrap(), it[0], 1.0));
+            assert!(lyr
+                .bottom
+                .pressure
+                .unwrap()
+                .approx_eq(HectoPascal(it[0]), HectoPascal(1.0)));
 
             println!("top {:#?}  ---  {:#?}", lyr.top.pressure.unwrap(), it[1]);
-            assert!(approx_equal(lyr.top.pressure.unwrap(), it[1], 1.0));
+            assert!(lyr
+                .top
+                .pressure
+                .unwrap()
+                .approx_eq(HectoPascal(it[1]), HectoPascal(1.0)));
         }
     } else {
         panic!("No pressure levels given for agl layers.");
@@ -175,7 +200,7 @@ pub fn test_layer_agl(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>
 pub fn test_pressure_layer(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>) {
     use sounding_analysis::pressure_layer;
 
-    let analysis = pressure_layer(snd, 700.0, 500.0).unwrap();
+    let analysis = pressure_layer(snd, HectoPascal(700.0), HectoPascal(500.0)).unwrap();
     println!("\n700-500 hPa layer: {:#?}", analysis);
     if let Some(pressure_layer_heights) = tgt_float_vals.get("700-500 hPa layer heights") {
         assert_eq!(pressure_layer_heights.len(), 2);
@@ -186,10 +211,18 @@ pub fn test_pressure_layer(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<
                 lyr.bottom.height.unwrap(),
                 it[0]
             );
-            assert!(approx_equal(lyr.bottom.height.unwrap(), it[0], 1.0));
+            assert!(lyr
+                .bottom
+                .height
+                .unwrap()
+                .approx_eq(Meters(it[0]), Meters(1.0)));
 
             println!("top {:#?}  ---  {:#?}", lyr.top.height.unwrap(), it[1]);
-            assert!(approx_equal(lyr.top.height.unwrap(), it[1], 1.0));
+            assert!(lyr
+                .top
+                .height
+                .unwrap()
+                .approx_eq(Meters(it[1]), Meters(1.0)));
         }
     } else {
         panic!("No heights given for pressure layer.");
@@ -204,7 +237,7 @@ pub fn test_inversion_layers(
 ) {
     use sounding_analysis::inversions;
 
-    let test_inversions = |snd: &Sounding| inversions(snd, 300.0);
+    let test_inversions = |snd: &Sounding| inversions(snd, HectoPascal(300.0));
 
     test_layers(
         snd,

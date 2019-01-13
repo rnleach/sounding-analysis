@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use super::*;
+use metfor::{Celsius, HectoPascal, Quantity};
 use sounding_analysis::Levels;
 use sounding_analysis::Result;
 use sounding_base::Sounding;
@@ -32,7 +33,10 @@ fn test_levels<F: FnOnce(&Sounding) -> Result<Levels>>(
                 let mut count_levels_compared = 0;
                 for (lvl, it) in analysis.iter().zip(level_pressures) {
                     println!("\nLevel {:#?}  ---  {:#?}", lvl.pressure.unwrap(), it,);
-                    assert!(approx_equal(lvl.pressure.unwrap(), *it, 1.0));
+                    assert!(lvl
+                        .pressure
+                        .unwrap()
+                        .approx_eq(HectoPascal(*it), HectoPascal(1.0)));
 
                     count_levels_compared += 1;
                 }
@@ -99,7 +103,10 @@ pub fn test_max_wet_bulb_in_profile(snd: &Sounding, tgt_float_vals: &HashMap<Str
 
         for (lvl, it) in [analysis].iter().zip(mwb_pressures) {
             println!("\nLevel {:#?}  ---  {:#?}", lvl.pressure.unwrap(), it,);
-            assert!(approx_equal(lvl.pressure.unwrap(), *it, 1.0));
+            assert!(lvl
+                .pressure
+                .unwrap()
+                .approx_eq(HectoPascal(*it), HectoPascal(1.0)));
         }
 
         for (lvl, it) in [analysis].iter().zip(mwb) {
@@ -108,7 +115,7 @@ pub fn test_max_wet_bulb_in_profile(snd: &Sounding, tgt_float_vals: &HashMap<Str
                 lvl.wet_bulb.unwrap(),
                 it,
             );
-            assert!(approx_equal(lvl.wet_bulb.unwrap(), *it, 1.0));
+            assert!(lvl.wet_bulb.unwrap().approx_eq(Celsius(*it), Celsius(1.0)));
         }
     } else {
         panic!("Missing max wet bulb aloft level or value.");
@@ -132,7 +139,10 @@ pub fn test_max_temperature(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec
 
         for (lvl, it) in [analysis].iter().zip(mt_pressures) {
             println!("\nLevel {:#?}  ---  {:#?}", lvl.pressure.unwrap(), it,);
-            assert!(approx_equal(lvl.pressure.unwrap(), *it, 1.0));
+            assert!(lvl
+                .pressure
+                .unwrap()
+                .approx_eq(HectoPascal(*it), HectoPascal(1.0)));
         }
 
         for (lvl, it) in [analysis].iter().zip(mt) {
@@ -141,7 +151,10 @@ pub fn test_max_temperature(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec
                 lvl.temperature.unwrap(),
                 it,
             );
-            assert!(approx_equal(lvl.temperature.unwrap(), *it, 1.0));
+            assert!(lvl
+                .temperature
+                .unwrap()
+                .approx_eq(Celsius(*it), Celsius(1.0)));
         }
     } else {
         panic!("Missing max temperature level or value.");
@@ -158,14 +171,13 @@ pub fn test_max_temperature(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec
                 let max_t_in_this_layer = layer_anal.temperature.unwrap();
 
                 println!(
-                    "tgt_temp = {} and found value = {} in layer {:#?}",
+                    "tgt_temp = {:#?} and found value = {:#?} in layer {:#?}",
                     tgt_temp, max_t_in_this_layer, lyr
                 );
-                assert!(approx_equal(
-                    layer_anal.temperature.unwrap(),
-                    *tgt_temp,
-                    0.5
-                ));
+                assert!(layer_anal
+                    .temperature
+                    .unwrap()
+                    .approx_eq(Celsius(*tgt_temp), Celsius(0.5)));
             }
         } else {
             panic!("Missing max t value in warm layers aloft.");

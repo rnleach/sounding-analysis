@@ -2,51 +2,45 @@
 //!
 use optional::Optioned;
 
-use metfor;
-use sounding_base::{DataRow, Profile::*, Sounding};
+use metfor::{self, Celsius, HectoPascal, Kelvin, Quantity};
+use sounding_base::{DataRow, Sounding};
 
-use error::*;
-use interpolation::{linear_interp, linear_interpolate_sounding};
-use profile::equivalent_potential_temperature;
+use crate::error::*;
+use crate::interpolation::{linear_interp, linear_interpolate_sounding};
+use crate::profile::equivalent_potential_temperature;
 
 /// Variables defining a parcel as used in parcel analysis.
 #[derive(Debug, Clone, Copy)]
 pub struct Parcel {
     /// Temperature in C
-    pub temperature: f64,
+    pub temperature: Celsius,
     /// Pressure in hPa
-    pub pressure: f64,
+    pub pressure: HectoPascal,
     /// Dew point in C
-    pub dew_point: f64,
+    pub dew_point: Celsius,
 }
 
 impl Parcel {
     /// Get the potential temperatures of the parcel
-    pub fn theta(&self) -> Result<f64> {
-        Ok(metfor::theta_kelvin(self.pressure, self.temperature)?)
+    pub fn theta(&self) -> Kelvin {
+        metfor::theta(self.pressure, self.temperature)
     }
 
     /// Get the equivalent potential temperature of the parcel
-    pub fn theta_e(&self) -> Result<f64> {
-        Ok(metfor::theta_e_kelvin(
-            self.temperature,
-            self.dew_point,
-            self.pressure,
-        )?)
+    pub fn theta_e(&self) -> Result<Kelvin> {
+        metfor::theta_e(self.temperature, self.dew_point, self.pressure)
+            .ok_or(AnalysisError::MetForError)
     }
 
-    /// Get the mixing ratio of the parcel.AnalysisError
+    /// Get the mixing ratio of the parcel
     pub fn mixing_ratio(&self) -> Result<f64> {
-        Ok(metfor::mixing_ratio(self.dew_point, self.pressure)?)
+        metfor::mixing_ratio(self.dew_point, self.pressure).ok_or(AnalysisError::MetForError)
     }
 
     /// Get the virtual temperature of the parcel
-    pub fn virtual_temperature_c(&self) -> Result<f64> {
-        Ok(metfor::virtual_temperature_c(
-            self.temperature,
-            self.dew_point,
-            self.pressure,
-        )?)
+    pub fn virtual_temperature(&self) -> Result<Kelvin> {
+        metfor::virtual_temperature(self.temperature, self.dew_point, self.pressure)
+            .ok_or(AnalysisError::MetForError)
     }
 
     /// Try to convert a `DataRow` to a `Parcel`.
@@ -69,11 +63,9 @@ impl Parcel {
 /// sounding and calculating a temperature and dew point at the lowest pressure level using those
 /// averaged values.
 pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
-    use sounding_base::Profile::*;
-
-    let press = snd.get_profile(Pressure);
-    let t = snd.get_profile(Temperature);
-    let dp = snd.get_profile(DewPoint);
+    let press = snd.pressure_profile();
+    let t = snd.temperature_profile();
+    let dp = snd.dew_point_profile();
 
     if press.is_empty() || t.is_empty() || dp.is_empty() {
         return Err(AnalysisError::MissingProfile);
@@ -98,30 +90,33 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
             }
         })
         // only go up 100 hPa above the lowest level
-        .take_while(|&(p, _, _)| p >= bottom_p - 100.0)
-        // convert to theta and mw
-        .filter_map(|(p, t, dp)| {
-            metfor::theta_kelvin(p, t).ok().and_then(|theta| {
-                metfor::mixing_ratio(dp, p)
-                    .ok()
-                    .and_then(|mw| Some((p, theta, mw)))
-            })
-        })
+        .take_while(|&(p, _, _)| p >= bottom_p - HectoPascal(100.0))
+        // Get theta
+        .map(|(p, t, dp)| (p, dp, metfor::theta(p, t)))
+        // convert to mw
+        .filter_map(|(p, dp, th)| metfor::mixing_ratio(dp, p).and_then(|mw| Some((p, th, mw))))
         // calculate the sums and count needed for the average
-        .fold((0.0f64, 0.0f64, 0.0f64), |acc, (p, theta, mw)| {
+        .fold((HectoPascal(0.0), 0.0f64, 0.0f64), |acc, (p, theta, mw)| {
             let (sum_p, sum_t, sum_mw) = acc;
-            (sum_p + p, sum_t + theta * p, sum_mw + mw * p)
+            (
+                sum_p + p,
+                sum_t + theta.unpack() * p.unpack(),
+                sum_mw + mw * p.unpack(),
+            )
         });
 
-    if sum_p == 0.0 {
+    if sum_p == HectoPascal(0.0) {
         return Err(AnalysisError::NotEnoughData);
     }
 
     // convert back to temperature and dew point at the lowest pressure level.
     let pressure = bottom_p;
-    let temperature = metfor::temperature_c_from_theta(sum_t / sum_p, bottom_p)?;
-    let dew_point = metfor::dew_point_from_p_and_mw(bottom_p, sum_mw / sum_p)
-        .map_err(|_| AnalysisError::InvalidInput)?;
+    let temperature = Celsius::from(metfor::temperature_from_theta(
+        Kelvin(sum_t / sum_p.unpack()),
+        bottom_p,
+    ));
+    let dew_point = metfor::dew_point_from_p_and_mw(bottom_p, sum_mw / sum_p.unpack())
+        .ok_or(AnalysisError::InvalidInput)?;
 
     Ok(Parcel {
         temperature,
@@ -132,17 +127,9 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
 
 /// Get a surface parcel.
 pub fn surface_parcel(snd: &Sounding) -> Result<Parcel> {
-    use sounding_base::Surface::*;
-
-    let pressure = snd
-        .get_surface_value(StationPressure)
-        .ok_or(AnalysisError::MissingValue)?;
-    let temperature = snd
-        .get_surface_value(Temperature)
-        .ok_or(AnalysisError::MissingValue)?;
-    let dew_point = snd
-        .get_surface_value(DewPoint)
-        .ok_or(AnalysisError::MissingValue)?;
+    let pressure = snd.station_pressure().ok_or(AnalysisError::MissingValue)?;
+    let temperature = snd.sfc_temperature().ok_or(AnalysisError::MissingValue)?;
+    let dew_point = snd.sfc_dew_point().ok_or(AnalysisError::MissingValue)?;
 
     Ok(Parcel {
         temperature,
@@ -161,7 +148,7 @@ pub fn lowest_level_parcel(snd: &Sounding) -> Result<Parcel> {
 }
 
 /// Get the parcel at a specific pressure.
-pub fn pressure_parcel(snd: &Sounding, pressure: f64) -> Result<Parcel> {
+pub fn pressure_parcel(snd: &Sounding, pressure: HectoPascal) -> Result<Parcel> {
     let row = linear_interpolate_sounding(snd, pressure)?;
 
     Parcel::from_datarow(row).ok_or(AnalysisError::MissingValue)
@@ -172,25 +159,22 @@ pub fn pressure_parcel(snd: &Sounding, pressure: f64) -> Result<Parcel> {
 /// This is defined as the parcel in the lowest 300 hPa of the sounding with the highest equivalent
 /// potential temperature.
 pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
-    use sounding_base::Profile::*;
+    let temp_vec: Vec<Optioned<Kelvin>>;
 
-    let temp_vec: Vec<Optioned<f64>>;
-
-    let theta_e = if !snd.get_profile(ThetaE).is_empty() {
-        snd.get_profile(ThetaE)
+    let theta_e = if !snd.theta_e_profile().is_empty() {
+        snd.theta_e_profile()
     } else {
         temp_vec = equivalent_potential_temperature(snd);
         &temp_vec
     };
-    let press = snd.get_profile(Pressure);
+    let press = snd.pressure_profile();
 
     let top_pressure = press
         .iter()
-        .filter(|p| p.is_some())
+        .filter_map(|p| p.into_option())
         .nth(0)
         .ok_or(AnalysisError::NotEnoughData)?
-        .unpack()
-        - 300.0;
+        - HectoPascal(300.0);
 
     let (idx, _) = izip!(0.., press, theta_e)
         .take_while(|&(_, press_opt, _)| {
@@ -199,14 +183,16 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
             } else {
                 true // Don't stop just because one is missing or the none value
             }
-        }).filter_map(|(idx, _, theta_e_opt)| {
+        })
+        .filter_map(|(idx, _, theta_e_opt)| {
             if theta_e_opt.is_some() {
                 Some((idx, theta_e_opt.unpack()))
             } else {
                 None
             }
-        }).fold(
-            (::std::usize::MAX, ::std::f64::MIN),
+        })
+        .fold(
+            (::std::usize::MAX, metfor::ABSOLUTE_ZERO),
             |(max_idx, max_val), (i, theta_e)| {
                 if theta_e > max_val {
                     (i, theta_e)
@@ -216,7 +202,7 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
             },
         );
 
-    let row = snd.get_data_row(idx).ok_or(AnalysisError::NoDataProfile)?;
+    let row = snd.data_row(idx).ok_or(AnalysisError::NoDataProfile)?;
 
     Parcel::from_datarow(row).ok_or(AnalysisError::MissingValue)
 }
@@ -231,16 +217,16 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
         temperature: initial_t,
     } = mixed_layer_parcel(snd)?;
 
-    let tgt_mw = metfor::mixing_ratio(dp, initial_p)?;
+    let tgt_mw = metfor::mixing_ratio(dp, initial_p).ok_or(AnalysisError::MetForError)?;
 
-    let pressure = snd.get_profile(Pressure);
-    let temperature = snd.get_profile(Temperature);
+    let pressure = snd.pressure_profile();
+    let temperature = snd.temperature_profile();
 
     let (tgt_p, tgt_t) = izip!(pressure, temperature)
         .filter_map(|(p, t)| {
             let p = p.into_option()?;
             let t = t.into_option()?;
-            let mw = metfor::mixing_ratio(t, p).ok()?;
+            let mw = metfor::mixing_ratio(t, p)?;
 
             Some((p, t, mw))
         })
@@ -253,8 +239,8 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
         .scan((0.0, 0.0, 0.0), |(old_p, old_t, old_mw), (p, t, mw)| {
             let result = if mw <= tgt_mw && *old_mw >= tgt_mw {
                 // found the crossing
-                let tgt_p = linear_interp(tgt_mw, *old_mw, mw, *old_p, p);
-                let tgt_t = linear_interp(tgt_mw, *old_mw, mw, *old_t, t);
+                let tgt_p = HectoPascal(linear_interp(tgt_mw, *old_mw, mw, *old_p, p.unpack()));
+                let tgt_t = Celsius(linear_interp(tgt_mw, *old_mw, mw, *old_t, t.unpack()));
 
                 Some(Some((tgt_p, tgt_t)))
             } else {
@@ -262,8 +248,8 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
             };
 
             // save these as the new ones
-            *old_p = p;
-            *old_t = t;
+            *old_p = p.unpack();
+            *old_t = t.unpack();
             *old_mw = mw;
 
             result
@@ -277,8 +263,8 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
         .ok_or(AnalysisError::NotEnoughData)?;
 
     // Extrapolate dry adiabatically back to the parcel level.
-    let tgt_theta = metfor::theta_kelvin(tgt_p, tgt_t)?;
-    let tgt_t = metfor::temperature_c_from_theta(tgt_theta, initial_p)?.max(initial_t);
+    let tgt_theta = metfor::theta(tgt_p, tgt_t);
+    let tgt_t = Celsius::from(metfor::temperature_from_theta(tgt_theta, initial_p)).max(initial_t);
 
     Ok(Parcel {
         pressure: initial_p,
