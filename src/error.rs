@@ -1,5 +1,4 @@
 //! Error types for the sounding-analysis crate.
-use metfor;
 use std::fmt::Display;
 
 /// Shorthand for results.
