@@ -301,7 +301,7 @@ impl Analysis {
 
     /// Get the wet/dry CAPE ratio. EXPERIMENTAL.
     pub fn cape_ratio(&self) -> Optioned<f64> {
-        self.hdw
+        self.cape_ratio
     }
 
     /// Get the convective temperature deficit.
