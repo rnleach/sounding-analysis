@@ -1,4 +1,4 @@
-use metfor::{Meters, MetersPSec, Quantity, WindUV};
+use metfor::{IntHelicityM2pS2, Knots, Meters, MetersPSec, Quantity, WindSpdDir, WindUV};
 use sounding_base::Sounding;
 
 use crate::error::*;
@@ -28,7 +28,7 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
         return Err(AnalysisError::MissingProfile);
     };
 
-    let (_, _, _, mut iu, mut iv, dz) = izip!(height, wind)
+    let (old_hgt, old_u, old_v, mut iu, mut iv, dz) = izip!(height, wind)
         .filter_map(|(hgt, wind)| {
             if hgt.is_some() && wind.is_some() {
                 Some((hgt.unpack(), wind.unpack()))
@@ -67,30 +67,40 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
             },
         );
 
-    if dz.unpack().abs() < std::f64::EPSILON {
+    if old_hgt == Meters(f64::MAX) {
+        // nothing was done, no points in layer
         return Err(AnalysisError::NotEnoughData);
+    } else if dz.unpack().abs() < std::f64::EPSILON {
+        // only one point, use that value
+        iu = old_u;
+        iv = old_v;
+    } else {
+        // we integrated, so divide by height
+        iu /= 2.0 * dz.unpack();
+        iv /= 2.0 * dz.unpack();
     }
-
-    iu /= 2.0 * dz.unpack();
-    iv /= 2.0 * dz.unpack();
 
     Ok(WindUV { u: iu, v: iv })
 }
 
 /// Storm relative helicity.
-#[doc(hidden)]
-pub fn sr_helicity(
+pub fn sr_helicity<W>(
     layer: &Layer,
-    storm_motion_uv_ms: (MetersPSec, MetersPSec),
+    storm_motion_uv_ms: W,
     snd: &Sounding,
-) -> Result<f64> {
+) -> Result<IntHelicityM2pS2>
+where
+    WindUV<MetersPSec>: From<W>,
+{
     let height = snd.height_profile();
     let wind = snd.wind_profile();
+    let storm_motion_uv_ms = WindUV::<MetersPSec>::from(storm_motion_uv_ms);
 
     let bottom = layer.bottom.height.ok_or(AnalysisError::MissingValue)?;
     let top = layer.top.height.ok_or(AnalysisError::MissingValue)?;
 
-    let vals: Vec<(f64, f64, f64)> = izip!(height, wind)
+    izip!(height, wind)
+        // Filter out levels with missing values
         .filter_map(|(h, w)| {
             if let (Some(h), Some(w)) = (h.into_option(), w.into_option()) {
                 Some((h, w))
@@ -98,47 +108,42 @@ pub fn sr_helicity(
                 None
             }
         })
-        .skip_while(|(h, _)| *h < bottom)
-        .take_while(|(h, _)| *h < top)
+        // Convert the wind and unpack it, subtract the storm motion.
         .map(|(h, w)| {
-            let WindUV { u, v } = WindUV::<MetersPSec>::from(w);
-            (
-                h.unpack(),
-                (u - storm_motion_uv_ms.0).unpack(),
-                (v - storm_motion_uv_ms.1).unpack(),
-            )
+            let WindUV { u, v }: WindUV<MetersPSec> = From::<WindSpdDir<Knots>>::from(w);
+            (h, (u - storm_motion_uv_ms.u), (v - storm_motion_uv_ms.v))
         })
-        .collect();
+        // Make windows so I can see three at a time
+        .tuple_windows::<(_, _, _)>()
+        // Skip levels where the middle of the window is below the bottom of the layer.
+        .skip_while(|(_, (h, _, _), _)| *h < bottom)
+        // Take until the middle of the window is at the top of the layer.
+        .take_while(|(_, (h, _, _), _)| *h <= top)
+        // Add in the derivative information
+        .map(|((h0, u0, v0), (h1, u1, v1), (h2, u2, v2))| {
+            let dz = Meters::from(h2 - h0).unpack();
+            let du = MetersPSec::from(u2 - u0).unpack() / dz;
+            let dv = MetersPSec::from(v2 - v0).unpack() / dz;
+            (h1, u1, v1, du, dv)
+        })
+        // Make a window so I can see two at a time for integrating with the trapezoid rule
+        .tuple_windows::<(_, _)>()
+        // Integrate with the trapezoidal rule
+        .fold(Err(AnalysisError::NotEnoughData), |acc, (lvl0, lvl1)| {
+            let mut integrated_helicity: f64 = acc.unwrap_or(0.0);
+            let (z0, u0, v0, du0, dv0) = lvl0;
+            let (z1, u1, v1, du1, dv1) = lvl1;
 
-    if vals.len() < 3 {
-        return Err(AnalysisError::NotEnoughData);
-    }
+            let h0 = u0 * dv0 - v0 * du0;
+            let h1 = u1 * dv1 - v1 * du1;
+            let h = MetersPSec::from(h0 + h1).unpack() * Meters::from(z1 - z0).unpack();
+            integrated_helicity += h;
 
-    let dz0 = vals[1].0 - vals[0].0;
-    let du0 = (vals[1].1 - vals[0].1) / dz0;
-    let dv0 = (vals[1].2 - vals[0].2) / dz0;
-
-    let last_idx = vals.len() - 1;
-    let dzf = vals[last_idx].0 - vals[last_idx - 1].0;
-    let duf = (vals[last_idx].1 - vals[last_idx - 1].1) / dzf;
-    let dvf = (vals[last_idx].2 - vals[last_idx - 1].2) / dzf;
-    let uf = vals[last_idx].1;
-    let vf = vals[last_idx].2;
-
-    let mut derivatives: Vec<(f64, f64, f64, f64, f64)> = Vec::with_capacity(vals.len());
-    derivatives.push((vals[0].1, vals[0].2, du0, dv0, dz0));
-
-    for ((h0, u0, v0), (h1, u1, v1), (h2, u2, v2)) in vals.into_iter().tuple_windows::<(_, _, _)>()
-    {
-        let dz = h1 - h0;
-        let du = (u2 - u0) / (h2 - h0);
-        let dv = (v2 - v0) / (h2 - h0);
-
-        derivatives.push((u1, v1, du, dv, dz));
-    }
-    derivatives.push((uf, vf, duf, dvf, dzf));
-
-    unimplemented!()
+            Ok(integrated_helicity)
+        })
+        // Multiply by constant factors, -1 for the helicity formula, 2 for trapezoid rule,
+        // and wrap in integrated helicity type
+        .map(|integrated_helicity| IntHelicityM2pS2(-integrated_helicity / 2.0))
 }
 
 /// Calculate the super cell storm motion using the "id" method.
@@ -191,7 +196,7 @@ pub(crate) fn bulk_shear_half_km(layer: &Layer, snd: &Sounding) -> Result<WindUV
         .into_option()
         .ok_or(AnalysisError::MissingValue)?;
 
-    // abort of not at least 250 meters of non-overlapping area.
+    // abort if not at least 250 meters of non-overlapping area.
     if top - bottom < Meters(750.0) {
         return Err(AnalysisError::NotEnoughData);
     }

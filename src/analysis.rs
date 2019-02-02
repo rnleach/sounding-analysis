@@ -9,9 +9,13 @@ use crate::indexes::{
     haines, haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water, swet,
     total_totals,
 };
+use crate::layers::{effective_inflow_layer, Layer};
 use crate::parcel::{convective_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel};
 use crate::parcel_profile::{dcape, lift_parcel, partition_cape, ParcelAnalysis, ParcelProfile};
-use metfor::{Celsius, CelsiusDiff, JpKg, Length, Mm};
+use crate::wind::{self, bunkers_storm_motion, mean_wind};
+use metfor::{
+    Celsius, CelsiusDiff, IntHelicityM2pS2, JpKg, Length, Meters, MetersPSec, Mm, WindUV,
+};
 use optional::{none, some, Noned, Optioned};
 
 /// Convenient package for commonly requested analysis values.
@@ -28,6 +32,14 @@ pub struct Analysis {
     total_totals: Optioned<f64>,
     precipitable_water: Optioned<Mm>,
     convective_t: Optioned<Celsius>,
+    right_mover: Optioned<WindUV<MetersPSec>>,
+    left_mover: Optioned<WindUV<MetersPSec>>,
+    mean_wind: Optioned<WindUV<MetersPSec>>,
+    sr_helicity_3k_rm: Optioned<IntHelicityM2pS2>,
+    sr_helicity_3k_lm: Optioned<IntHelicityM2pS2>,
+    effective_inflow_layer: Option<Layer>,
+    sr_helicity_eff_rm: Optioned<IntHelicityM2pS2>,
+    sr_helicity_eff_lm: Optioned<IntHelicityM2pS2>,
 
     // Fire weather indicies
     haines: Optioned<u8>,
@@ -63,6 +75,14 @@ impl Analysis {
             total_totals: none(),
             precipitable_water: none(),
             convective_t: none(),
+            right_mover: none(),
+            left_mover: none(),
+            mean_wind: none(),
+            sr_helicity_3k_rm: none(),
+            sr_helicity_3k_lm: none(),
+            effective_inflow_layer: None,
+            sr_helicity_eff_rm: none(),
+            sr_helicity_eff_lm: none(),
 
             haines: none(),
             haines_low: none(),
@@ -140,6 +160,94 @@ impl Analysis {
     {
         Self {
             convective_t: Optioned::from(value),
+            ..self
+        }
+    }
+
+    /// Builder method to add right mover storm motion
+    pub fn with_right_mover<T>(self, value: T) -> Self
+    where
+        Optioned<WindUV<MetersPSec>>: From<T>,
+    {
+        Self {
+            right_mover: Optioned::from(value),
+            ..self
+        }
+    }
+
+    /// Builder method to add left mover storm motion
+    pub fn with_left_mover<T>(self, value: T) -> Self
+    where
+        Optioned<WindUV<MetersPSec>>: From<T>,
+    {
+        Self {
+            left_mover: Optioned::from(value),
+            ..self
+        }
+    }
+
+    /// Builder method to add the mean wind
+    pub fn with_mean_wind<T>(self, value: T) -> Self
+    where
+        Optioned<WindUV<MetersPSec>>: From<T>,
+    {
+        Self {
+            mean_wind: Optioned::from(value),
+            ..self
+        }
+    }
+
+    /// Builder method to add the storm relative helicity
+    pub fn with_sr_helicity_3k_rm<T>(self, value: T) -> Self
+    where
+        Optioned<IntHelicityM2pS2>: From<T>,
+    {
+        Self {
+            sr_helicity_3k_rm: Optioned::from(value),
+            ..self
+        }
+    }
+
+    /// Builder method to add the storm relative helicity
+    pub fn with_sr_helicity_3k_lm<T>(self, value: T) -> Self
+    where
+        Optioned<IntHelicityM2pS2>: From<T>,
+    {
+        Self {
+            sr_helicity_3k_lm: Optioned::from(value),
+            ..self
+        }
+    }
+
+    /// Builder method to add an effective inflow layer
+    pub fn with_effiective_inflow_layer<T>(self, value: T) -> Self
+    where
+        Option<Layer>: From<T>,
+    {
+        Self {
+            effective_inflow_layer: Option::from(value),
+            ..self
+        }
+    }
+
+    /// Builder method to add the effective storm relative helicity
+    pub fn with_sr_helicity_eff_rm<T>(self, value: T) -> Self
+    where
+        Optioned<IntHelicityM2pS2>: From<T>,
+    {
+        Self {
+            sr_helicity_eff_rm: Optioned::from(value),
+            ..self
+        }
+    }
+
+    /// Builder method to add the effective storm relative helicity
+    pub fn with_sr_helicity_eff_lm<T>(self, value: T) -> Self
+    where
+        Optioned<IntHelicityM2pS2>: From<T>,
+    {
+        Self {
+            sr_helicity_eff_lm: Optioned::from(value),
             ..self
         }
     }
@@ -267,6 +375,46 @@ impl Analysis {
     /// Get the convective temperature.
     pub fn convective_t(&self) -> Optioned<Celsius> {
         self.convective_t
+    }
+
+    /// Get the right mover.
+    pub fn right_mover(&self) -> Optioned<WindUV<MetersPSec>> {
+        self.right_mover
+    }
+
+    /// Get the left mover.
+    pub fn left_mover(&self) -> Optioned<WindUV<MetersPSec>> {
+        self.left_mover
+    }
+
+    /// Get the mean wind.
+    pub fn mean_wind(&self) -> Optioned<WindUV<MetersPSec>> {
+        self.mean_wind
+    }
+
+    /// Get the storm relative helicity for a right mover storm
+    pub fn sr_helicity_3k_rm(&self) -> Optioned<IntHelicityM2pS2> {
+        self.sr_helicity_3k_rm
+    }
+
+    /// Get the storm relative helicity for a left mover storm
+    pub fn sr_helicity_3k_lm(&self) -> Optioned<IntHelicityM2pS2> {
+        self.sr_helicity_3k_lm
+    }
+
+    /// Get the effective inflow layer
+    pub fn effective_inflow_layer(&self) -> Option<Layer> {
+        self.effective_inflow_layer
+    }
+
+    /// Get the effective storm relative helicity for a right mover storm
+    pub fn sr_helicity_eff_rm(&self) -> Optioned<IntHelicityM2pS2> {
+        self.sr_helicity_eff_rm
+    }
+
+    /// Get the effective storm relative helicity for a left mover storm
+    pub fn sr_helicity_eff_lm(&self) -> Optioned<IntHelicityM2pS2> {
+        self.sr_helicity_eff_lm
     }
 
     /// Get the downrush temperature from a microburst.
@@ -491,6 +639,59 @@ impl Analysis {
                 .as_ref()
                 .map(|parcel_anal| parcel_anal.parcel().temperature)
                 .into();
+        }
+
+        // Left and right mover storm motion
+        if self.right_mover.is_none() || self.left_mover.is_none() {
+            let (rm, lm) = match bunkers_storm_motion(&self.sounding) {
+                Ok((rm, lm)) => (some(rm), some(lm)),
+                Err(_) => (none(), none()),
+            };
+
+            self.right_mover = rm;
+            self.left_mover = lm;
+        }
+
+        // Fill in the mean wind
+        if self.mean_wind.is_none() {
+            if let Some(layer) = &crate::layers::layer_agl(&self.sounding, Meters(6000.0)).ok() {
+                self.mean_wind = Optioned::from(mean_wind(layer, &self.sounding).ok());
+            }
+        }
+
+        // Fill in the storm relative helicity
+        if self.sr_helicity_3k_rm.is_none() || self.sr_helicity_3k_lm.is_none() {
+            if let (Some(layer), Some(sm), Some(lm)) = (
+                &crate::layers::layer_agl(&self.sounding, Meters(3000.0)).ok(),
+                self.right_mover.into_option(),
+                self.left_mover.into_option(),
+            ) {
+                self.sr_helicity_3k_rm =
+                    Optioned::from(wind::sr_helicity(layer, sm, &self.sounding()).ok());
+
+                self.sr_helicity_3k_lm =
+                    Optioned::from(wind::sr_helicity(layer, lm, &self.sounding()).ok());
+            }
+        }
+
+        // Fill in the effective inflow layer
+        if self.effective_inflow_layer.is_none() {
+            self.effective_inflow_layer = effective_inflow_layer(&self.sounding()).unwrap_or(None);
+        }
+
+        // Fill in the effective storm relative helicity
+        if self.sr_helicity_eff_rm.is_none() || self.sr_helicity_eff_lm.is_none() {
+            if let (Some(layer), Some(sm), Some(lm)) = (
+                &self.effective_inflow_layer,
+                self.right_mover.into_option(),
+                self.left_mover.into_option(),
+            ) {
+                self.sr_helicity_eff_rm =
+                    Optioned::from(wind::sr_helicity(layer, sm, &self.sounding()).ok());
+
+                self.sr_helicity_eff_lm =
+                    Optioned::from(wind::sr_helicity(layer, lm, &self.sounding()).ok());
+            }
         }
 
         // Convective deficit
