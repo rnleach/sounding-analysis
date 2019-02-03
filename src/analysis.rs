@@ -676,7 +676,7 @@ impl Analysis {
 
         // Fill in the effective inflow layer
         if self.effective_inflow_layer.is_none() {
-            self.effective_inflow_layer = effective_inflow_layer(&self.sounding()).unwrap_or(None);
+            self.effective_inflow_layer = effective_inflow_layer(&self.sounding());
         }
 
         // Fill in the effective storm relative helicity
