@@ -16,47 +16,37 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
     let height = snd.height_profile();
     let wind = snd.wind_profile();
 
-    let max_hgt = if layer.top.height.is_some() {
-        layer.top.height.unpack()
-    } else {
-        return Err(AnalysisError::MissingProfile);
-    };
-
-    let min_hgt = if layer.bottom.height.is_some() {
-        layer.bottom.height.unpack()
-    } else {
-        return Err(AnalysisError::MissingProfile);
-    };
+    let max_hgt = layer.top.height.ok_or(AnalysisError::MissingProfile)?;
+    let min_hgt = layer.bottom.height.ok_or(AnalysisError::MissingProfile)?;
 
     let (old_hgt, old_u, old_v, mut iu, mut iv, dz) = izip!(height, wind)
-        .filter_map(|(hgt, wind)| {
-            if hgt.is_some() && wind.is_some() {
-                Some((hgt.unpack(), wind.unpack()))
-            } else {
-                None
-            }
-        })
+        // Filter out missing values
+        .filter_map(|(hgt, wind)| hgt.into_option().and_then(|h| wind.map(|w| (h,w))))
+        // Skip values below the layer
         .skip_while(|&(hgt, _)| hgt < min_hgt)
+        // Only take values below the top of the layer
         .take_while(|&(hgt, _)| hgt <= max_hgt)
+        // Get the wind u-v components in m/s
         .map(|(hgt, wind)| {
             let WindUV { u, v } = WindUV::<MetersPSec>::from(wind);
             (hgt, u, v)
         })
+        // Integration with the trapezoid rule, to find the mean value 
         .fold(
             (
-                Meters(f64::MAX),
-                MetersPSec(0.0),
-                MetersPSec(0.0),
-                MetersPSec(0.0),
-                MetersPSec(0.0),
-                Meters(0.0),
+                Meters(f64::MAX), // height from previous level, MAX is a sentinel
+                MetersPSec(0.0),  // previous step u
+                MetersPSec(0.0),  // previous step v 
+                MetersPSec(0.0),  // integrated u component so far
+                MetersPSec(0.0),  // integrated v component so far
+                Meters(0.0),      // the total distance integrated so far
             ),
             |acc, (hgt, u, v)| {
                 let (old_hgt, old_u, old_v, mut iu, mut iv, mut acc_dz) = acc;
 
                 let dz = hgt - old_hgt;
 
-                if dz < Meters(0.0) {
+                if dz < Meters(0.0) {  // Less than zero on the first step, initialization
                     return (hgt, u, v, iu, iv, acc_dz);
                 }
                 iu += (u + old_u) * dz.unpack();
@@ -71,11 +61,12 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
         // nothing was done, no points in layer
         return Err(AnalysisError::NotEnoughData);
     } else if dz.unpack().abs() < std::f64::EPSILON {
-        // only one point, use that value
+        // only one point, use that value. This seems imposible, but it is possible to make a layer
+        // where the top and bottom are equal.
         iu = old_u;
         iv = old_v;
     } else {
-        // we integrated, so divide by height
+        // we integrated, so divide by height and constant of 2 for trapezoid rule
         iu /= 2.0 * dz.unpack();
         iv /= 2.0 * dz.unpack();
     }
