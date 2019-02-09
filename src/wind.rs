@@ -11,15 +11,13 @@ use itertools::Itertools;
 /// This is not the pressure weighted mean.
 ///
 pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
-    use std::f64;
-
     let height = snd.height_profile();
     let wind = snd.wind_profile();
 
     let max_hgt = layer.top.height.ok_or(AnalysisError::MissingProfile)?;
     let min_hgt = layer.bottom.height.ok_or(AnalysisError::MissingProfile)?;
 
-    let (old_hgt, old_u, old_v, mut iu, mut iv, dz) = izip!(height, wind)
+    let (mut iu, mut iv, dz) = izip!(height, wind)
         // Filter out missing values
         .filter_map(|(hgt, wind)| hgt.into_option().and_then(|h| wind.map(|w| (h, w))))
         // Skip values below the layer
@@ -31,41 +29,31 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
             let WindUV { u, v } = WindUV::<MetersPSec>::from(wind);
             (hgt, u, v)
         })
-        // Integration with the trapezoid rule, to find the mean value
+        // Make windows to see two points at a time for trapezoid rule integration
+        .tuple_windows::<(_, _)>()
+        // Integration with the trapezoid rule to find the mean value
         .fold(
             (
-                Meters(f64::MAX), // height from previous level, MAX is a sentinel
-                MetersPSec(0.0),  // previous step u
-                MetersPSec(0.0),  // previous step v
-                MetersPSec(0.0),  // integrated u component so far
-                MetersPSec(0.0),  // integrated v component so far
-                Meters(0.0),      // the total distance integrated so far
+                MetersPSec(0.0), // integrated u component so far
+                MetersPSec(0.0), // integrated v component so far
+                Meters(0.0),     // the total distance integrated so far
             ),
-            |acc, (hgt, u, v)| {
-                let (old_hgt, old_u, old_v, mut iu, mut iv, mut acc_dz) = acc;
+            |acc, ((h0, u0, v0), (h1, u1, v1))| {
+                let (mut iu, mut iv, mut acc_dz) = acc;
 
-                let dz = hgt - old_hgt;
+                let dz = h1 - h0;
 
-                if dz < Meters(0.0) {
-                    // Less than zero on the first step, initialization
-                    return (hgt, u, v, iu, iv, acc_dz);
-                }
-                iu += (u + old_u) * dz.unpack();
-                iv += (v + old_v) * dz.unpack();
+                iu += (u0 + u1) * dz.unpack();
+                iv += (v0 + v1) * dz.unpack();
                 acc_dz += dz;
 
-                (hgt, u, v, iu, iv, acc_dz)
+                (iu, iv, acc_dz)
             },
         );
 
-    if old_hgt == Meters(f64::MAX) {
-        // nothing was done, no points in layer
+    if dz == Meters(0.0) {
+        // nothing was done, 1 or zero points in the layer
         return Err(AnalysisError::NotEnoughData);
-    } else if dz.unpack().abs() < std::f64::EPSILON {
-        // only one point, use that value. This seems imposible, but it is possible to make a layer
-        // where the top and bottom are equal.
-        iu = old_u;
-        iv = old_v;
     } else {
         // we integrated, so divide by height and constant of 2 for trapezoid rule
         iu /= 2.0 * dz.unpack();
@@ -118,16 +106,16 @@ where
             let dv = MetersPSec::from(v2 - v0).unpack() / dz;
             (h1, u1, v1, du, dv)
         })
+        // Calculate the helicity (not, this is not the integrated helicity yet)
+        .map(|(z, u, v, du, dv)| (z, u * dv - v * du))
         // Make a window so I can see two at a time for integrating with the trapezoid rule
         .tuple_windows::<(_, _)>()
         // Integrate with the trapezoidal rule
         .fold(Err(AnalysisError::NotEnoughData), |acc, (lvl0, lvl1)| {
             let mut integrated_helicity: f64 = acc.unwrap_or(0.0);
-            let (z0, u0, v0, du0, dv0) = lvl0;
-            let (z1, u1, v1, du1, dv1) = lvl1;
+            let (z0, h0) = lvl0;
+            let (z1, h1) = lvl1;
 
-            let h0 = u0 * dv0 - v0 * du0;
-            let h1 = u1 * dv1 - v1 * du1;
             let h = MetersPSec::from(h0 + h1).unpack() * Meters::from(z1 - z0).unpack();
             integrated_helicity += h;
 
@@ -153,6 +141,7 @@ pub fn bunkers_storm_motion(snd: &Sounding) -> Result<(WindUV<MetersPSec>, WindU
         u: shear_u,
         v: shear_v,
     } = bulk_shear_half_km(layer, snd)?;
+
     const D: f64 = 7.5; // m/s
 
     let scale = D / shear_u.unpack().hypot(shear_v.unpack());
