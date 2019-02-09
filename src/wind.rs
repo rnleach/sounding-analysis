@@ -21,7 +21,7 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
 
     let (old_hgt, old_u, old_v, mut iu, mut iv, dz) = izip!(height, wind)
         // Filter out missing values
-        .filter_map(|(hgt, wind)| hgt.into_option().and_then(|h| wind.map(|w| (h,w))))
+        .filter_map(|(hgt, wind)| hgt.into_option().and_then(|h| wind.map(|w| (h, w))))
         // Skip values below the layer
         .skip_while(|&(hgt, _)| hgt < min_hgt)
         // Only take values below the top of the layer
@@ -31,12 +31,12 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
             let WindUV { u, v } = WindUV::<MetersPSec>::from(wind);
             (hgt, u, v)
         })
-        // Integration with the trapezoid rule, to find the mean value 
+        // Integration with the trapezoid rule, to find the mean value
         .fold(
             (
                 Meters(f64::MAX), // height from previous level, MAX is a sentinel
                 MetersPSec(0.0),  // previous step u
-                MetersPSec(0.0),  // previous step v 
+                MetersPSec(0.0),  // previous step v
                 MetersPSec(0.0),  // integrated u component so far
                 MetersPSec(0.0),  // integrated v component so far
                 Meters(0.0),      // the total distance integrated so far
@@ -46,7 +46,8 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
 
                 let dz = hgt - old_hgt;
 
-                if dz < Meters(0.0) {  // Less than zero on the first step, initialization
+                if dz < Meters(0.0) {
+                    // Less than zero on the first step, initialization
                     return (hgt, u, v, iu, iv, acc_dz);
                 }
                 iu += (u + old_u) * dz.unpack();
