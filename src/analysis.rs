@@ -1,22 +1,22 @@
 //! Data type and methods for building and describing an analysis.
 //!
 //! Not every possible analysis is in this data.
-use std::collections::HashMap;
-
-use sounding_base::Sounding;
-
-use crate::indexes::{
-    haines, haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water, swet,
-    total_totals,
+use crate::{
+    indexes::{
+        haines, haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water,
+        swet, total_totals,
+    },
+    layers::{effective_inflow_layer, Layer},
+    parcel::{convective_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel},
+    parcel_profile::{dcape, lift_parcel, partition_cape, ParcelAnalysis, ParcelProfile},
+    wind::{self, bunkers_storm_motion, mean_wind},
 };
-use crate::layers::{effective_inflow_layer, Layer};
-use crate::parcel::{convective_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel};
-use crate::parcel_profile::{dcape, lift_parcel, partition_cape, ParcelAnalysis, ParcelProfile};
-use crate::wind::{self, bunkers_storm_motion, mean_wind};
 use metfor::{
     Celsius, CelsiusDiff, IntHelicityM2pS2, JpKg, Length, Meters, MetersPSec, Mm, WindUV,
 };
 use optional::{none, some, Noned, Optioned};
+use sounding_base::Sounding;
+use std::collections::HashMap;
 
 /// Convenient package for commonly requested analysis values.
 ///
