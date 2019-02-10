@@ -10,6 +10,7 @@ exclude = ["**/*.rs.bk",".gitignore",".vscode/**/*","*.sublime*"]
 categories = ["science"]
 keywords = ["weather","sounding","meteorology", "skew-t"]
 edition = "2018"
+publish = false
 
 [dependencies]
 itertools = "^0.8.0"

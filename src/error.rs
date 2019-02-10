@@ -1,8 +1,8 @@
 //! Error types for the sounding-analysis crate.
-use std::fmt::Display;
+use std::{error::Error, fmt::Display};
 
 /// Shorthand for results.
-pub type Result<T> = ::std::result::Result<T, AnalysisError>;
+pub type Result<T> = std::result::Result<T, AnalysisError>;
 
 /// Error type for the crate.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -37,3 +37,5 @@ impl Display for AnalysisError {
         }
     }
 }
+
+impl Error for AnalysisError {}
