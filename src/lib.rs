@@ -38,7 +38,8 @@ pub use crate::parcel_profile::{
 };
 pub use crate::profile::{
     equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,
-    sfc_to_level_temperature_lapse_rate, temperature_lapse_rate, theta_e_lapse_rate, wet_bulb,
+    relative_humidity_ice, sfc_to_level_temperature_lapse_rate, temperature_lapse_rate,
+    theta_e_lapse_rate, wet_bulb,
 };
 pub use crate::wind::{bunkers_storm_motion, mean_wind, sr_helicity};
 

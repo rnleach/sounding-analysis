@@ -51,6 +51,33 @@ pub fn relative_humidity(snd: &Sounding) -> Vec<Optioned<f64>> {
         .collect()
 }
 
+/// Given a sounding, calculate a profile of relative humidity with respect to ice.
+pub fn relative_humidity_ice(snd: &Sounding) -> Vec<Optioned<f64>> {
+    let t_profile = snd.temperature_profile();
+    let dp_profile = snd.dew_point_profile();
+
+    if t_profile.len().min(dp_profile.len()) == 0 {
+        return vec![];
+    }
+
+    izip!(t_profile, dp_profile)
+        .map(|(t_opt, dp_opt)| {
+            t_opt.and_then(|t| {
+                dp_opt.and_then(|dp| {
+                    // Use dew point to get vapor pressure of water - sounding more likely to have
+                    // dew point information.
+                    let vp_water = metfor::vapor_pressure_liquid_water(dp);
+                    // Get the saturation vapor pressure relative to ice
+                    let vp_sat_ice = metfor::vapor_pressure_ice(t);
+
+                    let rh = vp_water.and_then(|vpw| vp_sat_ice.map(|vpsat| vpw / vpsat));
+                    Optioned::from(rh)
+                })
+            })
+        })
+        .collect()
+}
+
 /// Given a sounding, calculate a profile of the potential temperature.
 pub fn potential_temperature(snd: &Sounding) -> Vec<Optioned<Kelvin>> {
     let p_profile = snd.pressure_profile();
