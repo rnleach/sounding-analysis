@@ -567,7 +567,7 @@ impl Analysis {
     }
 
     /// Analyze the sounding to get as much information as you can.
-    pub fn fill_in_missing_analysis(mut self) -> Self {
+    pub fn fill_in_missing_analysis_mut(&mut self) {
         self.swet = self
             .swet
             .or_else(|| Optioned::from(swet(&self.sounding).ok()));
@@ -713,7 +713,11 @@ impl Analysis {
                 .map(|(dry, wet)| wet / dry)
                 .into();
         }
+    }
 
+    /// Analyze the sounding to get as much information as you can.
+    pub fn fill_in_missing_analysis(mut self) -> Self {
+        self.fill_in_missing_analysis_mut();
         self
     }
 }
