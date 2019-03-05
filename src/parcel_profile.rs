@@ -468,6 +468,64 @@ fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<(DataRow, P
     Ok((second_guess, new_parcel))
 }
 
+/// A more robust convective parcel analysis.
+///
+/// Some approximations are used in many algorithms which are usually good enough. However,
+/// sometimes they are close but miss the mark. Not to mention we are using linear interpolation
+/// in so many places. Convective parcel analysis is one of those areas where sometimes this comes
+/// up and we have a "convective parcel" with the equilibrium level below the lifting condensation
+/// level. It's almost always very close though.
+///
+/// This algorithm finds the convective parcel the fast way, and if it is good, then it just uses
+/// that parcel. Otherwise it tweaks the parcel to find a better convective parcel. This algorithm
+/// is MUCH slower in cases where the 'fast way' doesn't work.
+pub fn robust_convective_parcel(snd: &Sounding) -> Result<ParcelAnalysis> {
+    let mut start_parcel = crate::parcel::convective_parcel(snd)?;
+    let mut analysis = lift_parcel(start_parcel, snd)?;
+
+    if analysis.lcl_pressure <= analysis.el_pressure {
+        // We've got a problem, so refine our parcel
+        let mut warmer_t = start_parcel.temperature + CelsiusDiff(1.0);
+        let mut warmer_parcel = Parcel {
+            temperature: warmer_t,
+            ..start_parcel
+        };
+        let mut anal = lift_parcel(warmer_parcel, snd)?;
+
+        // Bracket the convective t in a 1 C range
+        while anal.lcl_pressure <= anal.el_pressure {
+            start_parcel = warmer_parcel;
+            warmer_t = warmer_t + CelsiusDiff(1.0);
+            warmer_parcel = Parcel {
+                temperature: warmer_t,
+                ..start_parcel
+            };
+            anal = lift_parcel(warmer_parcel, snd)?;
+        }
+        analysis = anal;
+
+        let mut diff = 1.0;
+        while diff > 0.1 {
+            // Within 0.1 is probably overkill
+            diff = (warmer_parcel.temperature - start_parcel.temperature).unpack();
+            let mid_t = start_parcel.temperature + CelsiusDiff(diff);
+            let mid_parcel = Parcel {
+                temperature: mid_t,
+                ..start_parcel
+            };
+            anal = lift_parcel(mid_parcel, snd)?;
+            if anal.lcl_pressure <= anal.el_pressure {
+                start_parcel = mid_parcel;
+            } else {
+                warmer_parcel = mid_parcel;
+                analysis = anal;
+            }
+        }
+    }
+
+    Ok(analysis)
+}
+
 /// Descend a parcel dry adiabatically.
 ///
 /// The resulting `ParcelProfile` has actual temperatures and not virtual temperatures. This is for
