@@ -507,7 +507,7 @@ pub fn robust_convective_parcel(snd: &Sounding) -> Result<ParcelAnalysis> {
         let mut diff = 1.0;
         while diff > 0.1 {
             // Within 0.1 is probably overkill
-            diff = (warmer_parcel.temperature - start_parcel.temperature).unpack();
+            diff = (warmer_parcel.temperature - start_parcel.temperature).unpack() / 2.0;
             let mid_t = start_parcel.temperature + CelsiusDiff(diff);
             let mid_parcel = Parcel {
                 temperature: mid_t,
