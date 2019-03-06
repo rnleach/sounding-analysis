@@ -17,7 +17,4 @@ itertools = "^0.8.0"
 metfor = { version = "^0.7.1", features = ["use_optional"]}
 optional = "^0.5.0"
 smallvec = "^0.6"
-sounding-base = "^0.10.0"
-
-[dev-dependencies]
-sounding-validate = "^0.10.0"
+sounding-base = {git = "https://github.com/rnleach/sounding-base.git", branch="dev"}
