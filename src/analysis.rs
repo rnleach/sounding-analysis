@@ -7,8 +7,10 @@ use crate::{
         swet, total_totals,
     },
     layers::{effective_inflow_layer, Layer},
-    parcel::{convective_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel},
-    parcel_profile::{dcape, lift_parcel, partition_cape, ParcelAnalysis, ParcelProfile},
+    parcel::{mixed_layer_parcel, most_unstable_parcel, surface_parcel},
+    parcel_profile::{
+        dcape, lift_parcel, partition_cape, robust_convective_parcel, ParcelAnalysis, ParcelProfile,
+    },
     wind::{self, bunkers_storm_motion, mean_wind},
 };
 use metfor::{
@@ -626,10 +628,7 @@ impl Analysis {
             };
         }
         if self.convective.is_none() {
-            self.convective = match convective_parcel(&self.sounding) {
-                Ok(parcel) => lift_parcel(parcel, &self.sounding).ok(),
-                Err(_) => None,
-            };
+            self.convective = robust_convective_parcel(&self.sounding).ok();
         }
 
         // Convective T

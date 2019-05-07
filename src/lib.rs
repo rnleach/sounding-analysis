@@ -34,7 +34,8 @@ pub use crate::parcel::{
     pressure_parcel, surface_parcel, Parcel,
 };
 pub use crate::parcel_profile::{
-    dcape, lift_parcel, mix_down, partition_cape, ParcelAnalysis, ParcelProfile,
+    dcape, lift_parcel, mix_down, partition_cape, robust_convective_parcel, ParcelAnalysis,
+    ParcelProfile,
 };
 pub use crate::profile::{
     equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,

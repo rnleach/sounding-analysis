@@ -1,6 +1,6 @@
 [package]
 name = "sounding-analysis"
-version = "0.10.5"
+version = "0.11.0"
 authors = ["Ryan Leach <clumsycodemonkey@gmail.com>"]
 description = """Analysis capability for the sounding-base crate."""
 repository = "https://github.com/rnleach/sounding-analysis.git"
@@ -10,14 +10,10 @@ exclude = ["**/*.rs.bk",".gitignore",".vscode/**/*","*.sublime*"]
 categories = ["science"]
 keywords = ["weather","sounding","meteorology", "skew-t"]
 edition = "2018"
-publish = false
 
 [dependencies]
 itertools = "^0.8.0"
 metfor = { version = "^0.7.1", features = ["use_optional"]}
 optional = "^0.5.0"
 smallvec = "^0.6"
-sounding-base = "^0.10.0"
-
-[dev-dependencies]
-sounding-validate = "^0.10.0"
+sounding-base = "^0.11.0"

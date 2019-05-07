@@ -5,6 +5,8 @@ use crate::error::*;
 use crate::layers::{self, Layer};
 use crate::levels::height_level;
 use itertools::Itertools;
+use optional::some;
+use std::iter::once;
 
 /// Calculate the mean wind in a layer.
 ///
@@ -17,7 +19,16 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
     let max_hgt = layer.top.height.ok_or(AnalysisError::MissingProfile)?;
     let min_hgt = layer.bottom.height.ok_or(AnalysisError::MissingProfile)?;
 
-    let (mut iu, mut iv, dz) = izip!(height, wind)
+    let bottom_wind = layer.bottom.wind;
+    let top_wind = layer.top.wind;
+
+    let (mut iu, mut iv, dz) =
+        // Start at the bottom of the layer
+        once((&some(min_hgt), &bottom_wind))
+        // Add in any intermediate layers
+        .chain(izip!(height, wind))
+        // Finish with the top layer
+        .chain(once((&some(max_hgt), &top_wind)))
         // Filter out missing values
         .filter_map(|(hgt, wind)| hgt.into_option().and_then(|h| wind.map(|w| (h, w))))
         // Skip values below the layer
@@ -101,9 +112,9 @@ where
         .take_while(|(_, (h, _, _), _)| *h <= top)
         // Add in the derivative information
         .map(|((h0, u0, v0), (h1, u1, v1), (h2, u2, v2))| {
-            let dz = Meters::from(h2 - h0).unpack();
-            let du = MetersPSec::from(u2 - u0).unpack() / dz;
-            let dv = MetersPSec::from(v2 - v0).unpack() / dz;
+            let dz = (h2 - h0).unpack();
+            let du = (u2 - u0).unpack() / dz;
+            let dv = (v2 - v0).unpack() / dz;
             (h1, u1, v1, du, dv)
         })
         // Calculate the helicity (not, this is not the integrated helicity yet)
@@ -116,7 +127,7 @@ where
             let (z0, h0) = lvl0;
             let (z1, h1) = lvl1;
 
-            let h = MetersPSec::from(h0 + h1).unpack() * Meters::from(z1 - z0).unpack();
+            let h = (h0 + h1).unpack() * (z1 - z0).unpack();
             integrated_helicity += h;
 
             Ok(integrated_helicity)
@@ -132,6 +143,7 @@ where
 /// (right mover, left mover)
 pub fn bunkers_storm_motion(snd: &Sounding) -> Result<(WindUV<MetersPSec>, WindUV<MetersPSec>)> {
     let layer = &layers::layer_agl(snd, Meters(6000.0))?;
+
     let WindUV {
         u: mean_u,
         v: mean_v,

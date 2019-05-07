@@ -17,12 +17,7 @@ macro_rules! check_file_complete {
     ($test_name:ident, $fname:expr) => {
         #[test]
         fn $test_name() {
-            let (snd, ivals, fvals) = utils::load_test_file($fname);
-
-            assert!(
-                sounding_validate::validate(&snd).is_ok(),
-                "Failed validation."
-            );
+            let (_, ivals, fvals) = utils::load_test_file($fname);
 
             let ival_keys = [
                 "num dendritic zones",
