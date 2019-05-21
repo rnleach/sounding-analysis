@@ -34,13 +34,16 @@ impl PlumePotentialAnal {
         let mut plume_vals = Vec::with_capacity(30);
 
         for (i, pcl) in plume_parcels(snd, CelsiusDiff(30.0), CelsiusDiff(1.0))?.enumerate() {
-            let (cape, cloud) = lift_parcel(pcl, snd)?;
-            plume_vals.push((pcl.temperature, cape));
+            if let Ok((cape, cloud)) = lift_parcel(pcl, snd) {
+                plume_vals.push((pcl.temperature, cape));
 
-            if !cloud && first_with_cloud.is_none() {
-                last_no_cloud = i;
-            } else if cloud && first_with_cloud.is_none() {
-                first_with_cloud = Some(i);
+                if !cloud && first_with_cloud.is_none() {
+                    last_no_cloud = i;
+                } else if cloud && first_with_cloud.is_none() {
+                    first_with_cloud = Some(i);
+                }
+            } else {
+                break;
             }
         }
 
