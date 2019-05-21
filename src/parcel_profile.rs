@@ -1,12 +1,13 @@
 //! Create and analyze a profile from lifting or descending a parcel.
-
+use crate::{
+    error::{AnalysisError, Result},
+    interpolation::{linear_interp, linear_interpolate_sounding},
+    parcel::Parcel,
+};
+use itertools::izip;
 use metfor::{self, Celsius, CelsiusDiff, HectoPascal, JpKg, Kelvin, Meters, MetersPSec, Quantity};
 use optional::{none, some, Optioned};
 use sounding_base::{DataRow, Sounding};
-
-use crate::error::*;
-use crate::interpolation::{linear_interp, linear_interpolate_sounding};
-use crate::parcel::Parcel;
 
 /// Hold profiles for a parcel and it's environment.
 #[derive(Debug, Clone)]
@@ -434,7 +435,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
 // In order for parcel lifting to work and create a parallel environmental profile, we need to
 // start at a level in the sounding with pressure, height, temperature, and dew point. Otherwise
 // we end up with too much missing data in the sounding.
-fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<(DataRow, Parcel)> {
+pub(crate) fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<(DataRow, Parcel)> {
     let good_row = |row: &DataRow| -> bool {
         row.temperature.is_some()
             && row.dew_point.is_some()

@@ -1,12 +1,15 @@
 //! Indexes that are specific to a sounding, but not a particular parcel analysis of that sounding.
+
+use crate::{
+    error::{AnalysisError, Result},
+    interpolation::linear_interpolate_sounding,
+};
+use itertools::izip;
 use metfor::{
-    Celsius, CelsiusDiff, HectoPascal, Knots, Meters, MetersPSec, Mm, Quantity, WindSpdDir,
+    vapor_pressure_liquid_water, Celsius, CelsiusDiff, HectoPascal, Knots, Meters, MetersPSec, Mm,
+    Quantity, WindSpdDir,
 };
 use sounding_base::Sounding;
-
-use crate::error::*;
-use crate::interpolation::linear_interpolate_sounding;
-use metfor::vapor_pressure_liquid_water;
 
 /// The Total Totals index
 #[inline]
