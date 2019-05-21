@@ -11,6 +11,7 @@ use sounding_base::Sounding;
 
 /// An analysis of the potential energy of a convective plume vs. a representative starting
 /// temperature.
+#[derive(Debug)]
 pub struct PlumePotentialAnal {
     // Representative initial plume temperature and CAPE associated with that parcel.
     //
