@@ -1,13 +1,14 @@
 //! Functions for doing parcel analysis on a sounding, specifically related to convection.
 //!
-use optional::Optioned;
-
+use crate::{
+    error::{AnalysisError, Result},
+    interpolation::{linear_interp, linear_interpolate_sounding},
+    profile::equivalent_potential_temperature,
+};
+use itertools::izip;
 use metfor::{self, Celsius, HectoPascal, Kelvin, Quantity};
+use optional::Optioned;
 use sounding_base::{DataRow, Sounding};
-
-use crate::error::*;
-use crate::interpolation::{linear_interp, linear_interpolate_sounding};
-use crate::profile::equivalent_potential_temperature;
 
 /// Variables defining a parcel as used in parcel analysis.
 #[derive(Debug, Clone, Copy)]

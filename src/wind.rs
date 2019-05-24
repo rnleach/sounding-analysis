@@ -1,11 +1,12 @@
+use crate::{
+    error::{AnalysisError, Result},
+    layers::{self, Layer},
+    levels::height_level,
+};
+use itertools::{izip, Itertools};
 use metfor::{IntHelicityM2pS2, Knots, Meters, MetersPSec, Quantity, WindSpdDir, WindUV};
-use sounding_base::Sounding;
-
-use crate::error::*;
-use crate::layers::{self, Layer};
-use crate::levels::height_level;
-use itertools::Itertools;
 use optional::some;
+use sounding_base::Sounding;
 use std::iter::once;
 
 /// Calculate the mean wind in a layer.

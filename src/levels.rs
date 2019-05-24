@@ -2,6 +2,7 @@
 //! has functions for finding critical values at a single level, such as the maximum wet bulb
 //! temperature aloft.  It does not include functions for finding levels related to parcel analysis
 //! and convection, those are found in the `parcel` module.
+use itertools::izip;
 use metfor::{Celsius, HectoPascal, Meters, FREEZING};
 use optional::Optioned;
 use smallvec::SmallVec;
