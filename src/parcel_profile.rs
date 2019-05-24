@@ -478,8 +478,9 @@ pub(crate) fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<
 /// level. It's almost always very close though.
 ///
 /// This algorithm finds the convective parcel the fast way, and if it is good, then it just uses
-/// that parcel. Otherwise it tweaks the parcel to find a better convective parcel. This algorithm
-/// is MUCH slower in cases where the 'fast way' doesn't work.
+/// that parcel. Otherwise it tweaks the parcel to find a better convective parcel. Better meaning
+/// that the EL is above or equal to the LCL. This algorithm  is MUCH slower in cases where the
+/// 'fast way' doesn't work.
 pub fn robust_convective_parcel(snd: &Sounding) -> Result<ParcelAnalysis> {
     let mut start_parcel = crate::parcel::convective_parcel(snd)?;
     let mut analysis = lift_parcel(start_parcel, snd)?;

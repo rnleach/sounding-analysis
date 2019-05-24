@@ -2,7 +2,7 @@
 
 use crate::{
     error::{AnalysisError, Result},
-    parcel::{mixed_layer_parcel, Parcel},
+    parcel::{convective_parcel, mixed_layer_parcel, Parcel},
     parcel_profile::find_parcel_start_data,
 };
 use itertools::izip;
@@ -17,10 +17,6 @@ pub struct PlumePotentialAnal {
     //
     // In reality it is much hotter at the surface, but there is a lot of entrainment to come still.
     plume_vals: Vec<(Celsius, JpKg)>,
-    // Index of last of `plume_vals` which do not create a cloud.
-    last_no_cloud: usize,
-    // Index of first of `plum_vals` which does create a cloud.
-    first_with_cloud: Option<usize>,
 }
 
 // Create another lift algorithm that calculates CAPE no matter what.
@@ -29,48 +25,96 @@ pub struct PlumePotentialAnal {
 impl PlumePotentialAnal {
     /// Analyze a sounding for the plume potential
     pub fn analyze(snd: &Sounding) -> Result<PlumePotentialAnal> {
-        let mut last_no_cloud = 0;
-        let mut first_with_cloud = None;
-        let mut plume_vals = Vec::with_capacity(30);
+        const MAX_HEATING: CelsiusDiff = CelsiusDiff(30.0);
+        const DT: CelsiusDiff = CelsiusDiff(0.1);
 
-        for (i, pcl) in plume_parcels(snd, CelsiusDiff(30.0), CelsiusDiff(1.0))?.enumerate() {
-            if let Ok((cape, cloud)) = lift_parcel(pcl, snd) {
+        let mut plume_vals = Vec::with_capacity(MAX_HEATING.unpack() as usize);
+
+        for pcl in plume_parcels(snd, MAX_HEATING, DT)? {
+            if let Ok((cape, _)) = lift_parcel(pcl, snd) {
                 plume_vals.push((pcl.temperature, cape));
-
-                if !cloud && first_with_cloud.is_none() {
-                    last_no_cloud = i;
-                } else if cloud && first_with_cloud.is_none() {
-                    first_with_cloud = Some(i);
-                }
             } else {
                 break;
             }
         }
 
-        Ok(PlumePotentialAnal {
-            plume_vals,
-            last_no_cloud,
-            first_with_cloud,
-        })
+        Ok(PlumePotentialAnal { plume_vals })
     }
 
     /// Get the values of The plume surface temperature and associated CAPE
     pub fn analysis_values(&self) -> &[(Celsius, JpKg)] {
         &self.plume_vals
     }
+}
 
-    /// Get the temperature and energy associated with the last plume that did NOT create a cloud.
-    pub fn t0_e0(&self) -> (Celsius, JpKg) {
-        self.plume_vals[self.last_no_cloud]
+/// Analyze the sounding to get the values of (t˳, E˳, ΔE).
+pub fn convective_parcel_initiation_energetics(snd: &Sounding) -> Result<(Celsius, JpKg, JpKg)> {
+    let starting_parcel = convective_parcel(snd)?;
+
+    let mut no_cloud_pcl = starting_parcel;
+    let mut no_cloud_pcl_data = lift_parcel(starting_parcel, snd)?;
+    let mut cloud_pcl = starting_parcel;
+    let mut cloud_pcl_data = no_cloud_pcl_data;
+
+    // bracket the cloud/no cloud boundary
+    let tgt_cloud_val = if no_cloud_pcl_data.1 {
+        false
+    } else if !cloud_pcl_data.1 {
+        true
+    } else {
+        unreachable!()
+    };
+
+    if tgt_cloud_val {
+        // Cloud parcel doesn't have a cloud! Increment until it does
+        cloud_pcl.temperature += CelsiusDiff(1.0);
+        cloud_pcl_data = lift_parcel(cloud_pcl, snd)?;
+    } else {
+        // No cloud parcel has a cloud! Decrement until it doesn't
+        no_cloud_pcl.temperature += CelsiusDiff(-1.0);
+        no_cloud_pcl_data = lift_parcel(no_cloud_pcl, snd)?;
+    }
+    while no_cloud_pcl_data.1 || !cloud_pcl_data.1 {
+        if tgt_cloud_val {
+            // Cloud parcel doesn't have a cloud! Increment until it does
+            cloud_pcl.temperature += CelsiusDiff(1.0);
+            cloud_pcl_data = lift_parcel(cloud_pcl, snd)?;
+        } else {
+            // No cloud parcel has a cloud! Decrement until it doesn't
+            no_cloud_pcl.temperature += CelsiusDiff(-1.0);
+            no_cloud_pcl_data = lift_parcel(no_cloud_pcl, snd)?;
+        }
     }
 
-    /// Get the energy jump associated with the cloud creation. If no cloud was created ever, this
-    /// will be `None`.
-    pub fn delta_e(&self) -> Option<JpKg> {
-        self.first_with_cloud.map(|first_with_cloud| {
-            self.plume_vals[first_with_cloud].1 - self.plume_vals[self.last_no_cloud].1
-        })
+    // use bisection to narrow the gap between no-cloud and cloud to 0.1°C
+    let mut dt = cloud_pcl.temperature - no_cloud_pcl.temperature;
+    while dt > CelsiusDiff(0.1) {
+        let mid_t = no_cloud_pcl.temperature + CelsiusDiff(dt.unpack() / 2.0);
+        let test_pcl = Parcel {
+            temperature: mid_t,
+            ..no_cloud_pcl
+        };
+        let test_pcl_data = lift_parcel(test_pcl, snd)?;
+
+        if test_pcl_data.1 {
+            // In Cloud!
+            cloud_pcl = test_pcl;
+            cloud_pcl_data = test_pcl_data;
+        } else {
+            // Not in a cloud
+            no_cloud_pcl = test_pcl;
+            no_cloud_pcl_data = test_pcl_data;
+        }
+
+        dt = cloud_pcl.temperature - no_cloud_pcl.temperature;
     }
+
+    let t0 = no_cloud_pcl.temperature;
+    let e0 = no_cloud_pcl_data.0;
+    let d_e = cloud_pcl_data.0 - e0;
+
+    // return (t˳, E˳, ΔE)
+    Ok((t0, e0, d_e))
 }
 
 // Given a sounding, return an iterator that creates parcels from the surface temperature to +30C

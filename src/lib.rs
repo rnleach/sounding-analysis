@@ -16,7 +16,7 @@ crate.
 pub use crate::{
     analysis::Analysis,
     error::{AnalysisError, Result},
-    experimental::PlumePotentialAnal,
+    experimental::{convective_parcel_initiation_energetics, PlumePotentialAnal},
     indexes::{
         haines, haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water,
         swet, total_totals,
