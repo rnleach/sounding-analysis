@@ -2,7 +2,7 @@
 
 use crate::{
     error::{AnalysisError, Result},
-    parcel::{convective_parcel, mixed_layer_parcel, Parcel},
+    parcel::{convective_parcel, lowest_level_parcel, mixed_layer_parcel, Parcel},
     parcel_profile::find_parcel_start_data,
 };
 use itertools::izip;
@@ -47,8 +47,10 @@ impl PlumePotentialAnal {
     }
 }
 
-/// Analyze the sounding to get the values of (t˳, E˳, ΔE).
-pub fn convective_parcel_initiation_energetics(snd: &Sounding) -> Result<(Celsius, JpKg, JpKg)> {
+/// Analyze the sounding to get the values of (t˳, Δt˳, E˳, ΔE).
+pub fn convective_parcel_initiation_energetics(
+    snd: &Sounding,
+) -> Result<(Celsius, CelsiusDiff, JpKg, JpKg)> {
     let starting_parcel = convective_parcel(snd)?;
 
     let mut no_cloud_pcl = starting_parcel;
@@ -110,11 +112,12 @@ pub fn convective_parcel_initiation_energetics(snd: &Sounding) -> Result<(Celsiu
     }
 
     let t0 = no_cloud_pcl.temperature;
+    let dt0 = lowest_level_parcel(snd)?.temperature - t0;
     let e0 = no_cloud_pcl_data.0;
     let d_e = cloud_pcl_data.0 - e0;
 
     // return (t˳, E˳, ΔE)
-    Ok((t0, e0, d_e))
+    Ok((t0, dt0, e0, d_e))
 }
 
 // Given a sounding, return an iterator that creates parcels from the surface temperature to +30C
