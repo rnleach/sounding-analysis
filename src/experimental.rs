@@ -112,7 +112,7 @@ pub fn convective_parcel_initiation_energetics(
     }
 
     let t0 = no_cloud_pcl.temperature;
-    let dt0 = lowest_level_parcel(snd)?.temperature - t0;
+    let dt0 = t0 - lowest_level_parcel(snd)?.temperature;
     let e0 = no_cloud_pcl_data.0;
     let d_e = cloud_pcl_data.0 - e0;
 
