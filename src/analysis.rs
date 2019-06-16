@@ -14,7 +14,7 @@ use crate::{
     wind::{self, bunkers_storm_motion, mean_wind},
 };
 use metfor::{
-    Celsius, CelsiusDiff, IntHelicityM2pS2, JpKg, Length, Meters, MetersPSec, Mm, WindUV,
+    Celsius, CelsiusDiff, IntHelicityM2pS2, JpKg, Length, Meters, MetersPSec, Mm, Quantity, WindUV,
 };
 use optional::{none, some, Noned, Optioned};
 use sounding_base::Sounding;
@@ -709,7 +709,13 @@ impl Analysis {
                 .convective
                 .as_ref()
                 .and_then(|parcel_anal| partition_cape(parcel_anal).ok())
-                .map(|(dry, wet)| wet / dry)
+                .and_then(|(dry, wet)| {
+                    if dry.unpack().abs() > 0.1 {
+                        Some(wet / dry)
+                    } else {
+                        None
+                    }
+                })
                 .into();
         }
     }
