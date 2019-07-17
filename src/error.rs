@@ -19,6 +19,8 @@ pub enum AnalysisError {
     InvalidInput,
     /// Missing data during interpolation, or it would have been extrapolation
     InterpolationError,
+    /// Failed a pre-reequisite for this analysis
+    FailedPrerequisite,
     /// Forward an error from the metfor crate
     MetForError,
 }
@@ -33,6 +35,7 @@ impl Display for AnalysisError {
             NoDataProfile => write!(f, "profile is full of missing values, cannot do analysis"),
             InvalidInput => write!(f, "invalid input"),
             InterpolationError => write!(f, "none value encountered during interpolation"),
+            FailedPrerequisite => write!(f, "failed a prerequisite for this analysis"),
             MetForError => write!(f, "error bubbled up from metfor crate"),
         }
     }

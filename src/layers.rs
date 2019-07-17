@@ -394,6 +394,7 @@ fn cold_surface_layer(
 }
 
 /// Get a layer that has a certain thickness, like 3km or 6km.
+#[inline]
 pub fn layer_agl(snd: &Sounding, meters_agl: Meters) -> Result<Layer> {
     let tgt_elev = snd
         .station_info()
@@ -417,7 +418,10 @@ pub fn layer_agl(snd: &Sounding, meters_agl: Meters) -> Result<Layer> {
 }
 
 /// Get a layer defined by two pressure levels. `bottom_p` > `top_p`
+#[inline]
 pub fn pressure_layer(snd: &Sounding, bottom_p: HectoPascal, top_p: HectoPascal) -> Result<Layer> {
+    debug_assert!(bottom_p > top_p);
+
     let sfc_pressure = snd
         .surface_as_data_row()
         .and_then(|row| row.pressure.into_option());

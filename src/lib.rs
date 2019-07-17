@@ -32,8 +32,8 @@ pub use crate::{
         max_wet_bulb_in_layer, max_wet_bulb_in_profile, wet_bulb_zero_levels, Level, Levels,
     },
     parcel::{
-        convective_parcel, lowest_level_parcel, mixed_layer_parcel, most_unstable_parcel,
-        pressure_parcel, surface_parcel, Parcel,
+        average_parcel, convective_parcel, effective_layer_parcel, lowest_level_parcel,
+        mixed_layer_parcel, most_unstable_parcel, pressure_parcel, surface_parcel, Parcel,
     },
     parcel_profile::{
         dcape, lift_parcel, mix_down, partition_cape, robust_convective_parcel, ParcelAnalysis,

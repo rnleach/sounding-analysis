@@ -3,6 +3,7 @@
 use crate::{
     error::{AnalysisError, Result},
     interpolation::{linear_interp, linear_interpolate_sounding},
+    layers::{effective_inflow_layer, Layer},
     profile::equivalent_potential_temperature,
 };
 use itertools::izip;
@@ -271,5 +272,74 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
         pressure: initial_p,
         temperature: tgt_t,
         dew_point: dp,
+    })
+}
+
+/// Get the effective parcel which is the parcel with the mean values (pressure, temperature, etc)
+/// of the sounding from the effective layer.
+pub fn effective_layer_parcel(snd: &Sounding) -> Result<Parcel> {
+    let effective_layer = &effective_inflow_layer(snd).ok_or(AnalysisError::FailedPrerequisite)?;
+    average_parcel(snd, effective_layer)
+}
+
+/// Get the parcel with mean values for the given layer.
+pub fn average_parcel(snd: &Sounding, layer: &Layer) -> Result<Parcel> {
+    let press = snd.pressure_profile();
+    let t = snd.temperature_profile();
+    let dp = snd.dew_point_profile();
+
+    if press.is_empty() || t.is_empty() || dp.is_empty() {
+        return Err(AnalysisError::MissingProfile);
+    }
+
+    let bottom_p = layer.bottom.pressure.ok_or(AnalysisError::NoDataProfile)?;
+    let top_p = layer.top.pressure.ok_or(AnalysisError::NoDataProfile)?;
+
+    let (sum_p, sum_t, sum_mw, count) = izip!(press, t, dp)
+        // remove levels with missing values
+        .filter_map(|(p, t, dp)| {
+            if p.is_some() && t.is_some() && dp.is_some() {
+                Some((p.unpack(), t.unpack(), dp.unpack()))
+            } else {
+                None
+            }
+        })
+        .skip_while(|&(p, _, _)| p > bottom_p)
+        .take_while(|&(p, _, _)| p >= top_p)
+        // Get theta
+        .map(|(p, t, dp)| (p, dp, metfor::theta(p, t)))
+        // convert to mw
+        .filter_map(|(p, dp, th)| metfor::mixing_ratio(dp, p).and_then(|mw| Some((p, th, mw))))
+        // calculate the sums and count needed for the average
+        .fold(
+            (HectoPascal(0.0), 0.0f64, 0.0f64, 0),
+            |acc, (p, theta, mw)| {
+                let (sum_p, sum_t, sum_mw, count) = acc;
+                (
+                    sum_p + p,
+                    sum_t + theta.unpack() * p.unpack(),
+                    sum_mw + mw * p.unpack(),
+                    count + 1,
+                )
+            },
+        );
+
+    if sum_p == HectoPascal(0.0) {
+        return Err(AnalysisError::NotEnoughData);
+    }
+
+    // convert back to temperature and dew point at the mean pressure level.
+    let pressure = HectoPascal(sum_p.unpack() / f64::from(count));
+    let temperature = Celsius::from(metfor::temperature_from_theta(
+        Kelvin(sum_t / sum_p.unpack()),
+        bottom_p,
+    ));
+    let dew_point = metfor::dew_point_from_p_and_mw(bottom_p, sum_mw / sum_p.unpack())
+        .ok_or(AnalysisError::InvalidInput)?;
+
+    Ok(Parcel {
+        temperature,
+        pressure,
+        dew_point,
     })
 }
