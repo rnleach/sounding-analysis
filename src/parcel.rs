@@ -332,9 +332,9 @@ pub fn average_parcel(snd: &Sounding, layer: &Layer) -> Result<Parcel> {
     let pressure = HectoPascal(sum_p.unpack() / f64::from(count));
     let temperature = Celsius::from(metfor::temperature_from_theta(
         Kelvin(sum_t / sum_p.unpack()),
-        bottom_p,
+        pressure,
     ));
-    let dew_point = metfor::dew_point_from_p_and_mw(bottom_p, sum_mw / sum_p.unpack())
+    let dew_point = metfor::dew_point_from_p_and_mw(pressure, sum_mw / sum_p.unpack())
         .ok_or(AnalysisError::InvalidInput)?;
 
     Ok(Parcel {
