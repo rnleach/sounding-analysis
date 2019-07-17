@@ -7,7 +7,7 @@ use crate::{
         swet, total_totals,
     },
     layers::{effective_inflow_layer, Layer},
-    parcel::{mixed_layer_parcel, most_unstable_parcel, surface_parcel},
+    parcel::{average_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel},
     parcel_profile::{
         dcape, lift_parcel, partition_cape, robust_convective_parcel, ParcelAnalysis, ParcelProfile,
     },
@@ -62,6 +62,7 @@ pub struct Analysis {
     surface: Option<ParcelAnalysis>,
     most_unstable: Option<ParcelAnalysis>,
     convective: Option<ParcelAnalysis>,
+    effective: Option<ParcelAnalysis>,
 
     // Provider analysis
     provider_analysis: HashMap<&'static str, f64>,
@@ -102,6 +103,7 @@ impl Analysis {
             surface: None,
             most_unstable: None,
             convective: None,
+            effective: None,
 
             provider_analysis: HashMap::new(),
         }
@@ -526,6 +528,20 @@ impl Analysis {
         self.convective.as_ref()
     }
 
+    /// Set the effective parcel analysis
+    pub fn with_effective_parcel_analysis<T>(self, anal: T) -> Self
+    where
+        Option<ParcelAnalysis>: From<T>,
+    {
+        let effective = Option::from(anal);
+        Analysis { effective, ..self }
+    }
+
+    /// Get the effective parcel analysis
+    pub fn effective_parcel_analysis(&self) -> Option<&ParcelAnalysis> {
+        self.effective.as_ref()
+    }
+
     /// Set the downburst profile
     pub fn with_downburst_profile<T>(self, parcel_profile: T) -> Self
     where
@@ -691,6 +707,15 @@ impl Analysis {
                 self.sr_helicity_eff_lm =
                     Optioned::from(wind::sr_helicity(layer, lm, &self.sounding()).ok());
             }
+        }
+
+        // Fill in the effective layer parcel analysis
+        if self.effective.is_none() && self.effective_inflow_layer.is_some() {
+            self.effective =
+                match average_parcel(&self.sounding, &self.effective_inflow_layer.unwrap()) {
+                    Ok(parcel) => lift_parcel(parcel, &self.sounding).ok(),
+                    Err(_) => None,
+                };
         }
 
         // Convective deficit
