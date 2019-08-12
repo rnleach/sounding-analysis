@@ -5,11 +5,11 @@ use crate::{
     interpolation::{linear_interp, linear_interpolate_sounding},
     layers::{effective_inflow_layer, Layer},
     profile::equivalent_potential_temperature,
+    sounding::{DataRow, Sounding},
 };
 use itertools::izip;
 use metfor::{self, Celsius, HectoPascal, Kelvin, Quantity};
 use optional::Optioned;
-use sounding_base::{DataRow, Sounding};
 
 /// Variables defining a parcel as used in parcel analysis.
 #[derive(Debug, Clone, Copy)]

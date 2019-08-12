@@ -3,11 +3,11 @@ use crate::{
     error::{AnalysisError, Result},
     interpolation::{linear_interp, linear_interpolate_sounding},
     parcel::Parcel,
+    sounding::{DataRow, Sounding},
 };
 use itertools::izip;
 use metfor::{self, Celsius, CelsiusDiff, HectoPascal, JpKg, Kelvin, Meters, MetersPSec, Quantity};
 use optional::{none, some, Optioned};
-use sounding_base::{DataRow, Sounding};
 
 /// Hold profiles for a parcel and it's environment.
 #[derive(Debug, Clone)]
@@ -22,6 +22,7 @@ pub struct ParcelProfile {
     pub environment_t: Vec<Celsius>,
 }
 
+// FIXME: Call this a ParcelAscentAnalysis
 /// Parcel analysis, this is a way to package the analysis of a parcel.
 #[derive(Debug, Clone)]
 pub struct ParcelAnalysis {
@@ -42,7 +43,6 @@ pub struct ParcelAnalysis {
     el_temperature: Optioned<Celsius>,       // useful for comparing to satellite
     lfc_pressure: Optioned<HectoPascal>,     // plotting on skew-t
     lfc_virt_temperature: Optioned<Celsius>, // plotting on skew-t
-    lifted_index: Optioned<CelsiusDiff>,
 }
 
 impl ParcelAnalysis {
@@ -70,37 +70,40 @@ impl ParcelAnalysis {
     pub fn lcl_pressure(&self) -> Optioned<HectoPascal> {
         self.lcl_pressure
     }
+
     /// Get the temperature at the LCL.
     pub fn lcl_temperature(&self) -> Optioned<Celsius> {
         self.lcl_temperature
     }
+
     /// Get the CIN.
     pub fn cin(&self) -> Optioned<JpKg> {
         self.cin
     }
+
     /// Get the pressure at the equilibrium level.
     pub fn el_pressure(&self) -> Optioned<HectoPascal> {
         self.el_pressure
     }
+
     /// Get the height ASL of the equilibrium level.
     pub fn el_height_asl(&self) -> Optioned<Meters> {
         self.el_height_asl
     }
+
     /// Get the temperature at the equilibrium level.
     pub fn el_temperature(&self) -> Optioned<Celsius> {
         self.el_temperature
     }
+
     /// Get the pressure at the LFC.
     pub fn lfc_pressure(&self) -> Optioned<HectoPascal> {
         self.lfc_pressure
     }
+
     /// Get the virtual temperature at the LFC.
     pub fn lfc_virt_temperature(&self) -> Optioned<Celsius> {
         self.lfc_virt_temperature
-    }
-    /// Get the lifted index.
-    pub fn lifted_index(&self) -> Optioned<CelsiusDiff> {
-        self.lifted_index
     }
 
     /// Retrieve the parcel's profile
@@ -115,8 +118,8 @@ impl ParcelAnalysis {
         &self.parcel
     }
 
-    /// Calculate the parcel vertical speed at the equilibrium level. Note that this is most likely
-    /// an over estimate of updraft speed due to the effects of entrainment and water/ice loading.
+    /// Calculate the parcel vertical speed at the equilibrium level. Note that this is an over
+    /// estimate of updraft speed due to the effects of entrainment and water/ice loading.
     #[inline]
     pub fn calculate_cape_speed(&self) -> Option<MetersPSec> {
         self.cape
@@ -124,6 +127,8 @@ impl ParcelAnalysis {
     }
 }
 
+// FIXME: Just return a ParcelProfile, just lift the parcel, don't worry about levels, cape, cin,
+// and all of that. Change return type to ParcelProfile
 /// Lift a parcel for a convective parcel analysis.
 ///
 /// The resulting `ParcelProfile` and analysis are based off of virtual temperatures and the idea
@@ -191,7 +196,6 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
     let mut lfc_pressure: Optioned<HectoPascal> = none();
     let mut lfc_virt_temperature: Optioned<Celsius> = none();
     let mut el_pressure: Optioned<HectoPascal> = none();
-    let mut lifted_index: Optioned<CelsiusDiff> = none();
 
     //
     // Allocate some buffers to hold the return values.
@@ -333,13 +337,6 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
                 }
             }
 
-            // Check to see if the parcel is passing 500 hPa for the LI calculation
-            if p0 >= HectoPascal(500.0) && p <= HectoPascal(500.0) {
-                let tgt_et = linear_interp(HectoPascal(500.0), p0, p, env_t0, env_t);
-                let tgt_pt = linear_interp(HectoPascal(500.0), p0, p, pcl_t0, pcl_t);
-                lifted_index = some(tgt_et - tgt_pt);
-            }
-
             // Add the new values to the array
             add_row(p, h, pcl_t, env_t);
 
@@ -428,9 +425,10 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAnalysis> {
         el_temperature,
         lfc_pressure,
         lfc_virt_temperature,
-        lifted_index,
     })
 }
+
+// FIXME: create function to analyze a ParcelProfile.
 
 // In order for parcel lifting to work and create a parallel environmental profile, we need to
 // start at a level in the sounding with pressure, height, temperature, and dew point. Otherwise
@@ -469,6 +467,8 @@ pub(crate) fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<
     Ok((second_guess, new_parcel))
 }
 
+// FIXME: Rename this or something. Maybe move it to the Parcel module, that is what we're really
+// looking for anyway, the convective parcel.
 /// A more robust convective parcel analysis.
 ///
 /// Some approximations are used in many algorithms which are usually good enough. However,
@@ -497,7 +497,7 @@ pub fn robust_convective_parcel(snd: &Sounding) -> Result<ParcelAnalysis> {
         // Bracket the convective t in a 1 C range
         while anal.lcl_pressure <= anal.el_pressure {
             start_parcel = warmer_parcel;
-            warmer_t = warmer_t + CelsiusDiff(1.0);
+            warmer_t += CelsiusDiff(1.0);
             warmer_parcel = Parcel {
                 temperature: warmer_t,
                 ..start_parcel
@@ -845,91 +845,4 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, JpKg, Celsius)> {
     let downrush_t = *profile.parcel_t.get(0).ok_or(AnalysisError::MissingValue)?;
 
     Ok((profile, JpKg(dcape), downrush_t))
-}
-
-/// Partition the CAPE between dry and moist ascent contributions. EXPERIMENTAL.
-///
-/// This is an experimental function that calculates how much CAPE there would be with a "dry"
-/// ascent only. Above the LCL it keeps the parcel saturated but keeps lifting it at the dry
-/// adiabatic lapse rate, and then calculates the CAPE of this profile. The difference between this
-/// value and the CAPE is the amount of CAPE added by latent heat release. It isn't perfect, but
-/// when applied to a convective parcel (think CCL and convective temperature) it can be used
-/// to partition the energy contributed by heating the column from the sun and the energy added by
-/// latent heat release. This can be useful for analyzing convection initiated by wildfire and
-/// estimating how much the convective column is being driven by the surface heating and how much it
-/// is being driven by latent heat release.
-///
-/// Returns a tuple with `(dry_cape, wet_cape)`
-pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(JpKg, JpKg)> {
-    let lcl = pa.lcl_pressure.ok_or(AnalysisError::MissingValue)?;
-    let el = pa.el_pressure.ok_or(AnalysisError::MissingValue)?;
-
-    let parcel_theta = pa.parcel.theta();
-
-    let lower_dry_profile = izip!(
-        &pa.profile.pressure,
-        &pa.profile.height,
-        &pa.profile.parcel_t,
-        &pa.profile.environment_t
-    )
-    .take_while(|(p, _, _, _)| **p >= lcl)
-    .map(|(_, h, pt, et)| (*h, Kelvin::from(*pt), Kelvin::from(*et)));
-
-    let upper_dry_profile = izip!(
-        &pa.profile.pressure,
-        &pa.profile.height,
-        &pa.profile.environment_t
-    )
-    .skip_while(|(p, _, _)| **p >= lcl)
-    .filter_map(|(p, h, et)| {
-        let t_k = metfor::temperature_from_theta(parcel_theta, *p);
-        metfor::virtual_temperature(t_k, t_k, *p).map(|pt_k| (*p, *h, pt_k, *et))
-    })
-    .take_while(|(_, _, pt, et)| pt >= et)
-    .map(|(_, h, pt, et)| (h, pt, Kelvin::from(et)));
-
-    let dry_profile = lower_dry_profile.chain(upper_dry_profile);
-
-    let full_profile = izip!(
-        &pa.profile.pressure,
-        &pa.profile.height,
-        &pa.profile.parcel_t,
-        &pa.profile.environment_t
-    )
-    .take_while(|(p, _, _, _)| **p >= el)
-    .map(|(_, h, pt, et)| (*h, Kelvin::from(*pt), Kelvin::from(*et)));
-
-    fn calc_cape<T: Iterator<Item = (Meters, Kelvin, Kelvin)>>(iter: T) -> f64 {
-        let cape = iter
-            .fold(
-                (0.0, Meters(std::f64::MAX), Kelvin(0.0), Kelvin(0.0)),
-                |acc, (h, pt, et)| {
-                    let (mut cape, prev_h, prev_pt, prev_et) = acc;
-
-                    let dz = h - prev_h;
-
-                    if dz <= Meters(0.0) {
-                        // Must be just starting out, save the previous layer and move on
-                        (cape, h, pt, et)
-                    } else {
-                        let bouyancy = ((pt - et).unpack() / et.unpack()
-                            + (prev_pt - prev_et).unpack() / prev_et.unpack())
-                            * dz.unpack();
-                        cape += bouyancy;
-
-                        (cape, h, pt, et)
-                    }
-                },
-            )
-            .0;
-
-        cape / 2.0 * -metfor::g
-    }
-
-    let total_cape = calc_cape(full_profile).max(0.0);
-    let dry_cape = calc_cape(dry_profile).max(0.0).min(total_cape);
-
-    let wet_cape = total_cape - dry_cape;
-
-    Ok((JpKg(dry_cape), JpKg(wet_cape)))
 }

@@ -5,10 +5,4 @@
 
 # sounding-analysis
 
-Functions and data types for analyzing soundings from the
-[sounding-base](https://github.com/rnleach/sounding-base.git) crate.
-
-### Purpose
-Provides analysis capabilities for the [sounding-base](https://github.com/rnleach/sounding-base.git)
-crate.
-
+Functions and data types for analyzing soundings from radiosondes or models.

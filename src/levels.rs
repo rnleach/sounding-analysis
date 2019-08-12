@@ -2,16 +2,18 @@
 //! has functions for finding critical values at a single level, such as the maximum wet bulb
 //! temperature aloft.  It does not include functions for finding levels related to parcel analysis
 //! and convection, those are found in the `parcel` module.
+use crate::{
+    error::{
+        AnalysisError::{InvalidInput, MissingProfile, NoDataProfile, NotEnoughData},
+        {AnalysisError, Result},
+    },
+    layers::Layer,
+    sounding::{DataRow, Sounding},
+};
 use itertools::izip;
 use metfor::{Celsius, HectoPascal, Meters, FREEZING};
 use optional::Optioned;
 use smallvec::SmallVec;
-use sounding_base::{DataRow, Sounding};
-
-use crate::error::AnalysisError::*;
-use crate::error::*;
-
-use crate::layers::Layer;
 
 /// A level in the atmosphere is described by a `DataRow` from a sounding.
 pub type Level = DataRow;

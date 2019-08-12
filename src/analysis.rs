@@ -2,22 +2,17 @@
 //!
 //! Not every possible analysis is in this data.
 use crate::{
-    indexes::{
-        haines, haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water,
-        swet, total_totals,
-    },
+    indexes::{haines, haines_high, haines_low, haines_mid, hot_dry_windy, precipitable_water},
     layers::{effective_inflow_layer, Layer},
     parcel::{average_parcel, mixed_layer_parcel, most_unstable_parcel, surface_parcel},
-    parcel_profile::{
-        dcape, lift_parcel, partition_cape, robust_convective_parcel, ParcelAnalysis, ParcelProfile,
-    },
+    parcel_profile::{dcape, lift_parcel, robust_convective_parcel, ParcelAnalysis, ParcelProfile},
+    sounding::Sounding,
     wind::{self, bunkers_storm_motion, mean_wind},
 };
 use metfor::{
-    Celsius, CelsiusDiff, IntHelicityM2pS2, JpKg, Length, Meters, MetersPSec, Mm, Quantity, WindUV,
+    Celsius, CelsiusDiff, IntHelicityM2pS2, JpKg, Length, Meters, MetersPSec, Mm, WindUV,
 };
 use optional::{none, some, Noned, Optioned};
-use sounding_base::Sounding;
 use std::collections::HashMap;
 
 /// Convenient package for commonly requested analysis values.
@@ -29,9 +24,6 @@ pub struct Analysis {
     sounding: Sounding,
 
     // Profile specific indicies
-    swet: Optioned<f64>,
-    k_index: Optioned<Celsius>,
-    total_totals: Optioned<f64>,
     precipitable_water: Optioned<Mm>,
     convective_t: Optioned<Celsius>,
     right_mover: Optioned<WindUV<MetersPSec>>,
@@ -50,7 +42,6 @@ pub struct Analysis {
     haines_high: Optioned<u8>,
     hdw: Optioned<f64>,
     convective_deficit: Optioned<CelsiusDiff>,
-    cape_ratio: Optioned<f64>,
 
     // Downburst
     dcape: Optioned<JpKg>,
@@ -73,9 +64,6 @@ impl Analysis {
     pub fn new(snd: Sounding) -> Self {
         Analysis {
             sounding: snd,
-            swet: none(),
-            k_index: none(),
-            total_totals: none(),
             precipitable_water: none(),
             convective_t: none(),
             right_mover: none(),
@@ -93,7 +81,6 @@ impl Analysis {
             haines_high: none(),
             hdw: none(),
             convective_deficit: none(),
-            cape_ratio: none(),
 
             dcape: none(),
             downrush_t: none(),
@@ -110,38 +97,6 @@ impl Analysis {
     }
 
     /// Builder method to set the SWeT
-    pub fn with_swet<T>(self, value: T) -> Self
-    where
-        Optioned<f64>: From<T>,
-    {
-        Self {
-            swet: Optioned::from(value),
-            ..self
-        }
-    }
-
-    /// Builder method to set the K index
-    pub fn with_k_index<T>(self, value: T) -> Self
-    where
-        Optioned<Celsius>: From<T>,
-    {
-        Self {
-            k_index: Optioned::from(value),
-            ..self
-        }
-    }
-
-    /// Builder method to set the Total Totals
-    pub fn with_total_totals<T>(self, value: T) -> Self
-    where
-        Optioned<f64>: From<T>,
-    {
-        Self {
-            total_totals: Optioned::from(value),
-            ..self
-        }
-    }
-
     /// Builder method to set the precipitable water
     pub fn with_pwat<T, U>(self, value: T) -> Self
     where
@@ -312,17 +267,6 @@ impl Analysis {
         }
     }
 
-    /// Builder method to set the wet/dry cape ratio. EXPERIMENTAL
-    pub fn with_cape_ratio<T>(self, value: T) -> Self
-    where
-        Optioned<f64>: From<T>,
-    {
-        Self {
-            cape_ratio: Optioned::from(value),
-            ..self
-        }
-    }
-
     /// Builder method to set the convective temperature deficit. EXPERIMENTAL
     pub fn with_convective_deficit<T>(self, value: T) -> Self
     where
@@ -354,21 +298,6 @@ impl Analysis {
             downrush_t: Optioned::from(value),
             ..self
         }
-    }
-
-    /// Get the Swet
-    pub fn swet(&self) -> Optioned<f64> {
-        self.swet
-    }
-
-    /// Get the K index
-    pub fn k_index(&self) -> Optioned<Celsius> {
-        self.k_index
-    }
-
-    /// Get the Total Totals index
-    pub fn total_totals(&self) -> Optioned<f64> {
-        self.total_totals
     }
 
     /// Get the precipitable water.
@@ -449,11 +378,6 @@ impl Analysis {
     /// Get the hot-dry-windy index.
     pub fn hdw(&self) -> Optioned<f64> {
         self.hdw
-    }
-
-    /// Get the wet/dry CAPE ratio. EXPERIMENTAL.
-    pub fn cape_ratio(&self) -> Optioned<f64> {
-        self.cape_ratio
     }
 
     /// Get the convective temperature deficit.
@@ -586,15 +510,6 @@ impl Analysis {
 
     /// Analyze the sounding to get as much information as you can.
     pub fn fill_in_missing_analysis_mut(&mut self) {
-        self.swet = self
-            .swet
-            .or_else(|| Optioned::from(swet(&self.sounding).ok()));
-        self.total_totals = self
-            .total_totals
-            .or_else(|| Optioned::from(total_totals(&self.sounding).ok()));
-        self.k_index = self
-            .k_index
-            .or_else(|| Optioned::from(kindex(&self.sounding).ok()));
         self.precipitable_water = self
             .precipitable_water
             .or_else(|| Optioned::from(precipitable_water(&self.sounding).ok()));
@@ -726,22 +641,6 @@ impl Analysis {
                     .map(|parcel_anal| ct - parcel_anal.parcel().temperature)
                     .into()
             });
-        }
-
-        // Cape ratio
-        if self.cape_ratio.is_none() {
-            self.cape_ratio = self
-                .convective
-                .as_ref()
-                .and_then(|parcel_anal| partition_cape(parcel_anal).ok())
-                .and_then(|(dry, wet)| {
-                    if dry.unpack().abs() > 0.1 {
-                        Some(wet / dry)
-                    } else {
-                        None
-                    }
-                })
-                .into();
         }
     }
 

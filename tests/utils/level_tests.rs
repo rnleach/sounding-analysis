@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use super::*;
 use metfor::{Celsius, HectoPascal, Quantity};
 use sounding_analysis::Levels;
-use sounding_analysis::Result;
-use sounding_base::Sounding;
+use sounding_analysis::{Result, Sounding};
 
 fn test_levels<F: FnOnce(&Sounding) -> Result<Levels>>(
     snd: &Sounding,

@@ -1,18 +1,20 @@
 //! This module finds significant layers such as the dendritic snow growth zone, the hail growth
 //! zone, and inversions.
+use crate::{
+    error::{
+        AnalysisError::{InvalidInput, MissingProfile, MissingValue, NoDataProfile},
+        {AnalysisError, Result},
+    },
+    levels::height_level,
+    parcel, parcel_profile,
+    sounding::{DataRow, Sounding},
+};
 use itertools::izip;
 use metfor::{
     Celsius, CelsiusPKm, HectoPascal, JpKg, Km, Meters, MetersPSec, Quantity, WindUV, FREEZING,
 };
 use optional::Optioned;
 use smallvec::SmallVec;
-use sounding_base::{DataRow, Sounding};
-
-use crate::error::AnalysisError::*;
-use crate::error::*;
-use crate::levels::height_level;
-use crate::parcel;
-use crate::parcel_profile;
 
 /// A layer in the atmosphere described by the values at the top and bottom.
 #[derive(Debug, Clone, Copy)]
@@ -72,9 +74,9 @@ impl Layer {
 #[cfg(test)]
 mod layer_tests {
     use super::*;
+    use crate::sounding::DataRow;
     use metfor::*;
     use optional::some;
-    use sounding_base::DataRow;
 
     fn make_test_layer() -> Layer {
         let mut bottom = DataRow::default();

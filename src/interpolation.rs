@@ -1,10 +1,14 @@
+use crate::{
+    error::{
+        AnalysisError::InvalidInput,
+        {AnalysisError, Result},
+    },
+    sounding::{DataRow, Sounding},
+};
+use itertools::{izip, Itertools};
 use metfor::{HectoPascal, Knots, Quantity, WindSpdDir, WindUV};
-use optional::{none, Optioned};
-use sounding_base::{DataRow, Sounding};
+use optional::{none, some, Optioned};
 use std::ops::Sub;
-
-use crate::error::AnalysisError::*;
-use crate::error::*;
 
 /// Interpolate values from the vertical sounding using pressure as the primary coordinate.
 ///
@@ -92,46 +96,45 @@ pub fn linear_interpolate_sounding(snd: &Sounding, tgt_p: HectoPascal) -> Result
 }
 
 /// Interpolate values given two parallel vectors of data and a target value.
-// FIXME: Currently assume xs are sorted in descending order, change to just assuming monotonic
+///
+/// Assumes that xs is monotonic.
 #[inline]
 pub fn linear_interpolate<X, Y>(xs: &[Optioned<X>], ys: &[Optioned<Y>], target_x: X) -> Optioned<Y>
 where
     X: Quantity + optional::Noned + PartialOrd + Sub<X>,
     <X as Sub<X>>::Output: Quantity + optional::Noned,
-    Y: Quantity + optional::Noned,
+    Y: Quantity + optional::Noned + Sub<Y>,
+    <Y as Sub<Y>>::Output: Quantity,
 {
     debug_assert_eq!(xs.len(), ys.len());
 
-    let mut below_idx: usize = 0;
-    let mut above_idx: usize = 0;
-    let mut found_bottom: bool = false;
-    for (i, x) in xs.iter().enumerate() {
-        if x.is_some() {
-            let x = x.unpack();
-            if x > target_x {
-                below_idx = i;
-                found_bottom = true;
-            } else if x < target_x && found_bottom {
-                above_idx = i;
-                break;
-            } else if (x - target_x).unpack().abs() <= ::std::f64::EPSILON {
-                return ys[i];
-            } else {
-                break; // leave above_idx = 0 to signal error
-            }
+    // check that two values are a bracket for the target_x
+    let makes_bracket =
+        |x0, x1| -> bool { (x0 < target_x && x1 > target_x) || (x0 > target_x && x1 < target_x) };
+
+    let vals_iter = izip!(xs, ys)
+        // Filter out elements where one of the values is missing, this allows us to skip over
+        // over a point with a missing value and use the points on either side of it for the
+        // interpolation.
+        .filter(|(x, y)| x.is_some() && y.is_some())
+        // Unpack the values from the `Optioned` type
+        .map(|(x, y)| (x.unpack(), y.unpack()))
+        // Look at them in pairs.
+        .tuple_windows::<(_, _)>();
+
+    for ((x0, y0), (x1, y1)) in vals_iter {
+        if makes_bracket(x0, x1) {
+            let y = linear_interp(target_x, x0, x1, y0, y1);
+            return some(y);
+        } else if x0 == target_x {
+            // Check for special case of interpolation not needed!
+            return some(y0);
+        } else if x1 == target_x {
+            return some(y1);
         }
     }
 
-    if above_idx != 0 {
-        let x_below = xs[below_idx].unwrap();
-        let x_above = xs[above_idx].unwrap();
-        let run = x_above - x_below;
-        let dx = target_x - x_below;
-
-        eval_linear_interp(below_idx, above_idx, run, dx, ys)
-    } else {
-        none()
-    }
+    none()
 }
 
 #[inline]

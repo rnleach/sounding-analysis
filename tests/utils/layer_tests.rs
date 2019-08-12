@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use super::*;
 use metfor::{HectoPascal, Meters, Quantity};
 use sounding_analysis::Layers;
-use sounding_analysis::Result;
-use sounding_base::Sounding;
+use sounding_analysis::{Result, Sounding};
 
 fn test_layers<F: FnOnce(&Sounding) -> Result<Layers>>(
     snd: &Sounding,

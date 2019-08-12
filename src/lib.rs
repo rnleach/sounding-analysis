@@ -1,14 +1,8 @@
 /*!
-Functions and data types for analyzing soundings from the
-[sounding-base](https://github.com/rnleach/sounding-base.git) crate.
-
-## Purpose
-Provides analysis capabilities for the [sounding-base](https://github.com/rnleach/sounding-base.git)
-crate.
-
+Functions and data types for analyzing soundings from radiosondes or models.
 */
 #![doc(test(attr(deny(warnings))))]
-#![warn(missing_docs)]
+#![deny(missing_docs)]
 
 //
 // API
@@ -16,11 +10,8 @@ crate.
 pub use crate::{
     analysis::Analysis,
     error::{AnalysisError, Result},
-    experimental::{convective_parcel_initiation_energetics, PlumePotentialAnal},
-    indexes::{
-        haines, haines_high, haines_low, haines_mid, hot_dry_windy, kindex, precipitable_water,
-        swet, total_totals,
-    },
+    experimental::{convective_parcel_initiation_energetics, partition_cape, PlumePotentialAnal},
+    indexes::{haines, haines_high, haines_low, haines_mid, hot_dry_windy, precipitable_water},
     interpolation::{linear_interpolate, linear_interpolate_sounding},
     layers::{
         cold_surface_temperature_layer, dendritic_snow_zone, effective_inflow_layer,
@@ -36,16 +27,19 @@ pub use crate::{
         mixed_layer_parcel, most_unstable_parcel, pressure_parcel, surface_parcel, Parcel,
     },
     parcel_profile::{
-        dcape, lift_parcel, mix_down, partition_cape, robust_convective_parcel, ParcelAnalysis,
-        ParcelProfile,
+        dcape, lift_parcel, mix_down, robust_convective_parcel, ParcelAnalysis, ParcelProfile,
     },
     profile::{
         equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,
         relative_humidity_ice, sfc_to_level_temperature_lapse_rate, temperature_lapse_rate,
         theta_e_lapse_rate, wet_bulb,
     },
+    sounding::{DataRow, Sounding, StationInfo},
     wind::{bunkers_storm_motion, mean_wind, sr_helicity},
 };
+
+#[doc(hidden)]
+pub use crate::sounding::doctest;
 
 //
 // Internal use only
@@ -62,6 +56,7 @@ mod levels;
 mod parcel;
 mod parcel_profile;
 mod profile;
+mod sounding;
 mod wind;
 
 pub(crate) const VEC_SIZE: usize = 2;

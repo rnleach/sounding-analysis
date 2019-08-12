@@ -3,92 +3,12 @@
 use crate::{
     error::{AnalysisError, Result},
     interpolation::linear_interpolate_sounding,
+    sounding::Sounding,
 };
 use itertools::izip;
 use metfor::{
-    vapor_pressure_liquid_water, Celsius, CelsiusDiff, HectoPascal, Knots, Meters, MetersPSec, Mm,
-    Quantity, WindSpdDir,
+    vapor_pressure_liquid_water, Celsius, HectoPascal, Meters, MetersPSec, Mm, Quantity, WindSpdDir,
 };
-use sounding_base::Sounding;
-
-/// The Total Totals index
-#[inline]
-pub fn total_totals(snd: &Sounding) -> Result<f64> {
-    let h5 = linear_interpolate_sounding(snd, HectoPascal(500.0))?;
-    let h85 = linear_interpolate_sounding(snd, HectoPascal(850.0))?;
-    let t_500 = h5.temperature.ok_or(AnalysisError::MissingValue)?;
-    let t_850 = h85.temperature.ok_or(AnalysisError::MissingValue)?;
-    let td_850 = h85.dew_point.ok_or(AnalysisError::MissingValue)?;
-
-    let cross_totals = td_850 - t_500;
-    let vertical_totals = t_850 - t_500;
-
-    let CelsiusDiff(tt) = cross_totals + vertical_totals;
-
-    Ok(tt)
-}
-
-/// The SWeT (Severe Weather Threat) index
-#[inline]
-pub fn swet(snd: &Sounding) -> Result<f64> {
-    let h5 = linear_interpolate_sounding(snd, HectoPascal(500.0))?;
-    let h85 = linear_interpolate_sounding(snd, HectoPascal(850.0))?;
-
-    let td_850 = h85
-        .dew_point
-        .map_t(|Celsius(dp)| dp)
-        .map_t(|dp| if dp < 0.0 { 0.0 } else { dp })
-        .ok_or(AnalysisError::MissingValue)?;
-
-    let WindSpdDir {
-        speed: v_850,
-        direction: d_850,
-    } = h85.wind.ok_or(AnalysisError::MissingValue)?;
-    let WindSpdDir {
-        speed: v_500,
-        direction: d_500,
-    } = h5.wind.ok_or(AnalysisError::MissingValue)?;
-
-    let mut total_totals = total_totals(snd)?;
-    if total_totals < 49.0 {
-        total_totals = 49.0;
-    }
-
-    let mut dir_component = (d_500 - d_850).to_radians().sin();
-    if dir_component < 0.0
-        || (d_850 >= 130.0 && d_850 <= 250.0)
-        || (d_500 >= 210.0 && d_500 <= 310.0)
-        || (d_500 - d_850) >= 0.0
-        || (v_850 >= Knots(15.0) && v_500 >= Knots(15.0))
-    {
-        dir_component = 0.0;
-    } else {
-        dir_component = 125.0 * (dir_component + 0.2);
-    }
-
-    Ok(12.0 * td_850
-        + 20.0 * (total_totals - 49.0)
-        + 2.0 * v_850.unpack()
-        + v_500.unpack()
-        + dir_component)
-}
-
-/// The K-index
-#[inline]
-pub fn kindex(snd: &Sounding) -> Result<Celsius> {
-    let h5 = linear_interpolate_sounding(snd, HectoPascal(500.0))?;
-    let h7 = linear_interpolate_sounding(snd, HectoPascal(700.0))?;
-    let h85 = linear_interpolate_sounding(snd, HectoPascal(850.0))?;
-
-    let t5 = h5.temperature.ok_or(AnalysisError::MissingValue)?;
-    let t7 = h7.temperature.ok_or(AnalysisError::MissingValue)?;
-    let t85 = h85.temperature.ok_or(AnalysisError::MissingValue)?;
-
-    let td7 = h7.dew_point.ok_or(AnalysisError::MissingValue)?;
-    let td85 = h85.dew_point.ok_or(AnalysisError::MissingValue)?;
-
-    Ok(td7 + (t85 - t5) + (td85 - t7))
-}
 
 /// Precipitable water (mm)
 #[inline]

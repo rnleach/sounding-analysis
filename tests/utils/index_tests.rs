@@ -1,7 +1,6 @@
 use super::*;
 use metfor::Quantity;
-use sounding_analysis::Result;
-use sounding_base::Sounding;
+use sounding_analysis::{Result, Sounding};
 
 #[allow(dead_code)] // False alarm - lint is done before macro expansion.
 pub fn test_index<F, Q>(

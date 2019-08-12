@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use metfor::{self, Celsius, HectoPascal, Knots, Meters, WindSpdDir};
 use optional::Optioned;
-use sounding_base::{Sounding, StationInfo};
+use sounding_analysis::{Sounding, StationInfo};
 
 pub mod index_tests;
 pub mod layer_tests;
@@ -48,9 +48,6 @@ macro_rules! check_file_complete {
                 "haines_high",
                 "haines",
                 "hdw",
-                "kindex",
-                "swet",
-                "total_totals",
                 "precipitable_water",
             ];
 
@@ -83,7 +80,7 @@ macro_rules! test_file {
             use std::collections::HashMap;
 
             use crate::utils;
-            use sounding_base::Sounding;
+            use sounding_analysis::Sounding;
 
             fn load_data() -> (Sounding, HashMap<String, i64>, HashMap<String, Vec<f64>>) {
                 utils::load_test_file($fname)
@@ -225,45 +222,6 @@ macro_rules! test_file {
                         sounding_analysis::hot_dry_windy,
                         "hdw",
                         5.0,
-                        0.0,
-                    );
-                }
-
-                #[test]
-                fn test_kindex() {
-                    let (snd, _, fvals) = load_data();
-                    index_tests::test_index(
-                        &snd,
-                        &fvals,
-                        sounding_analysis::kindex,
-                        "kindex",
-                        metfor::Celsius(0.1),
-                        metfor::Celsius(-1000.0),
-                    );
-                }
-
-                #[test]
-                fn test_swet() {
-                    let (snd, _, fvals) = load_data();
-                    index_tests::test_index(
-                        &snd,
-                        &fvals,
-                        sounding_analysis::swet,
-                        "swet",
-                        1.0,
-                        -1000.0,
-                    );
-                }
-
-                #[test]
-                fn test_total_totals() {
-                    let (snd, _, fvals) = load_data();
-                    index_tests::test_index(
-                        &snd,
-                        &fvals,
-                        sounding_analysis::total_totals,
-                        "total_totals",
-                        1.0,
                         0.0,
                     );
                 }
