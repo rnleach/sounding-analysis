@@ -13,7 +13,7 @@ use std::ops::Sub;
 pub fn linear_interpolate_sounding(snd: &Sounding, tgt_p: HectoPascal) -> Result<DataRow> {
     let pressure: &[Optioned<HectoPascal>] = snd.pressure_profile();
 
-    // What kind of bracket is this pair of index and pressure points?
+    // What kind of bracket is this?
     enum BracketType {
         Bracket(usize, usize),
         EndEquals(usize),
