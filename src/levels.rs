@@ -13,13 +13,12 @@ use crate::{
 use itertools::izip;
 use metfor::{Celsius, HectoPascal, Meters, FREEZING};
 use optional::Optioned;
-use smallvec::SmallVec;
 
 /// A level in the atmosphere is described by a `DataRow` from a sounding.
 pub type Level = DataRow;
 
 /// A list of levels.
-pub type Levels = SmallVec<[Level; crate::VEC_SIZE]>;
+pub type Levels = Vec<Level>;
 
 /// Find the freezing/melting levels below 500 hPa.
 pub fn freezing_levels(snd: &Sounding) -> Result<Levels> {

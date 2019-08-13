@@ -14,7 +14,6 @@ use metfor::{
     Celsius, CelsiusPKm, HectoPascal, JpKg, Km, Meters, MetersPSec, Quantity, WindUV, FREEZING,
 };
 use optional::Optioned;
-use smallvec::SmallVec;
 
 /// A layer in the atmosphere described by the values at the top and bottom.
 #[derive(Debug, Clone, Copy)]
@@ -26,7 +25,7 @@ pub struct Layer {
 }
 
 /// A list of layers.
-pub type Layers = SmallVec<[Layer; crate::VEC_SIZE]>;
+pub type Layers = Vec<Layer>;
 
 impl Layer {
     /// Get the average lapse rate in C/km
