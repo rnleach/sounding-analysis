@@ -16,8 +16,7 @@ pub fn linear_interpolate_sounding(snd: &Sounding, tgt_p: HectoPascal) -> Result
     // What kind of bracket is this pair of index and pressure points?
     enum BracketType {
         Bracket(usize, usize),
-        LeftEquals(usize),
-        RightEquals(usize),
+        EndEquals(usize),
     }
 
     // Map this pair of slice index and pressure points to a BracketType
@@ -30,9 +29,9 @@ pub fn linear_interpolate_sounding(snd: &Sounding, tgt_p: HectoPascal) -> Result
         if p0 > tgt_p && p1 < tgt_p {
             Some(BracketType::Bracket(i0, i1))
         } else if (p0 - tgt_p).unpack().abs() < std::f64::EPSILON {
-            Some(BracketType::LeftEquals(i0))
+            Some(BracketType::EndEquals(i0))
         } else if (p1 - tgt_p).unpack().abs() < std::f64::EPSILON {
-            Some(BracketType::RightEquals(i1))
+            Some(BracketType::EndEquals(i1))
         } else {
             None
         }
@@ -59,8 +58,7 @@ pub fn linear_interpolate_sounding(snd: &Sounding, tgt_p: HectoPascal) -> Result
                 let row1 = snd.data_row(i1)?;
                 linear_interp_data_rows(row0, row1, tgt_p)
             }
-            BracketType::LeftEquals(i) => snd.data_row(i),
-            BracketType::RightEquals(i) => snd.data_row(i),
+            BracketType::EndEquals(i) => snd.data_row(i),
         })
         // Map to error
         .ok_or(AnalysisError::InvalidInput)
@@ -81,8 +79,7 @@ where
 
     enum BracketType<X, Y> {
         Bracket((X, Y), (X, Y)),
-        LeftEqual((X, Y)),
-        RightEqual((X, Y)),
+        EndEqual((X, Y)),
     }
 
     let make_bracket = |pnt_0, pnt_1| -> Option<BracketType<X, Y>> {
@@ -92,9 +89,9 @@ where
         if (x0 < target_x && x1 > target_x) || (x0 > target_x && x1 < target_x) {
             Some(BracketType::Bracket(pnt_0, pnt_1))
         } else if (x0 - target_x).unpack().abs() < std::f64::EPSILON {
-            Some(BracketType::LeftEqual(pnt_0))
+            Some(BracketType::EndEqual(pnt_0))
         } else if (x1 - target_x).unpack().abs() < std::f64::EPSILON {
-            Some(BracketType::RightEqual(pnt_1))
+            Some(BracketType::EndEqual(pnt_1))
         } else {
             None
         }
@@ -120,8 +117,7 @@ where
                 let (x1, y1) = pnt_1;
                 linear_interp(target_x, x0, x1, y0, y1)
             }
-            BracketType::LeftEqual(pnt) => pnt.1,
-            BracketType::RightEqual(pnt) => pnt.1,
+            BracketType::EndEqual(pnt) => pnt.1,
         });
 
     Optioned::from(value_opt)
