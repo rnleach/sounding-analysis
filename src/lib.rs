@@ -105,7 +105,6 @@ dew point or humidity are often missing (if not totally inaccurate).
 // API
 //
 pub use crate::{
-    analysis::Analysis,
     error::{AnalysisError, Result},
     indexes::{haines, haines_high, haines_low, haines_mid, hot_dry_windy, precipitable_water},
     interpolation::{linear_interpolate, linear_interpolate_sounding},
@@ -144,7 +143,6 @@ pub use crate::sounding::doctest;
 //
 
 // Modules
-mod analysis;
 mod error;
 mod indexes;
 mod interpolation;
