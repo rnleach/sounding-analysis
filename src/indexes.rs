@@ -5,9 +5,10 @@ use crate::{
     interpolation::linear_interpolate_sounding,
     sounding::Sounding,
 };
-use itertools::izip;
+use itertools::{izip, Itertools};
 use metfor::{
-    vapor_pressure_liquid_water, Celsius, HectoPascal, Meters, MetersPSec, Mm, Quantity, WindSpdDir,
+    mixing_ratio, vapor_pressure_liquid_water, Celsius, HectoPascal, Meters, MetersPSec, Mm,
+    Quantity,
 };
 
 /// Precipitable water (mm)
@@ -16,27 +17,22 @@ pub fn precipitable_water(snd: &Sounding) -> Result<Mm> {
     let p_profile = snd.pressure_profile();
     let dp_profile = snd.dew_point_profile();
 
-    let (integrated_mw, _, _) = izip!(p_profile, dp_profile)
-        .filter_map(|pair| {
-            let (p, dp) = pair;
-            if p.is_some() && dp.is_some() {
-                Some((p.unpack(), dp.unpack()))
-            } else {
-                None
-            }
-        })
-        .filter_map(|(p, dp)| metfor::mixing_ratio(dp, p).and_then(|mw| Some((p, mw))))
-        .fold(
-            (0.0, HectoPascal(0.0), 0.0),
-            |(mut acc_mw, prev_p, prev_mw), (p, mw)| {
-                let dp = prev_p - p;
-                if dp > HectoPascal(0.0) {
-                    acc_mw += (mw + prev_mw) * dp.unpack();
-                }
+    let integrated_mw = izip!(p_profile, dp_profile)
+        // Remove levels with missing data
+        .filter(|(p, dp)| p.is_some() && dp.is_some())
+        // Unpack from the Optioned type
+        .map(|(p, dp)| (p.unpack(), dp.unpack()))
+        // Converte dew point to mixing ratio, removing failed levels.
+        .filter_map(|(p, dp)| mixing_ratio(dp, p).and_then(|mw| Some((p, mw))))
+        // View them as pairs for integration with the trapezoid method
+        .tuple_windows::<(_, _)>()
+        // Do the sum for integrating
+        .fold(0.0, |mut acc_mw, ((p0, mw0), (p1, mw1))| {
+            let dp = p0 - p1;
+            acc_mw += (mw0 + mw1) * dp.unpack();
 
-                (acc_mw, p, mw)
-            },
-        );
+            acc_mw
+        });
 
     Ok(Mm(integrated_mw / 9.81 / 997.0 * 100_000.0 / 2.0))
 }
@@ -181,23 +177,18 @@ pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
 
     let (vpd, ws) = izip!(h_profile, t_profile, dp_profile, ws_profile)
         // Remove rows with missing data
-        .filter_map(|(h, t, dp, ws)| {
-            if h.is_some() && t.is_some() && dp.is_some() && ws.is_some() {
-                let WindSpdDir { speed: ws, .. } = ws.unpack();
-                Some((h.unpack(), t.unpack(), dp.unpack(), ws)) // unpack optional::Optioned
-            } else {
-                None
-            }
-        })
+        .filter(|(h, t, dp, ws)| h.is_some() && t.is_some() && dp.is_some() && ws.is_some())
+        // Unpack from the Optioned type
+        .map(|(h, t, dp, ws)| (h.unpack(), t.unpack(), dp.unpack(), ws.unpack().speed))
         // Only look up to 500 m above AGL
         .take_while(|(h, _, _, _)| *h <= elevation + Meters(500.0))
-        // Convert t and dp to VPD
+        // Convert t and dp to VPD, and remove any levels that error on calculating vapor pressure
         .filter_map(|(_, t, dp, ws)| {
             vapor_pressure_liquid_water(t).and_then(|sat_vap| {
                 vapor_pressure_liquid_water(dp).and_then(|vap| Some((sat_vap - vap, ws)))
             })
         })
-        // Convert knots to m/s and unpack all values.
+        // Convert knots to m/s and unpack all values from their Quantity types
         .map(|(vpd, ws)| (vpd.unpack(), MetersPSec::from(ws).unpack()))
         // Choose the max.
         .fold((0.0, 0.0), |(vpd_max, ws_max), (vpd, ws)| {
