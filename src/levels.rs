@@ -4,13 +4,14 @@
 //! and convection, those are found in the `parcel` module.
 use crate::{
     error::{
-        AnalysisError::{InvalidInput, MissingProfile, NoDataProfile, NotEnoughData},
+        AnalysisError::{InvalidInput, MissingProfile, NotEnoughData},
         {AnalysisError, Result},
     },
+    interpolation::{linear_interp, linear_interpolate_sounding},
     layers::Layer,
     sounding::{DataRow, Sounding},
 };
-use itertools::izip;
+use itertools::{izip, Itertools};
 use metfor::{Celsius, HectoPascal, Meters, FREEZING};
 use optional::Optioned;
 
@@ -46,48 +47,32 @@ fn find_temperature_levels(
     t_profile: &[Optioned<Celsius>],
     snd: &Sounding,
 ) -> Result<Levels> {
-    use crate::interpolation::{linear_interp, linear_interpolate_sounding};
-
-    let mut to_return: Levels = Levels::new();
-
-    const TOP_PRESSURE: HectoPascal = HectoPascal(500.0); // don't look above here.
+    const TOP_PRESSURE: HectoPascal = HectoPascal(500.0); // don't look above here
 
     if t_profile.is_empty() || p_profile.is_empty() {
         return Err(AnalysisError::MissingProfile);
     }
 
-    let mut iter = izip!(p_profile, t_profile).filter_map(|pair| {
-        if pair.0.is_some() && pair.1.is_some() {
-            let (p, t) = (pair.0.unpack(), pair.1.unpack());
-            Some((p, t))
-        } else {
-            None
-        }
-    });
+    fn crosses_target(t0: &Celsius, t1: &Celsius, target_t: Celsius) -> bool {
+        (*t0 <= target_t && *t1 >= target_t) || (*t0 >= target_t && *t1 <= target_t)
+    };
 
-    let (bottom_p, bottom_t) = iter.by_ref().next().ok_or(NoDataProfile)?;
-
-    iter
+    izip!(p_profile, t_profile)
+        // Remove levels with missing data
+        .filter(|(p, t)| p.is_some() && t.is_some())
+        // Unwrap from the Optioned type
+        .map(|(p, t)| (p.unpack(), t.unpack()))
         // Don't bother looking above a certain level
         .take_while(|&(p, _)| p >= TOP_PRESSURE)
-        // Reduce to get the temperature levels
-        .fold(
-            Ok((bottom_p, bottom_t)),
-            |acc: Result<(HectoPascal, Celsius)>, (p, t)| {
-                if let Ok((last_p, last_t)) = acc {
-                    if last_t <= target_t && t > target_t || last_t > target_t && t <= target_t {
-                        let target_p = linear_interp(target_t, last_t, t, last_p, p);
-                        to_return.push(linear_interpolate_sounding(snd, target_p)?);
-                    }
-                    Ok((p, t))
-                } else {
-                    // Pass the error through
-                    acc
-                }
-            },
-        )
-        // Swap my vector into the result
-        .map(|_| to_return)
+        // Look at them in pairs to find crossing the threshold
+        .tuple_windows::<(_, _)>()
+        // Filter out any pair that is not crossing the desired temperature level
+        .filter(|((_p0, t0), (_p1, t1))| crosses_target(t0, t1, target_t))
+        // Interpolate crossings to get pressures values at the levels we want.
+        .map(|((p0, t0), (p1, t1))| linear_interp(target_t, t0, t1, p0, p1))
+        // Perform the interpolation on the full sounding to get the desired DataRow
+        .map(|p_level| linear_interpolate_sounding(snd, p_level))
+        .collect()
 }
 
 /// Maximum wet bulb temperature aloft.
@@ -111,21 +96,16 @@ fn max_t_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<Level>
     }
 
     izip!(0usize.., p_profile, t_profile)
-        .filter_map(|triple| {
-            if triple.1.is_some() && triple.2.is_some() {
-                let (i, p, t) = (triple.0, triple.1.unpack(), triple.2.unpack());
-                if p >= TOP_PRESSURE {
-                    Some((i, t))
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
+        // Filter out levels with missing values
+        .filter(|(_, p, t)| p.is_some() && t.is_some())
+        // unwrap the Optioned type
+        .map(|(i, p, t)| (i, p.unpack(), t.unpack()))
+        // Only look up to a certain level
+        .take_while(|&(_, p, _)| p >= TOP_PRESSURE)
+        // fold to get the maximum value
         .fold(
             Err(AnalysisError::NotEnoughData),
-            |acc: Result<_>, (i, t)| {
+            |acc: Result<_>, (i, _, t)| {
                 if let Ok((_, mx_t)) = acc {
                     if t > mx_t {
                         Ok((i, t))
@@ -153,6 +133,7 @@ pub fn max_wet_bulb_in_layer(snd: &Sounding, lyr: &Layer) -> Result<Level> {
     max_t_in_layer(snd, snd.wet_bulb_profile(), lyr)
 }
 
+#[inline]
 fn max_t_in_layer(snd: &Sounding, t_profile: &[Optioned<Celsius>], lyr: &Layer) -> Result<Level> {
     let (bottom_p, top_p) = if lyr.bottom.pressure.is_some() && lyr.top.pressure.is_some() {
         (lyr.bottom.pressure.unpack(), lyr.top.pressure.unpack())
@@ -167,21 +148,18 @@ fn max_t_in_layer(snd: &Sounding, t_profile: &[Optioned<Celsius>], lyr: &Layer) 
     }
 
     izip!(0usize.., p_profile, t_profile)
-        .filter_map(|triple| {
-            if triple.1.is_some() && triple.2.is_some() {
-                let (i, p, t) = (triple.0, triple.1.unpack(), triple.2.unpack());
-                if p >= top_p && p <= bottom_p {
-                    Some((i, t))
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
+        // Remove levels with missing values
+        .filter(|(_, p, t)| p.is_some() && t.is_some())
+        // Unwrap the Optioned type
+        .map(|(i, p, t)| (i, p.unpack(), t.unpack()))
+        // Skip values below the bottom of the layer
+        .skip_while(|(_, p, _)| *p > bottom_p)
+        // Only look up to the top of the layer
+        .take_while(|(_, p, _)| *p >= top_p)
+        // fold to find the max value
         .fold(
             Err(AnalysisError::NotEnoughData),
-            |acc: Result<_>, (i, t)| {
+            |acc: Result<_>, (i, _, t)| {
                 if let Ok((_, mx_t)) = acc {
                     if t > mx_t {
                         Ok((i, t))
@@ -208,49 +186,27 @@ pub(crate) fn height_level(tgt_height: Meters, snd: &Sounding) -> Result<Level> 
         return Err(MissingProfile);
     }
 
+    // Assumes h0 < h1, ie iterate from bottom to top of sounding
+    fn is_cross_over(h0: &Meters, h1: &Meters, tgt_height: Meters) -> bool {
+        debug_assert!(h0 <= h1);
+        *h0 <= tgt_height && *h1 >= tgt_height
+    }
+
     izip!(p_profile, h_profile)
-        // filter out levels with missing data
-        .filter_map(|pair| {
-            if pair.0.is_some() && pair.1.is_some() {
-                let (p, h) = (pair.0.unpack(), pair.1.unpack());
-                Some((p, h))
-            } else {
-                None
-            }
-        })
-        // find the pressure at the target geopotential height, to be used later for interpolation.
-        .fold(
-            Ok((HectoPascal(std::f64::MAX), Meters(0.0f64), None)),
-            |acc: Result<(_, _, Option<_>)>, (p, h)| {
-                match acc {
-                    // We have not yet found the target pressure to interpolate everything to, so
-                    // check the current values.
-                    Ok((last_p, last_h, None)) => {
-                        if h > tgt_height {
-                            // If we finally jumped above our target, we have it bracketed, interpolate
-                            // and find target pressure.
-                            let tgt_p = crate::interpolation::linear_interp(
-                                tgt_height, last_h, h, last_p, p,
-                            );
-                            Ok((
-                                HectoPascal(std::f64::MAX),
-                                Meters(std::f64::MAX),
-                                Some(tgt_p),
-                            ))
-                        } else {
-                            // Keep climbing up the profile.
-                            Ok((p, h, None))
-                        }
-                    }
-                    // We have found the target pressure on the last iteration, pass it through
-                    ok @ Ok((_, _, Some(_))) => ok,
-                    // There was an error, keep passing it through.
-                    e @ Err(_) => e,
-                }
-            },
-        )
-        // Extract the target pressure
-        .and_then(|(_, _, opt)| opt.ok_or(NotEnoughData))
-        // Do the interpolation.
-        .and_then(|target_p| crate::interpolation::linear_interpolate_sounding(snd, target_p))
+        // Filter out levels with missing data
+        .filter(|(p, h)| p.is_some() && h.is_some())
+        // Unpack from the Optioned type
+        .map(|(p, h)| (p.unpack(), h.unpack()))
+        // look at levels in pairs to find when the data crosses the desired height
+        .tuple_windows::<(_, _)>()
+        // Filter out all pairs that don't have a crossover
+        .filter(|((_p0, h0), (_p1, h1))| is_cross_over(h0, h1, tgt_height))
+        // Should be only one (if any) pairs remaining, and it will bracket the desired level
+        .nth(0) // now we have an option
+        // Map the bracket into the pressure at the target height via interpolation
+        .map(|((p0, h0), (p1, h1))| linear_interp(tgt_height, h0, h1, p0, p1))
+        // map the option into a result
+        .ok_or(AnalysisError::InvalidInput)
+        // Interpolate the result
+        .and_then(|level_p| linear_interpolate_sounding(snd, level_p))
 }
