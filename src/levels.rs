@@ -4,7 +4,7 @@
 //! and convection, those are found in the `parcel` module.
 use crate::{
     error::{
-        AnalysisError::{InvalidInput, MissingProfile, NotEnoughData},
+        AnalysisError::{InvalidInput, MissingProfile},
         {AnalysisError, Result},
     },
     interpolation::{linear_interp, linear_interpolate_sounding},
