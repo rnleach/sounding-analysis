@@ -1,5 +1,9 @@
-//! This module finds significant layers such as the dendritic snow growth zone, the hail growth
-//! zone, and inversions.
+//! This module finds significant layers.
+//!
+//! Examples are the dendritic snow growth zone, the hail growth zone, and inversions.
+//!
+//! The `Layer` type also provides some methods for doing basic analysis on a given layer.
+//!
 use crate::sounding::DataRow;
 use metfor::{CelsiusPKm, HectoPascal, Km, Meters, MetersPSec, Quantity, WindUV};
 

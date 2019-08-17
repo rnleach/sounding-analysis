@@ -1,12 +1,13 @@
 use super::{Layer, Layers};
 use crate::{
     error::{
-        AnalysisError::{InvalidInput, MissingProfile, NoDataProfile},
+        AnalysisError::{InvalidInput, MissingProfile},
         {AnalysisError, Result},
     },
+    interpolation::{linear_interp, linear_interpolate_sounding},
     sounding::Sounding,
 };
-use itertools::izip;
+use itertools::{izip, Itertools};
 use metfor::{Celsius, HectoPascal, FREEZING};
 use optional::Optioned;
 
@@ -26,15 +27,13 @@ pub fn hail_growth_zone(snd: &Sounding) -> Result<Layers> {
     temperature_layer(snd, Celsius(-10.0), Celsius(-30.0), HectoPascal(1.0))
 }
 
+#[inline]
 fn temperature_layer(
     snd: &Sounding,
     warm_side: Celsius,
     cold_side: Celsius,
     top_pressure: HectoPascal,
 ) -> Result<Layers> {
-    use crate::interpolation::{linear_interp, linear_interpolate_sounding};
-    let mut to_return: Layers = Layers::new();
-
     let t_profile = snd.temperature_profile();
     let p_profile = snd.pressure_profile();
 
@@ -42,93 +41,100 @@ fn temperature_layer(
         return Err(AnalysisError::MissingProfile);
     }
 
+    enum Crossing {
+        EnterLayer(HectoPascal),
+        ExitLayer(HectoPascal),
+        // The first element must be greater than the second!
+        OverLayer(HectoPascal, HectoPascal),
+        InLayer(HectoPascal),
+    }
+
+    fn to_crossing_type(
+        pnt0: (HectoPascal, Celsius),
+        pnt1: (HectoPascal, Celsius),
+        warm_side: Celsius,
+        cold_side: Celsius,
+    ) -> Option<Crossing> {
+        let (p0, t0) = pnt0;
+        let (p1, t1) = pnt1;
+
+        debug_assert!(p0 >= p1, "Pressure must decrease with height.");
+
+        if t0 < cold_side && t1 >= cold_side && t1 <= warm_side {
+            // Crossing into a layer from the cold side
+            let cold_p = linear_interp(cold_side, t0, t1, p0, p1);
+            Some(Crossing::EnterLayer(cold_p))
+        } else if t0 > warm_side && t1 <= warm_side && t1 >= cold_side {
+            // Crossing into layer from the warm side
+            let warm_p = linear_interp(warm_side, t0, t1, p0, p1);
+            Some(Crossing::EnterLayer(warm_p))
+        } else if (t0 < cold_side && t1 > warm_side) || (t0 > warm_side && t1 < cold_side) {
+            // Crossed over a layer
+            let warm_p = linear_interp(warm_side, t0, t1, p0, p1);
+            let cold_p = linear_interp(cold_side, t0, t1, p0, p1);
+            Some(Crossing::OverLayer(warm_p.max(cold_p), warm_p.min(cold_p)))
+        } else if t0 > cold_side && t0 < warm_side && t1 > warm_side {
+            // Crossed out of a layer into the warm side
+            let warm_p = linear_interp(warm_side, t0, t1, p0, p1);
+            Some(Crossing::ExitLayer(warm_p))
+        } else if t0 > cold_side && t0 < warm_side && t1 < cold_side {
+            // Crossed out of a layer into the cold side
+            let cold_p = linear_interp(cold_side, t0, t1, p0, p1);
+            Some(Crossing::ExitLayer(cold_p))
+        } else if t0 >= cold_side && t0 <= warm_side && t1 >= cold_side && t1 <= warm_side {
+            // We're in the midst of a layer
+            Some(Crossing::InLayer(p0))
+        } else {
+            None
+        }
+    }
+
     izip!(p_profile, t_profile)
-        // remove levels with missing values
-        .filter_map(|pair| {
-            if pair.0.is_some() && pair.1.is_some() {
-                let (p, t) = (pair.0.unpack(), pair.1.unpack());
-                Some((p, t))
-            } else {
-                None
+        // Remove levels with missing values
+        .filter(|(p, t)| p.is_some() && t.is_some())
+        // Unwrap from the `Optioned` type
+        .map(|(p, t)| (p.unpack(), t.unpack()))
+        // Only take values up to a certain level
+        .take_while(move |&(p, _)| p > top_pressure)
+        // Make adjacent points into pairs so we can look at them two at a time
+        .tuple_windows::<(_, _)>()
+        // Map to a crossing type and filter out those that we don't need
+        .filter_map(|(pnt0, pnt1)| to_crossing_type(pnt0, pnt1, warm_side, cold_side))
+        // Scan the iterator and coalesce crossings into levels
+        .scan(None, |bottom_p: &mut Option<_>, crossing_type: Crossing| {
+            match crossing_type {
+                Crossing::InLayer(p) => {
+                    if bottom_p.is_none() {
+                        // to get here we started out in the layer and never had to CROSS into it
+                        *bottom_p = Some(p);
+                    }
+                    // Yield this to indicate we're not done iterating, but we don't yet have a
+                    // pair of values (top and bottom) to create a layer from.
+                    Some(None)
+                }
+                Crossing::EnterLayer(p) => {
+                    *bottom_p = Some(p);
+                    Some(None)
+                }
+                Crossing::ExitLayer(top_p) => {
+                    debug_assert!(bottom_p.is_some());
+                    Some(Some((bottom_p.take().unwrap(), top_p)))
+                }
+                Crossing::OverLayer(p0, p1) => {
+                    debug_assert!(bottom_p.is_none());
+                    Some(Some((p0, p1)))
+                }
             }
         })
-        // Stop above a certain level
-        .take_while(|&(p, _)| p > top_pressure)
-        // find temperature layers
-        .fold(
-            Ok((None, None, None)),
-            |acc: Result<(Option<HectoPascal>, Option<Celsius>, Option<_>)>, (p, t)| {
-                match acc {
-                    // We're not in a target layer currently
-                    Ok((Some(last_p), Some(last_t), None)) => {
-                        if last_t < cold_side && t >= cold_side && t <= warm_side {
-                            // We crossed into a target layer from the cold side
-                            let target_p = linear_interp(cold_side, last_t, t, last_p, p);
-                            let bottom = linear_interpolate_sounding(snd, target_p)?;
-                            Ok((Some(p), Some(t), Some(bottom)))
-                        } else if last_t > warm_side && t >= cold_side && t <= warm_side {
-                            // We crossed into a target layer from the warm side
-                            let target_p = linear_interp(warm_side, last_t, t, last_p, p);
-                            let bottom = linear_interpolate_sounding(snd, target_p)?;
-                            Ok((Some(p), Some(t), Some(bottom)))
-                        } else if (last_t < cold_side && t >= warm_side)
-                            || (last_t > warm_side && t <= cold_side)
-                        {
-                            // We crossed completely through a target layer
-                            let warm_p = linear_interp(warm_side, last_t, t, last_p, p);
-                            let cold_p = linear_interp(cold_side, last_t, t, last_p, p);
-                            let bottom = linear_interpolate_sounding(snd, warm_p.max(cold_p))?;
-                            let top = linear_interpolate_sounding(snd, warm_p.min(cold_p))?;
-                            to_return.push(Layer { bottom, top });
-                            Ok((Some(p), Some(t), None))
-                        } else {
-                            // We weren't in a target layer
-                            Ok((Some(p), Some(t), None))
-                        }
-                    }
-
-                    // We're in a target layer, let's see if we passed out
-                    Ok((Some(last_p), Some(last_t), Some(bottom))) => {
-                        if t < cold_side {
-                            // We crossed out of a target layer on the cold side
-                            let target_p = linear_interp(cold_side, last_t, t, last_p, p);
-                            let top = linear_interpolate_sounding(snd, target_p)?;
-                            to_return.push(Layer { bottom, top });
-                            Ok((Some(p), Some(t), None))
-                        } else if t > warm_side {
-                            // We crossed out of a target layer on the warm side
-                            let target_p = linear_interp(warm_side, last_t, t, last_p, p);
-                            let top = linear_interpolate_sounding(snd, target_p)?;
-                            to_return.push(Layer { bottom, top });
-                            Ok((Some(p), Some(t), None))
-                        } else {
-                            // We're still in a target layer
-                            Ok((Some(p), Some(t), Some(bottom)))
-                        }
-                    }
-
-                    // Propagate errors
-                    e @ Err(_) => e,
-
-                    // First row, lets get started
-                    Ok((None, None, None)) => {
-                        if t <= warm_side && t >= cold_side {
-                            // Starting out in a target layer
-                            let dr = linear_interpolate_sounding(snd, p)?;
-                            Ok((Some(p), Some(t), Some(dr)))
-                        } else {
-                            // Not starting out in a target layer
-                            Ok((Some(p), Some(t), None))
-                        }
-                    }
-
-                    // No other combinations are possible
-                    _ => unreachable!(),
-                }
-            },
-        )
-        // Swap my list into the result.
-        .and_then(|_| Ok(to_return))
+        // Filter out and unwrap steps that didn't yield a complete layer
+        .filter_map(|opt| opt)
+        // Interpolate the sounding and create a layer.
+        .map(|(bottom_p, top_p)| {
+            linear_interpolate_sounding(snd, bottom_p).and_then(|bottom| {
+                linear_interpolate_sounding(snd, top_p).map(|top| Layer { bottom, top })
+            })
+        }) // Result<Layer>
+        .collect()
 }
 
 /// Assuming it is below freezing at the surface, this will find the warm layers aloft using the
@@ -143,56 +149,74 @@ pub fn warm_wet_bulb_layer_aloft(snd: &Sounding) -> Result<Layers> {
     warm_layer_aloft(snd, snd.wet_bulb_profile())
 }
 
+#[inline]
 fn warm_layer_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<Layers> {
-    let mut to_return: Layers = Layers::new();
-
     let p_profile = snd.pressure_profile();
 
     if t_profile.is_empty() || p_profile.is_empty() {
         return Err(AnalysisError::MissingProfile);
     }
 
+    enum Crossing {
+        IntoWarmLayer(HectoPascal),
+        OutOfWarmLayer(HectoPascal),
+    }
+
+    fn crossing_type(
+        pnt0: (HectoPascal, Celsius),
+        pnt1: (HectoPascal, Celsius),
+    ) -> Option<Crossing> {
+        let (p0, t0) = pnt0;
+        let (p1, t1) = pnt1;
+
+        if t0 < FREEZING && t1 >= FREEZING {
+            let crossing_p = linear_interp(FREEZING, t0, t1, p0, p1);
+            Some(Crossing::IntoWarmLayer(crossing_p))
+        } else if t0 >= FREEZING && t1 < FREEZING {
+            let crossing_p = linear_interp(FREEZING, t0, t1, p0, p1);
+            Some(Crossing::OutOfWarmLayer(crossing_p))
+        } else {
+            None
+        }
+    }
+
     izip!(p_profile, t_profile)
-        // Remove levels without pressure AND temperature data
-        .filter_map(|pair| {
-            if pair.0.is_some() && pair.1.is_some() {
-                let (p, t) = (pair.0.unpack(), pair.1.unpack());
-                Some((p, t))
-            } else {
-                None
-            }
-        })
+        // Remove levels with any missing temperature or pressure data
+        .filter(|(p, t)| p.is_some() && t.is_some())
+        // Unpack from the `Optioned` type
+        .map(|(p, t)| (p.unpack(), t.unpack()))
         // Ignore anything above 500 hPa, extremely unlikely for a warm layer up there.
         .take_while(|&(p, _)| p > HectoPascal(500.0))
-        // Find the warm layers!
-        .fold(
-            Ok((HectoPascal(std::f64::MAX), Celsius(std::f64::MAX), None)),
-            |last_iter_res: Result<(_, _, _)>, (p, t)| {
-                let (last_p, last_t, mut bottom) = last_iter_res?;
-                if last_t <= FREEZING && t > FREEZING && bottom.is_none() {
-                    // Entering a warm layer.
-                    let bottom_p =
-                        crate::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
-                    bottom = Some(crate::interpolation::linear_interpolate_sounding(
-                        snd, bottom_p,
-                    )?);
+        // Skip any levels that start out in a surface based warm layer
+        .skip_while(|&(_, t)| t > FREEZING)
+        // Pair them up to look at two adjacent points at a time
+        .tuple_windows::<(_, _)>()
+        // Map into the crossing type, and filter out any levels that aren't a crossing
+        .filter_map(|(pnt0, pnt1)| crossing_type(pnt0, pnt1))
+        // Scan the crossings to create layers
+        .scan(
+            None,
+            |bottom: &mut Option<_>, crossing: Crossing| match crossing {
+                Crossing::IntoWarmLayer(bottom_p) => {
+                    debug_assert!(bottom.is_none());
+                    *bottom = Some(bottom_p);
+                    Some(None)
                 }
-                if bottom.is_some() && last_t > FREEZING && t <= FREEZING {
-                    // Crossed out of a warm layer
-                    let top_p = crate::interpolation::linear_interp(FREEZING, last_t, t, last_p, p);
-                    let top = crate::interpolation::linear_interpolate_sounding(snd, top_p)?;
-                    {
-                        let bottom = bottom.unwrap();
-                        to_return.push(Layer { bottom, top });
-                    }
-                    bottom = None;
+                Crossing::OutOfWarmLayer(top_p) => {
+                    debug_assert!(bottom.is_some());
+                    Some(Some((bottom.take().unwrap(), top_p)))
                 }
-
-                Ok((p, t, bottom))
             },
-        )?;
-
-    Ok(to_return)
+        )
+        // Filter out and unwrap steps that didn't yield a complete layer
+        .filter_map(|opt| opt)
+        // Interpolate the sounding and create a layer.
+        .map(|(bottom_p, top_p)| {
+            linear_interpolate_sounding(snd, bottom_p).and_then(|bottom| {
+                linear_interpolate_sounding(snd, top_p).map(|top| Layer { bottom, top })
+            })
+        }) // Result<Layer>
+        .collect()
 }
 
 /// Assuming a warm layer aloft given by `warm_layers`, measure the cold surface layer.
@@ -217,32 +241,20 @@ fn cold_surface_layer(
     }
 
     izip!(0usize.., p_profile, t_profile)
-        // Remove levels with missing data
-        .filter_map(|triplet| {
-            if triplet.1.is_some() && triplet.2.is_some() {
-                let (i, t) = (triplet.0, triplet.2.unpack());
-                Some((i, t))
-            } else {
-                None
-            }
-        })
-        // Map it to an error if the temperature is above freezing.
-        .map(|(i, t)| {
-            if t > FREEZING {
-                Err(InvalidInput)
-            } else {
-                Ok(i)
-            }
-        })
-        // Only take the first one, we want the surface layer, or the lowest layer available
-        .next()
-        // If there is nothing to get, there was no valid data in the profile.
-        .unwrap_or(Err(NoDataProfile))
-        // Map the result into a data row!
-        .and_then(|index| snd.data_row(index).ok_or(InvalidInput))
+        // Remove layers with missing data
+        .filter(|(_, p, t)| p.is_some() && t.is_some())
+        // Unpack from the `Optioned` type and discard the pressure, we don't need it anymore
+        .map(|(i, _, t)| (i, t.unpack()))
+        // For a surface based cold layer, we must start out below zero,
+        .take_while(|(_, t)| *t <= FREEZING)
+        // We only want the first one, the bottom of the layer, if it exists at all
+        .nth(0) // Option<(i, t)>
+        // translate it to a full data row in the sounding
+        .and_then(|(i, _)| snd.data_row(i)) // Option<DataRow>
+        // Add the top level, if it exists
+        .and_then(|bottom| warm_layers.get(0).map(|lyr| (bottom, lyr.bottom)))
         // Package it up in a layer
-        .map(|bottom| Layer {
-            bottom,
-            top: warm_layers[0].bottom,
-        })
+        .map(|(bottom, top)| Layer { bottom, top }) // Option<Layer>
+        // Transform from option into result
+        .ok_or(InvalidInput)
 }
