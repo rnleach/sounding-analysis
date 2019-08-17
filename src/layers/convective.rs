@@ -23,7 +23,7 @@ pub fn effective_inflow_layer(snd: &Sounding) -> Option<Layer> {
         })
         // Skip levels until we get one that meets criteria
         .skip_while(|(_, cape, cin)| *cape < JpKg(100.0) || *cin < JpKg(-250.0))
-        // Take levels as long as the meet criteria
+        // Take levels as long as they meet criteria
         .take_while(|(_, cape, cin)| *cape >= JpKg(100.0) && *cin >= JpKg(-250.0))
         // Discard the cape and cin values, we only need the rows
         .map(|(row, _, _)| row);
