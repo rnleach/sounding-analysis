@@ -1,9 +1,7 @@
 use super::Layer;
 use crate::{
-    error::{
-        AnalysisError::{InvalidInput, MissingValue},
-        Result,
-    },
+    error::{AnalysisError::MissingValue, Result},
+    interpolation::linear_interpolate_sounding,
     levels::height_level,
     sounding::{DataRow, Sounding},
 };
@@ -38,16 +36,8 @@ pub fn layer_agl(snd: &Sounding, meters_agl: Meters) -> Result<Layer> {
 pub fn pressure_layer(snd: &Sounding, bottom_p: HectoPascal, top_p: HectoPascal) -> Result<Layer> {
     debug_assert!(bottom_p > top_p);
 
-    let sfc_pressure = snd
-        .surface_as_data_row()
-        .and_then(|row| row.pressure.into_option());
-
-    if sfc_pressure.is_some() && sfc_pressure.unwrap() < bottom_p {
-        return Err(InvalidInput);
-    }
-
-    let bottom = crate::interpolation::linear_interpolate_sounding(snd, bottom_p)?;
-    let top = crate::interpolation::linear_interpolate_sounding(snd, top_p)?;
+    let bottom = linear_interpolate_sounding(snd, bottom_p)?;
+    let top = linear_interpolate_sounding(snd, top_p)?;
 
     Ok(Layer { bottom, top })
 }
