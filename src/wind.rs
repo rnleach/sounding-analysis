@@ -11,14 +11,14 @@ use std::iter::once;
 
 /// Calculate the mean wind in a layer.
 ///
-/// This is not the pressure weighted mean.
+/// This is NOT the pressure weighted mean.
 ///
 pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
     let height = snd.height_profile();
     let wind = snd.wind_profile();
 
-    let max_hgt = layer.top.height.ok_or(AnalysisError::MissingProfile)?;
-    let min_hgt = layer.bottom.height.ok_or(AnalysisError::MissingProfile)?;
+    let max_hgt = layer.top.height.ok_or(AnalysisError::MissingValue)?;
+    let min_hgt = layer.bottom.height.ok_or(AnalysisError::MissingValue)?;
 
     let bottom_wind = layer.bottom.wind;
     let top_wind = layer.top.wind;
@@ -93,13 +93,9 @@ where
 
     izip!(height, wind)
         // Filter out levels with missing values
-        .filter_map(|(h, w)| {
-            if let (Some(h), Some(w)) = (h.into_option(), w.into_option()) {
-                Some((h, w))
-            } else {
-                None
-            }
-        })
+        .filter(|(h, w)| h.is_some() && w.is_some())
+        // Unwrap from the `Optioned` type
+        .map(|(h, w)| (h.unpack(), w.unpack()))
         // Convert the wind and unpack it, subtract the storm motion.
         .map(|(h, w)| {
             let WindUV { u, v }: WindUV<MetersPSec> = From::<WindSpdDir<Knots>>::from(w);
