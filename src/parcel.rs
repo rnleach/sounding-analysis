@@ -7,7 +7,7 @@ use crate::{
     profile::equivalent_potential_temperature,
     sounding::{DataRow, Sounding},
 };
-use itertools::izip;
+use itertools::{izip, Itertools};
 use metfor::{self, Celsius, HectoPascal, Kelvin, Quantity};
 use optional::Optioned;
 
@@ -82,17 +82,15 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
         // Check to make sure we got one, return error if not.
         .ok_or(AnalysisError::NoDataProfile)?;
 
+    let top_p = bottom_p - HectoPascal(100.0);
+
     let (sum_p, sum_t, sum_mw) = izip!(press, t, dp)
         // remove levels with missing values
-        .filter_map(|(p, t, dp)| {
-            if p.is_some() && t.is_some() && dp.is_some() {
-                Some((p.unpack(), t.unpack(), dp.unpack()))
-            } else {
-                None
-            }
-        })
+        .filter(|(p, t, dp)| p.is_some() && t.is_some() && dp.is_some())
+        // Unpack from the `Optioned` type
+        .map(|(p, t, dp)| (p.unpack(), t.unpack(), dp.unpack()))
         // only go up 100 hPa above the lowest level
-        .take_while(|&(p, _, _)| p >= bottom_p - HectoPascal(100.0))
+        .take_while(|&(p, _, _)| p >= top_p)
         // Get theta
         .map(|(p, t, dp)| (p, dp, metfor::theta(p, t)))
         // convert to mw
@@ -179,23 +177,12 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
         - HectoPascal(300.0);
 
     let (idx, _) = izip!(0.., press, theta_e)
-        .take_while(|&(_, press_opt, _)| {
-            if press_opt.is_some() {
-                press_opt.unpack() >= top_pressure
-            } else {
-                true // Don't stop just because one is missing or the none value
-            }
-        })
-        .filter_map(|(idx, _, theta_e_opt)| {
-            if theta_e_opt.is_some() {
-                Some((idx, theta_e_opt.unpack()))
-            } else {
-                None
-            }
-        })
+        .filter(|(_, p, theta_e)| p.is_some() && theta_e.is_some())
+        .map(|(i, p, theta_e)| (i, p.unpack(), theta_e.unpack()))
+        .take_while(|&(_, p, _)| p >= top_pressure)
         .fold(
             (::std::usize::MAX, metfor::ABSOLUTE_ZERO),
-            |(max_idx, max_val), (i, theta_e)| {
+            |(max_idx, max_val), (i, _, theta_e)| {
                 if theta_e > max_val {
                     (i, theta_e)
                 } else {
@@ -204,9 +191,9 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
             },
         );
 
-    let row = snd.data_row(idx).ok_or(AnalysisError::NoDataProfile)?;
-
-    Parcel::from_datarow(row).ok_or(AnalysisError::MissingValue)
+    snd.data_row(idx)
+        .and_then(Parcel::from_datarow)
+        .ok_or(AnalysisError::MissingValue)
 }
 
 /// Get the convective parcel - this is the surface parcel that will rise without any lifting.
@@ -225,9 +212,12 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
     let temperature = snd.temperature_profile();
 
     let (tgt_p, tgt_t) = izip!(pressure, temperature)
+        // Filter out levels with missing values
+        .filter(|(p, t)| p.is_some() && t.is_some())
+        // Unpack from the `Optioned` type
+        .map(|(p, t)| (p.unpack(), t.unpack()))
+        // Convert to mixing ratio and filter out any errors.
         .filter_map(|(p, t)| {
-            let p = p.into_option()?;
-            let t = t.into_option()?;
             let mw = metfor::mixing_ratio(t, p)?;
 
             Some((p, t, mw))
@@ -235,30 +225,19 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
         // Get past a cool surface layer where mw < tgt_mw possible due to using a mixed parcel for
         // the target mw in combination with a surface based inversion.
         .skip_while(|(_, _, mw)| *mw <= tgt_mw)
-        // Scan to find the level where the environmental mixing ratio becomes less than our parcel
-        // (surface or mixed layer parcel) mixing ratio. This is the CCL, the level where a cloud
-        // first forms.
-        .scan((0.0, 0.0, 0.0), |(old_p, old_t, old_mw), (p, t, mw)| {
-            let result = if mw <= tgt_mw && *old_mw >= tgt_mw {
-                // found the crossing
-                let tgt_p = HectoPascal(linear_interp(tgt_mw, *old_mw, mw, *old_p, p.unpack()));
-                let tgt_t = Celsius(linear_interp(tgt_mw, *old_mw, mw, *old_t, t.unpack()));
-
-                Some(Some((tgt_p, tgt_t)))
+        // Look at them in pairs to detect a crossing
+        .tuple_windows::<(_, _)>()
+        // Look for a crossing, filter out all the rest.
+        .filter_map(|((p0, t0, mw0), (p1, t1, mw1))| {
+            if mw0 >= tgt_mw && mw1 <= tgt_mw {
+                let tgt_p = linear_interp(tgt_mw, mw0, mw1, p0, p1);
+                let tgt_t = linear_interp(tgt_mw, mw0, mw1, t0, t1);
+                Some((tgt_p, tgt_t))
             } else {
-                Some(None)
-            };
-
-            // save these as the new ones
-            *old_p = p.unpack();
-            *old_t = t.unpack();
-            *old_mw = mw;
-
-            result
+                None
+            }
         })
-        // Each layer that is not the CCL will be a Some(None), so skip past it
-        .filter_map(|opt_opt| opt_opt)
-        // Grab the first (and only) layer where the mixing ratios meet.
+        // Take the first (and probably only) one, if it exists.
         .nth(0)
         // Probably a bad choice to use an error to signal this, but it is impossible to tell if
         // we never found it because there wasn't enough data, or it just didn't exist.
@@ -296,21 +275,13 @@ pub fn average_parcel(snd: &Sounding, layer: &Layer) -> Result<Parcel> {
     let top_p = layer.top.pressure.ok_or(AnalysisError::NoDataProfile)?;
 
     let (sum_p, sum_t, sum_mw, count) = izip!(press, t, dp)
-        // remove levels with missing values
-        .filter_map(|(p, t, dp)| {
-            if p.is_some() && t.is_some() && dp.is_some() {
-                Some((p.unpack(), t.unpack(), dp.unpack()))
-            } else {
-                None
-            }
-        })
+        .filter(|(p, t, dp)| p.is_some() && t.is_some() && dp.is_some())
+        // Unpack from the `Optioned` type
+        .map(|(p, t, dp)| (p.unpack(), t.unpack(), dp.unpack()))
         .skip_while(|&(p, _, _)| p > bottom_p)
         .take_while(|&(p, _, _)| p >= top_p)
-        // Get theta
         .map(|(p, t, dp)| (p, dp, metfor::theta(p, t)))
-        // convert to mw
         .filter_map(|(p, dp, th)| metfor::mixing_ratio(dp, p).and_then(|mw| Some((p, th, mw))))
-        // calculate the sums and count needed for the average
         .fold(
             (HectoPascal(0.0), 0.0f64, 0.0f64, 0),
             |acc, (p, theta, mw)| {
