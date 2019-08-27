@@ -3,7 +3,7 @@
 use crate::{
     error::{AnalysisError, Result},
     parcel::{convective_parcel, lowest_level_parcel, mixed_layer_parcel, Parcel},
-    parcel_profile::{find_parcel_start_data, ParcelAnalysis},
+    parcel_profile::{find_parcel_start_data, ParcelAscentAnalysis},
     sounding::Sounding,
 };
 use itertools::izip;
@@ -283,7 +283,7 @@ fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<(JpKg, bool)> {
 /// is being driven by latent heat release.
 ///
 /// Returns a tuple with `(dry_cape, wet_cape)`
-pub fn partition_cape(pa: &ParcelAnalysis) -> Result<(JpKg, JpKg)> {
+pub fn partition_cape(pa: &ParcelAscentAnalysis) -> Result<(JpKg, JpKg)> {
     let lcl = pa.lcl_pressure().ok_or(AnalysisError::MissingValue)?;
     let el = pa.el_pressure().ok_or(AnalysisError::MissingValue)?;
 

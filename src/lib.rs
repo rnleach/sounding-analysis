@@ -122,7 +122,7 @@ pub use crate::{
         mixed_layer_parcel, most_unstable_parcel, pressure_parcel, surface_parcel, Parcel,
     },
     parcel_profile::{
-        dcape, lift_parcel, mix_down, robust_convective_parcel, ParcelAnalysis, ParcelProfile,
+        dcape, lift_parcel, mix_down, robust_convective_parcel, ParcelAscentAnalysis, ParcelProfile,
     },
     profile::{
         equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,
