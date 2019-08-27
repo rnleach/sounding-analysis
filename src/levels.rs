@@ -53,8 +53,9 @@ fn find_temperature_levels(
         return Err(AnalysisError::MissingProfile);
     }
 
-    fn crosses_target(t0: &Celsius, t1: &Celsius, target_t: Celsius) -> bool {
-        (*t0 <= target_t && *t1 >= target_t) || (*t0 >= target_t && *t1 <= target_t)
+    #[inline]
+    fn crosses_target(t0: Celsius, t1: Celsius, target_t: Celsius) -> bool {
+        (t0 <= target_t && t1 >= target_t) || (t0 >= target_t && t1 <= target_t)
     };
 
     izip!(p_profile, t_profile)
@@ -67,7 +68,7 @@ fn find_temperature_levels(
         // Look at them in pairs to find crossing the threshold
         .tuple_windows::<(_, _)>()
         // Filter out any pair that is not crossing the desired temperature level
-        .filter(|((_p0, t0), (_p1, t1))| crosses_target(t0, t1, target_t))
+        .filter(|&((_p0, t0), (_p1, t1))| crosses_target(t0, t1, target_t))
         // Interpolate crossings to get pressures values at the levels we want.
         .map(|((p0, t0), (p1, t1))| linear_interp(target_t, t0, t1, p0, p1))
         // Perform the interpolation on the full sounding to get the desired DataRow
@@ -187,9 +188,10 @@ pub(crate) fn height_level(tgt_height: Meters, snd: &Sounding) -> Result<Level> 
     }
 
     // Assumes h0 < h1, ie iterate from bottom to top of sounding
-    fn is_cross_over(h0: &Meters, h1: &Meters, tgt_height: Meters) -> bool {
+    #[inline]
+    fn is_cross_over(h0: Meters, h1: Meters, tgt_height: Meters) -> bool {
         debug_assert!(h0 <= h1);
-        *h0 <= tgt_height && *h1 >= tgt_height
+        h0 <= tgt_height && h1 >= tgt_height
     }
 
     izip!(p_profile, h_profile)
@@ -200,7 +202,7 @@ pub(crate) fn height_level(tgt_height: Meters, snd: &Sounding) -> Result<Level> 
         // look at levels in pairs to find when the data crosses the desired height
         .tuple_windows::<(_, _)>()
         // Filter out all pairs that don't have a crossover
-        .filter(|((_p0, h0), (_p1, h1))| is_cross_over(h0, h1, tgt_height))
+        .filter(|&((_p0, h0), (_p1, h1))| is_cross_over(h0, h1, tgt_height))
         // Should be only one (if any) pairs remaining, and it will bracket the desired level
         .nth(0) // now we have an option
         // Map the bracket into the pressure at the target height via interpolation

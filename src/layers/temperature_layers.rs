@@ -41,14 +41,22 @@ fn temperature_layer(
         return Err(AnalysisError::MissingProfile);
     }
 
+    // Assuming were are iterating over the profile from the bottom (ground level) up, this type
+    // records levels where the sounding crosses the targeted temperature layer.
     enum Crossing {
-        EnterLayer(HectoPascal),
-        ExitLayer(HectoPascal),
-        // The first element must be greater than the second!
-        OverLayer(HectoPascal, HectoPascal),
-        InLayer(HectoPascal),
+        // The level where the sounding crosses into a layer.
+        Enter(HectoPascal),
+        // The level where the sounding crosses out of a layer.
+        Exit(HectoPascal),
+        // The first element must be greater than the second! These levels completely jumped over
+        // a temperature layer.
+        Over(HectoPascal, HectoPascal),
+        // This level is completely inside a temperature layer.
+        In(HectoPascal),
     }
 
+    // Take two levels and detect if traversing from the 0th to the 1st level crosses the
+    // target temperature layer.
     fn to_crossing_type(
         pnt0: (HectoPascal, Celsius),
         pnt1: (HectoPascal, Celsius),
@@ -63,27 +71,27 @@ fn temperature_layer(
         if t0 < cold_side && t1 >= cold_side && t1 <= warm_side {
             // Crossing into a layer from the cold side
             let cold_p = linear_interp(cold_side, t0, t1, p0, p1);
-            Some(Crossing::EnterLayer(cold_p))
+            Some(Crossing::Enter(cold_p))
         } else if t0 > warm_side && t1 <= warm_side && t1 >= cold_side {
             // Crossing into layer from the warm side
             let warm_p = linear_interp(warm_side, t0, t1, p0, p1);
-            Some(Crossing::EnterLayer(warm_p))
+            Some(Crossing::Enter(warm_p))
         } else if (t0 < cold_side && t1 > warm_side) || (t0 > warm_side && t1 < cold_side) {
             // Crossed over a layer
             let warm_p = linear_interp(warm_side, t0, t1, p0, p1);
             let cold_p = linear_interp(cold_side, t0, t1, p0, p1);
-            Some(Crossing::OverLayer(warm_p.max(cold_p), warm_p.min(cold_p)))
+            Some(Crossing::Over(warm_p.max(cold_p), warm_p.min(cold_p)))
         } else if t0 > cold_side && t0 < warm_side && t1 > warm_side {
             // Crossed out of a layer into the warm side
             let warm_p = linear_interp(warm_side, t0, t1, p0, p1);
-            Some(Crossing::ExitLayer(warm_p))
+            Some(Crossing::Exit(warm_p))
         } else if t0 > cold_side && t0 < warm_side && t1 < cold_side {
             // Crossed out of a layer into the cold side
             let cold_p = linear_interp(cold_side, t0, t1, p0, p1);
-            Some(Crossing::ExitLayer(cold_p))
+            Some(Crossing::Exit(cold_p))
         } else if t0 >= cold_side && t0 <= warm_side && t1 >= cold_side && t1 <= warm_side {
             // We're in the midst of a layer
-            Some(Crossing::InLayer(p0))
+            Some(Crossing::In(p0))
         } else {
             None
         }
@@ -103,7 +111,7 @@ fn temperature_layer(
         // Scan the iterator and coalesce crossings into levels
         .scan(None, |bottom_p: &mut Option<_>, crossing_type: Crossing| {
             match crossing_type {
-                Crossing::InLayer(p) => {
+                Crossing::In(p) => {
                     if bottom_p.is_none() {
                         // to get here we started out in the layer and never had to CROSS into it
                         *bottom_p = Some(p);
@@ -112,15 +120,15 @@ fn temperature_layer(
                     // pair of values (top and bottom) to create a layer from.
                     Some(None)
                 }
-                Crossing::EnterLayer(p) => {
+                Crossing::Enter(p) => {
                     *bottom_p = Some(p);
                     Some(None)
                 }
-                Crossing::ExitLayer(top_p) => {
+                Crossing::Exit(top_p) => {
                     debug_assert!(bottom_p.is_some());
                     Some(Some((bottom_p.take().unwrap(), top_p)))
                 }
-                Crossing::OverLayer(p0, p1) => {
+                Crossing::Over(p0, p1) => {
                     debug_assert!(bottom_p.is_none());
                     Some(Some((p0, p1)))
                 }

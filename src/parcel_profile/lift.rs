@@ -167,8 +167,8 @@ pub fn lift_parcel_new(parcel: Parcel, snd: &Sounding) -> Result<ParcelAscentAna
         .map(|el_level| (some(el_level.pressure), some(el_level.height)))
         .unwrap_or((none(), none()));
 
-    let el_temperature: Optioned<Celsius> = el_pressure
-        .and_then(|pres| linear_interpolate(snd_pressure, env_t, pres));
+    let el_temperature: Optioned<Celsius> =
+        el_pressure.and_then(|pres| linear_interpolate(snd_pressure, env_t, pres));
 
     // Get the cape/cin values.
     let (cape, cin, hail_cape) = match cape_cin(&profile, lcl_pressure, lfc_pressure, el_pressure) {
