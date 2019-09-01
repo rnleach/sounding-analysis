@@ -207,20 +207,22 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAscentAnalysi
 // A level in the analysis
 #[derive(Clone, Copy)]
 pub(crate) struct AnalLevel {
-    pressure: HectoPascal,
-    height: Meters,
-    pcl_virt_t: Celsius,
-    env_virt_t: Celsius,
+    pub pressure: HectoPascal,
+    pub height: Meters,
+    pub pcl_virt_t: Celsius,
+    pub env_virt_t: Celsius,
 }
 
-enum AnalLevelType {
+#[derive(Clone, Copy)]
+pub(crate) enum AnalLevelType {
     Normal(AnalLevel),
     LFC(AnalLevel),
     LCL(AnalLevel),
     EL(AnalLevel),
 }
 
-struct AnalLevelTypeIterator {
+#[derive(Clone, Copy)]
+pub(crate) struct AnalLevelTypeIterator {
     vals: [Option<AnalLevelType>; 4],
     next: usize,
 }
@@ -287,7 +289,7 @@ pub(crate) fn create_parcel_calc_t(
     })
 }
 
-fn create_level_type_mapping(
+pub(crate) fn create_level_type_mapping(
     lcl_info: AnalLevel,
 ) -> impl Fn(AnalLevel, AnalLevel) -> AnalLevelTypeIterator {
     move |lvl0: AnalLevel, lvl1: AnalLevel| -> AnalLevelTypeIterator {

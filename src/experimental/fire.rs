@@ -3,8 +3,10 @@
 use crate::{
     error::{AnalysisError, Result},
     parcel::{convective_parcel, lowest_level_parcel, mixed_layer_parcel, Parcel},
-    parcel_profile::{find_parcel_start_data, ParcelAscentAnalysis,
-    lift::{parcel_lcl, create_parcel_calc_t},
+    parcel_profile::{
+        find_parcel_start_data,
+        lift::{create_level_type_mapping, create_parcel_calc_t, parcel_lcl, AnalLevel},
+        ParcelAscentAnalysis,
     },
     sounding::Sounding,
 };
@@ -55,6 +57,127 @@ pub fn blow_up(snd: &Sounding) -> Result<BlowUpAnalysis> {
     unimplemented!()
 }
 
+/// Lift a parcel until the net CAPE is zero.
+pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAnalysis> {
+    // Find the LCL
+    let (pcl_lcl, lcl_temperature) = parcel_lcl(&parcel, snd)?;
+
+    // The starting level to lift the parcel from
+    let (parcel_start_data, parcel) = find_parcel_start_data(snd, &parcel)?;
+
+    // How to calculate a parcel temperature for a given pressure level
+    let parcel_calc_t = create_parcel_calc_t(parcel, pcl_lcl)?;
+    let level_type_mapping = create_level_type_mapping(pcl_lcl);
+
+    // Get the environment data to iterate over. We want the parcel profile to have all the same
+    // pressure levels as the environmental sounding, plus a few special ones.
+    let snd_pressure = snd.pressure_profile();
+    let hgt = snd.height_profile();
+    let env_t = snd.temperature_profile();
+    let env_dp = snd.dew_point_profile();
+
+    let p0 = parcel.pressure;
+
+    // Construct an iterator that selects the environment values and calculates the
+    // corresponding parcel values.
+    let (el_height, max_height, net_bouyancy) = izip!(snd_pressure, hgt, env_t, env_dp)
+        // Remove rows with missing data
+        .filter(|(p, h, t, dp)| p.is_some() && h.is_some() && t.is_some() && dp.is_some())
+        // Unpack from the `Optioned` type
+        .map(|(p, h, t, dp)| (p.unpack(), h.unpack(), t.unpack(), dp.unpack()))
+        // Remove rows at or below the parcel level
+        .filter(move |(p, _, _, _)| *p <= p0)
+        // Calculate the parcel temperature, skip this level if there is an error
+        .filter_map(|(p, h, env_t, env_dp)| {
+            parcel_calc_t(p).map(|pcl_virt_t| (p, h, env_t, env_dp, pcl_virt_t))
+        })
+        // Calculate the environment virtual temperature, skip levels with errors
+        .filter_map(|(p, h, env_t, env_dp, pcl_virt_t)| {
+            metfor::virtual_temperature(env_t, env_dp, p)
+                .map(|env_vt| (p, h, Celsius::from(env_vt), pcl_virt_t))
+        })
+        // Wrap in the AnalLevel type
+        .map(|(pressure, height, env_virt_t, pcl_virt_t)| AnalLevel {
+            pressure,
+            height,
+            pcl_virt_t,
+            env_virt_t,
+        })
+        // Look at them two levels at a time to check for crossing any special levels
+        .tuple_windows::<(_, _)>()
+        // Find the level type and insert special levels if needed.
+        .flat_map(|(lvl0, lvl1)| level_type_mapping(lvl0, lvl1))
+        // Pair the levels up to integrate the bouyancy.
+        .tuple_windows::<(_, _)>()
+        // Integrate the bouyancy.
+        .scan(0.0, |int_bouyancy, (anal_level_type0, anal_level_type1)| {
+            use crate::parcel_profile::lift::AnalLevelType::*;
+
+            let level_data0: &AnalLevel = match &anal_level_type0 {
+                Normal(data) | LFC(data) | LCL(data) | EL(data) => data,
+            };
+            let level_data1: &AnalLevel = match &anal_level_type1 {
+                Normal(data) | LFC(data) | LCL(data) | EL(data) => data,
+            };
+
+            let &AnalLevel {
+                height: h0,
+                pcl_virt_t: pcl0,
+                env_virt_t: env0,
+                ..
+            } = level_data0;
+            let &AnalLevel {
+                height: h1,
+                pcl_virt_t: pcl1,
+                env_virt_t: env1,
+                ..
+            } = level_data1;
+
+            let Meters(dz) = h1 - h0;
+            debug_assert!(dz >= 0.0);
+
+            let b0 = (pcl0 - env0).unpack() / env0.unpack();
+            let b1 = (pcl1 - env1).unpack() / env1.unpack();
+            let bouyancy = (b0 + b1) * dz;
+            *int_bouyancy += bouyancy;
+            Some((*int_bouyancy, anal_level_type1))
+        })
+        // Take untile the bouyancy goes negative, then we're done.
+        .take_while(|(int_bouyancy, _)| *int_bouyancy > 0.0)
+        // Fold to get the EL Level, Max Height, and max integrated bouyancy
+        .fold(
+            (Meters(0.0), Meters(0.0), 0.0f64),
+            |acc, (int_bouyancy, anal_level_type)| {
+                use crate::parcel_profile::lift::AnalLevelType::*;
+
+                let (el, _, max_bouyancy) = acc;
+
+                match anal_level_type {
+                    Normal(level) | LFC(level) | LCL(level) => {
+                        let max_hgt = level.height;
+                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
+                        (el, max_hgt, max_bouyancy)
+                    }
+                    EL(level) => {
+                        let el = level.height;
+                        let max_hgt = level.height;
+                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
+                        (el, max_hgt, max_bouyancy)
+                    }
+                }
+            },
+        );
+
+    let net_cape = JpKg(net_bouyancy / 2.0 * -metfor::g);
+
+    Ok(PlumeAscentAnalysis {
+        el_height,
+        max_height,
+        net_cape,
+        parcel,
+    })
+}
+
 /// Given a sounding, return an iterator that creates parcels starting with the mixed layer parcel
 /// and then incrementing the parcel temperature up to `plus_range` in increments of `increment`.
 ///
@@ -101,21 +224,6 @@ impl Iterator for PlumeParcelIterator {
             Some(self.next_p)
         }
     }
-}
-
-/// Lift a parcel until the net CAPE is zero.
-pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAnalysis> {
-    // Find the LCL
-    let (pcl_lcl, lcl_temperature) = parcel_lcl(&parcel, snd)?;
-
-    // The starting level to lift the parcel from
-    let (parcel_start_data, parcel) = find_parcel_start_data(snd, &parcel)?;
-
-    // How to calculate a parcel temperature for a given pressure level
-    let parcel_calc_t = create_parcel_calc_t(parcel, pcl_lcl)?;
-
-
-    unimplemented!()
 }
 
 // -----------------------------------------------------------------------------------------------
