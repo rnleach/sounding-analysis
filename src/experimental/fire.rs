@@ -3,12 +3,122 @@
 use crate::{
     error::{AnalysisError, Result},
     parcel::{convective_parcel, lowest_level_parcel, mixed_layer_parcel, Parcel},
-    parcel_profile::{find_parcel_start_data, ParcelAscentAnalysis},
+    parcel_profile::{find_parcel_start_data, ParcelAscentAnalysis,
+    lift::{parcel_lcl, create_parcel_calc_t},
+    },
     sounding::Sounding,
 };
-use itertools::izip;
+use itertools::{izip, Itertools};
 use metfor::{Celsius, CelsiusDiff, JpKg, Kelvin, Meters, Quantity};
 
+/// Result of lifting a parcel represntative of a plume core.
+pub struct PlumeAscentAnalysis {
+    /// The parcel this analysis was completed for.
+    pub parcel: Parcel,
+    /// Net CAPE up to equilibrium level.
+    pub net_cape: JpKg,
+    /// The level where net CAPE becomes zero, the plume rises no more
+    pub max_height: Meters,
+    /// The last EL reached before max_height
+    pub el_height: Meters,
+}
+
+/// This characterizes how much heating it would take to cause a plume to "blow up" as defined by
+/// the sudden change in the parcel equilibrium level with respect to parcel heating.
+///
+/// The blow up ΔT is the difference in temperature from the parcel that blows up to the parcel the
+/// analysis started with (usually the mixed layer parcel). The blow up height is the difference in
+/// the equilibrium level of the blow up ΔT plus 0.5C and the blow up ΔT minus 0.5C. This
+/// difference was chosen because using the (numerical) derivative is extremely sensitive to the
+/// stepsize used when calculating the derivative. This makes sense, since there is actually a step
+/// discontinuity at the blow up temperature.
+pub struct BlowUpAnalysis {
+    /// The amount of warming required to cause a blow up.
+    pub delta_t: CelsiusDiff,
+    /// The change in height from the blow up.
+    pub height: Meters,
+}
+
+/// Generate a series of `PlumeAscentAnalysis`s for a given sounding starting at the mixed layer
+/// parcel and warming it by `increment` until it has gone `max_range` degrees.
+pub fn calc_plumes(
+    snd: &Sounding,
+    increment: CelsiusDiff,
+    max_range: CelsiusDiff,
+) -> Result<Vec<PlumeAscentAnalysis>> {
+    unimplemented!()
+}
+
+/// Find the parcel that causes the plume to blow up by finding the maximum derivative of the
+/// equilibrium level vs parcel temperature.
+pub fn blow_up(snd: &Sounding) -> Result<BlowUpAnalysis> {
+    unimplemented!()
+}
+
+/// Given a sounding, return an iterator that creates parcels starting with the mixed layer parcel
+/// and then incrementing the parcel temperature up to `plus_range` in increments of `increment`.
+///
+/// If the surface temperature is warmer than the mixed layer parcel temperature, then the starting
+/// parcel will use the surface temperature with the mixed layer moisture.
+fn plume_parcels(
+    snd: &Sounding,
+    plus_range: CelsiusDiff,
+    increment: CelsiusDiff,
+) -> Result<impl Iterator<Item = Parcel>> {
+    let parcel = mixed_layer_parcel(snd)?;
+    let (row, mut parcel) = find_parcel_start_data(snd, &parcel)?;
+    if row.temperature.unwrap() > parcel.temperature {
+        parcel.temperature = row.temperature.unwrap();
+    }
+
+    let max_t = parcel.temperature + plus_range;
+    Ok(PlumeParcelIterator {
+        next_p: parcel,
+        max_t,
+        increment,
+    })
+}
+
+/// Iterator for `plume_parcels` function that generates increasingly warmer parcels with constant
+/// moisture.
+struct PlumeParcelIterator {
+    next_p: Parcel,
+    max_t: Celsius,
+    increment: CelsiusDiff,
+}
+
+impl Iterator for PlumeParcelIterator {
+    type Item = Parcel;
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_t = self.next_p.temperature + self.increment;
+        if next_t > self.max_t {
+            None
+        } else {
+            self.next_p = Parcel {
+                temperature: next_t,
+                ..self.next_p
+            };
+            Some(self.next_p)
+        }
+    }
+}
+
+/// Lift a parcel until the net CAPE is zero.
+pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAnalysis> {
+    // Find the LCL
+    let (pcl_lcl, lcl_temperature) = parcel_lcl(&parcel, snd)?;
+
+    // The starting level to lift the parcel from
+    let (parcel_start_data, parcel) = find_parcel_start_data(snd, &parcel)?;
+
+    // How to calculate a parcel temperature for a given pressure level
+    let parcel_calc_t = create_parcel_calc_t(parcel, pcl_lcl)?;
+
+
+    unimplemented!()
+}
+
+// -----------------------------------------------------------------------------------------------
 /// An analysis of the potential energy of a convective plume vs. a representative starting
 /// temperature.
 #[derive(Debug)]
@@ -118,48 +228,6 @@ pub fn convective_parcel_initiation_energetics(
 
     // return (t˳, E˳, ΔE)
     Ok((t0, dt0, e0, d_e))
-}
-
-// Given a sounding, return an iterator that creates parcels from the surface temperature to +30C
-fn plume_parcels(
-    snd: &Sounding,
-    plus_range: CelsiusDiff,
-    increment: CelsiusDiff,
-) -> Result<impl Iterator<Item = Parcel>> {
-    let parcel = mixed_layer_parcel(snd)?;
-    let (row, mut parcel) = find_parcel_start_data(snd, &parcel)?;
-    if row.temperature.unwrap() > parcel.temperature {
-        parcel.temperature = row.temperature.unwrap();
-    }
-
-    let max_t = parcel.temperature + plus_range;
-    Ok(PlumeParcelIterator {
-        next_p: parcel,
-        max_t,
-        increment,
-    })
-}
-
-struct PlumeParcelIterator {
-    next_p: Parcel,
-    max_t: Celsius,
-    increment: CelsiusDiff,
-}
-
-impl Iterator for PlumeParcelIterator {
-    type Item = Parcel;
-    fn next(&mut self) -> Option<Self::Item> {
-        let next_t = self.next_p.temperature + self.increment;
-        if next_t > self.max_t {
-            None
-        } else {
-            self.next_p = Parcel {
-                temperature: next_t,
-                ..self.next_p
-            };
-            Some(self.next_p)
-        }
-    }
 }
 
 fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<(JpKg, bool)> {

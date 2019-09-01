@@ -10,7 +10,7 @@ use metfor::{self, Celsius, CelsiusDiff, HectoPascal, JpKg, Kelvin, Meters, Quan
 use optional::{none, some, Optioned};
 use std::cmp::Ordering;
 
-pub fn lift_parcel_new(parcel: Parcel, snd: &Sounding) -> Result<ParcelAscentAnalysis> {
+pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAscentAnalysis> {
     // Find the LCL
     let (pcl_lcl, lcl_temperature) = parcel_lcl(&parcel, snd)?;
 
@@ -206,7 +206,7 @@ pub fn lift_parcel_new(parcel: Parcel, snd: &Sounding) -> Result<ParcelAscentAna
 
 // A level in the analysis
 #[derive(Clone, Copy)]
-struct AnalLevel {
+pub(crate) struct AnalLevel {
     pressure: HectoPascal,
     height: Meters,
     pcl_virt_t: Celsius,
@@ -225,7 +225,7 @@ struct AnalLevelTypeIterator {
     next: usize,
 }
 
-fn parcel_lcl(parcel: &Parcel, snd: &Sounding) -> Result<(AnalLevel, Celsius)> {
+pub(crate) fn parcel_lcl(parcel: &Parcel, snd: &Sounding) -> Result<(AnalLevel, Celsius)> {
     let (pressure, temperature) = metfor::pressure_and_temperature_at_lcl(
         parcel.temperature,
         parcel.dew_point,
@@ -260,7 +260,7 @@ fn parcel_lcl(parcel: &Parcel, snd: &Sounding) -> Result<(AnalLevel, Celsius)> {
     ))
 }
 
-fn create_parcel_calc_t(
+pub(crate) fn create_parcel_calc_t(
     parcel: Parcel,
     lcl: AnalLevel,
 ) -> Result<impl Fn(HectoPascal) -> Option<Celsius>> {
