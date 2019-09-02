@@ -48,24 +48,69 @@ pub fn calc_plumes(
     increment: CelsiusDiff,
     max_range: CelsiusDiff,
 ) -> Result<Vec<PlumeAscentAnalysis>> {
-    plume_parcels(snd, max_range, increment)?
-        .map(|pcl| lift_plume_parcel(pcl, snd))
+    let (_starting_parcel, parcels_iter) = plume_parcels(snd, max_range, increment)?;
+
+    parcels_iter
+        .map(|(_, pcl)| lift_plume_parcel(pcl, snd))
         .collect()
 }
 
 /// Find the parcel that causes the plume to blow up by finding the maximum derivative of the
 /// equilibrium level vs parcel temperature.
 pub fn blow_up(snd: &Sounding) -> Result<BlowUpAnalysis> {
-    unimplemented!()
+    const INCREMENT: CelsiusDiff = CelsiusDiff(0.1);
+    const MAX_RANGE: CelsiusDiff = CelsiusDiff(20.0);
+
+    let (starting_parcel, parcel_iter) = plume_parcels(snd, MAX_RANGE, INCREMENT)?;
+
+    let (delta_t, _max_diff): (CelsiusDiff, Meters) = parcel_iter
+        .filter_map(|(dt, pcl)| lift_plume_parcel(pcl, snd).ok().map(|anal| (dt, anal)))
+        .map(|(dt, anal)| (dt, anal.el_height))
+        .tuple_windows::<(_, _, _)>()
+        .fold(
+            (CelsiusDiff(0.0), Meters(0.0)),
+            |acc, (lvl0, lvl1, lvl2)| {
+                let (blow_up_dt, max_diff) = acc;
+
+                let (_dt0, el0) = lvl0;
+                let (dt1, _el1) = lvl1;
+                let (_dt2, el2) = lvl2;
+
+                let diff = el2 - el0;
+                if diff > max_diff {
+                    (dt1, diff)
+                } else {
+                    (blow_up_dt, max_diff)
+                }
+            },
+        );
+
+    let low_t = starting_parcel.temperature + delta_t + CelsiusDiff(-0.5);
+    let high_t = starting_parcel.temperature + delta_t + CelsiusDiff(0.5);
+
+    let low_el_parcel = Parcel {
+        temperature: low_t,
+        ..starting_parcel
+    };
+    let high_el_parcel = Parcel {
+        temperature: high_t,
+        ..starting_parcel
+    };
+
+    let el_low = lift_plume_parcel(low_el_parcel, snd)?.el_height;
+    let el_high = lift_plume_parcel(high_el_parcel, snd)?.el_height;
+    let height = el_high - el_low;
+
+    Ok(BlowUpAnalysis { delta_t, height })
 }
 
 /// Lift a parcel until the net CAPE is zero.
 pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAnalysis> {
     // Find the LCL
-    let (pcl_lcl, lcl_temperature) = parcel_lcl(&parcel, snd)?;
+    let (pcl_lcl, _lcl_temperature) = parcel_lcl(&parcel, snd)?;
 
     // The starting level to lift the parcel from
-    let (parcel_start_data, parcel) = find_parcel_start_data(snd, &parcel)?;
+    let (_parcel_start_data, parcel) = find_parcel_start_data(snd, &parcel)?;
 
     // How to calculate a parcel temperature for a given pressure level
     let parcel_calc_t = create_parcel_calc_t(parcel, pcl_lcl)?;
@@ -189,7 +234,7 @@ fn plume_parcels(
     snd: &Sounding,
     plus_range: CelsiusDiff,
     increment: CelsiusDiff,
-) -> Result<impl Iterator<Item = Parcel>> {
+) -> Result<(Parcel, impl Iterator<Item = (CelsiusDiff, Parcel)>)> {
     let parcel = mixed_layer_parcel(snd)?;
     let (row, mut parcel) = find_parcel_start_data(snd, &parcel)?;
     if row.temperature.unwrap() > parcel.temperature {
@@ -197,25 +242,32 @@ fn plume_parcels(
     }
 
     let max_t = parcel.temperature + plus_range;
-    Ok(PlumeParcelIterator {
-        next_p: parcel,
-        max_t,
-        increment,
-    })
+    Ok((
+        parcel,
+        PlumeParcelIterator {
+            next_p: parcel,
+            next_dt: CelsiusDiff(0.0),
+            max_t,
+            increment,
+        },
+    ))
 }
 
 /// Iterator for `plume_parcels` function that generates increasingly warmer parcels with constant
 /// moisture.
 struct PlumeParcelIterator {
     next_p: Parcel,
+    next_dt: CelsiusDiff,
     max_t: Celsius,
     increment: CelsiusDiff,
 }
 
 impl Iterator for PlumeParcelIterator {
-    type Item = Parcel;
+    type Item = (CelsiusDiff, Parcel);
+
     fn next(&mut self) -> Option<Self::Item> {
         let next_t = self.next_p.temperature + self.increment;
+        self.next_dt += self.increment;
         if next_t > self.max_t {
             None
         } else {
@@ -223,7 +275,7 @@ impl Iterator for PlumeParcelIterator {
                 temperature: next_t,
                 ..self.next_p
             };
-            Some(self.next_p)
+            Some((self.next_dt, self.next_p))
         }
     }
 }
@@ -250,7 +302,7 @@ impl PlumePotentialAnal {
 
         let mut plume_vals = Vec::with_capacity(MAX_HEATING.unpack() as usize);
 
-        for pcl in plume_parcels(snd, MAX_HEATING, DT)? {
+        for (_, pcl) in plume_parcels(snd, MAX_HEATING, DT)?.1 {
             if let Ok((cape, _)) = lift_parcel(pcl, snd) {
                 plume_vals.push((pcl.temperature, cape));
             } else {
