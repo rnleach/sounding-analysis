@@ -48,7 +48,9 @@ pub fn calc_plumes(
     increment: CelsiusDiff,
     max_range: CelsiusDiff,
 ) -> Result<Vec<PlumeAscentAnalysis>> {
-    unimplemented!()
+    plume_parcels(snd, max_range, increment)?
+        .map(|pcl| lift_plume_parcel(pcl, snd))
+        .collect()
 }
 
 /// Find the parcel that causes the plume to blow up by finding the maximum derivative of the
