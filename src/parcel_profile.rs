@@ -22,7 +22,7 @@ pub struct ParcelProfile {
     pub environment_t: Vec<Celsius>,
 }
 
-mod lift;
+pub(crate) mod lift;
 
 /// Parcel analysis, this is a way to package the analysis of a parcel.
 ///
@@ -137,12 +137,12 @@ impl ParcelAscentAnalysis {
 /// The resulting `ParcelProfile` and analysis are based off of virtual temperatures and the idea
 /// that if there is no *moist* convection, or convective cloud, then there is no CAPE or CIN.
 pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAscentAnalysis> {
-    lift::lift_parcel_new(parcel, snd)
+    lift::lift_parcel(parcel, snd)
 }
 
-// In order for parcel lifting to work and create a parallel environmental profile, we need to
-// start at a level in the sounding with pressure, height, temperature, and dew point. Otherwise
-// we end up with too much missing data in the sounding.
+/// In order for parcel lifting to work and create a parallel environmental profile, we need to
+/// start at a level in the sounding with pressure, height, temperature, and dew point. Otherwise
+/// we end up with too much missing data in the sounding.
 pub(crate) fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<(DataRow, Parcel)> {
     let good_row = |row: &DataRow| -> bool {
         row.temperature.is_some()

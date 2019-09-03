@@ -180,7 +180,7 @@ impl Sounding {
         /// use sounding_analysis::Sounding;
         /// use metfor::HectoPascal;
         /// use optional::{some, Optioned};
-        /// 
+        ///
         /// let data = vec![1000.0, 925.0, 850.0, 700.0, 500.0, 300.0, 250.0, 200.0, 150.0, 100.0];
         /// let pressure_data: Vec<Optioned<HectoPascal>> = data.into_iter()
         ///     .map(HectoPascal)
