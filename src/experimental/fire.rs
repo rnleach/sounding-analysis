@@ -14,15 +14,16 @@ use itertools::{izip, Itertools};
 use metfor::{Celsius, CelsiusDiff, JpKg, Kelvin, Meters, Quantity};
 
 /// Result of lifting a parcel represntative of a plume core.
+#[derive(Debug)]
 pub struct PlumeAscentAnalysis {
     /// The parcel this analysis was completed for.
     pub parcel: Parcel,
     /// Net CAPE up to equilibrium level.
-    pub net_cape: JpKg,
+    pub net_cape: Option<JpKg>,
     /// The level where net CAPE becomes zero, the plume rises no more
-    pub max_height: Meters,
+    pub max_height: Option<Meters>,
     /// The last EL reached before max_height
-    pub el_height: Meters,
+    pub el_height: Option<Meters>,
 }
 
 /// This characterizes how much heating it would take to cause a plume to "blow up" as defined by
@@ -34,7 +35,10 @@ pub struct PlumeAscentAnalysis {
 /// difference was chosen because using the (numerical) derivative is extremely sensitive to the
 /// stepsize used when calculating the derivative. This makes sense, since there is actually a step
 /// discontinuity at the blow up temperature.
+#[derive(Debug)]
 pub struct BlowUpAnalysis {
+    /// The original parcel we started with while searching for the blow up.
+    pub starting_parcel: Parcel,
     /// The amount of warming required to cause a blow up.
     pub delta_t: CelsiusDiff,
     /// The change in height from the blow up.
@@ -50,9 +54,11 @@ pub fn calc_plumes(
 ) -> Result<Vec<PlumeAscentAnalysis>> {
     let (_starting_parcel, parcels_iter) = plume_parcels(snd, max_range, increment)?;
 
-    parcels_iter
-        .map(|(_, pcl)| lift_plume_parcel(pcl, snd))
-        .collect()
+    Ok(parcels_iter
+        .filter_map(|(_, pcl)| lift_plume_parcel(pcl, snd).ok())
+        .skip_while(|anal| anal.el_height.is_none())
+        .take_while(|anal| anal.el_height.is_some())
+        .collect())
 }
 
 /// Find the parcel that causes the plume to blow up by finding the maximum derivative of the
@@ -63,45 +69,44 @@ pub fn blow_up(snd: &Sounding) -> Result<BlowUpAnalysis> {
 
     let (starting_parcel, parcel_iter) = plume_parcels(snd, MAX_RANGE, INCREMENT)?;
 
-    let (delta_t, _max_diff): (CelsiusDiff, Meters) = parcel_iter
+    let (delta_t, _max_deriv, height): (CelsiusDiff, f64, Meters) = parcel_iter
         .filter_map(|(dt, pcl)| lift_plume_parcel(pcl, snd).ok().map(|anal| (dt, anal)))
-        .map(|(dt, anal)| (dt, anal.el_height))
-        .tuple_windows::<(_, _, _)>()
-        .fold(
-            (CelsiusDiff(0.0), Meters(0.0)),
-            |acc, (lvl0, lvl1, lvl2)| {
-                let (blow_up_dt, max_diff) = acc;
+        .skip_while(|(_dt, anal)| anal.el_height.is_none())
+        .take_while(|(_dt, anal)| anal.el_height.is_some())
+        .filter_map(|(dt, anal)| anal.el_height.map(|h| (dt, h)))
+        .scan(Meters(0.0), |prev, (dt, el)| {
+            if el >= *prev {
+                *prev = el;
+                Some(Some((dt, el)))
+            } else {
+                Some(None)
+            }
+        })
+        .filter_map(|opt| opt)
+        .tuple_windows::<(_, _)>()
+        .fold((CelsiusDiff(0.0), 0.0, Meters(0.0)), |acc, (lvl0, lvl1)| {
+            let (blow_up_dt, deriv, jump) = acc;
 
-                let (_dt0, el0) = lvl0;
-                let (dt1, _el1) = lvl1;
-                let (_dt2, el2) = lvl2;
+            let (dt0, el0) = lvl0;
+            let (dt1, el1) = lvl1;
 
-                let diff = el2 - el0;
-                if diff > max_diff {
-                    (dt1, diff)
-                } else {
-                    (blow_up_dt, max_diff)
-                }
-            },
-        );
+            debug_assert_ne!(dt0, dt1); // Required for division below
 
-    let low_t = starting_parcel.temperature + delta_t + CelsiusDiff(-0.5);
-    let high_t = starting_parcel.temperature + delta_t + CelsiusDiff(0.5);
+            let derivative = (el1 - el0).unpack() / (dt1 - dt0).unpack();
+            let diff = el1 - el0;
+            if derivative > deriv {
+                let actual_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
+                (actual_dt, derivative, diff)
+            } else {
+                (blow_up_dt, deriv, jump)
+            }
+        });
 
-    let low_el_parcel = Parcel {
-        temperature: low_t,
-        ..starting_parcel
-    };
-    let high_el_parcel = Parcel {
-        temperature: high_t,
-        ..starting_parcel
-    };
-
-    let el_low = lift_plume_parcel(low_el_parcel, snd)?.el_height;
-    let el_high = lift_plume_parcel(high_el_parcel, snd)?.el_height;
-    let height = el_high - el_low;
-
-    Ok(BlowUpAnalysis { delta_t, height })
+    Ok(BlowUpAnalysis {
+        starting_parcel,
+        delta_t,
+        height,
+    })
 }
 
 /// Lift a parcel until the net CAPE is zero.
@@ -157,44 +162,52 @@ pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAn
         // Pair the levels up to integrate the bouyancy.
         .tuple_windows::<(_, _)>()
         // Integrate the bouyancy.
-        .scan(0.0, |int_bouyancy, (anal_level_type0, anal_level_type1)| {
-            use crate::parcel_profile::lift::AnalLevelType::*;
+        .scan(
+            (0.0, 0usize),
+            |(int_bouyancy, count), (anal_level_type0, anal_level_type1)| {
+                use crate::parcel_profile::lift::AnalLevelType::*;
 
-            let level_data0: &AnalLevel = match &anal_level_type0 {
-                Normal(data) | LFC(data) | LCL(data) | EL(data) => data,
-            };
-            let level_data1: &AnalLevel = match &anal_level_type1 {
-                Normal(data) | LFC(data) | LCL(data) | EL(data) => data,
-            };
+                let level_data0: &AnalLevel = match &anal_level_type0 {
+                    Normal(data) | LFC(data) | LCL(data) | EL(data) => data,
+                };
+                let level_data1: &AnalLevel = match &anal_level_type1 {
+                    Normal(data) | LFC(data) | LCL(data) | EL(data) => data,
+                };
 
-            let &AnalLevel {
-                height: h0,
-                pcl_virt_t: pcl0,
-                env_virt_t: env0,
-                ..
-            } = level_data0;
-            let &AnalLevel {
-                height: h1,
-                pcl_virt_t: pcl1,
-                env_virt_t: env1,
-                ..
-            } = level_data1;
+                let &AnalLevel {
+                    height: h0,
+                    pcl_virt_t: pcl0,
+                    env_virt_t: env0,
+                    ..
+                } = level_data0;
+                let &AnalLevel {
+                    height: h1,
+                    pcl_virt_t: pcl1,
+                    env_virt_t: env1,
+                    ..
+                } = level_data1;
 
-            let Meters(dz) = h1 - h0;
-            debug_assert!(dz >= 0.0);
+                let Meters(dz) = h1 - h0;
+                debug_assert!(dz >= 0.0);
 
-            let b0 = (pcl0 - env0).unpack() / env0.unpack();
-            let b1 = (pcl1 - env1).unpack() / env1.unpack();
-            let bouyancy = (b0 + b1) * dz;
-            *int_bouyancy += bouyancy;
-            Some((*int_bouyancy, anal_level_type1))
-        })
-        // Take untile the bouyancy goes negative, then we're done.
-        .take_while(|(int_bouyancy, _)| *int_bouyancy > 0.0)
+                let b0 = (pcl0 - env0).unpack() / env0.unpack();
+                let b1 = (pcl1 - env1).unpack() / env1.unpack();
+                let bouyancy = (b0 + b1) * dz;
+                *int_bouyancy += bouyancy;
+                *count += 1;
+                Some(((*int_bouyancy, *count), anal_level_type1))
+            },
+        )
+        // Take until the bouyancy goes negative, then we're done, just run through the first five
+        // to ensure we get through any goofy surface layers. This is also needed to get started if
+        // the parcel temperature is the same as the sounding surface temperature. Also, for the
+        // case of a fire plume, near the surface things are chaotic, so we should punch through
+        // a shallow surface stable layer.
+        .take_while(|((int_bouyancy, count), _)| *int_bouyancy >= 0.0 || *count < 5)
         // Fold to get the EL Level, Max Height, and max integrated bouyancy
         .fold(
-            (Meters(0.0), Meters(0.0), 0.0f64),
-            |acc, (int_bouyancy, anal_level_type)| {
+            (None, Meters(0.0), 0.0f64),
+            |acc, ((int_bouyancy, _), anal_level_type)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
                 let (el, _, max_bouyancy) = acc;
@@ -206,7 +219,7 @@ pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAn
                         (el, max_hgt, max_bouyancy)
                     }
                     EL(level) => {
-                        let el = level.height;
+                        let el = Some(level.height);
                         let max_hgt = level.height;
                         let max_bouyancy = max_bouyancy.max(int_bouyancy);
                         (el, max_hgt, max_bouyancy)
@@ -215,7 +228,14 @@ pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAn
             },
         );
 
-    let net_cape = JpKg(net_bouyancy / 2.0 * -metfor::g);
+    let (net_cape, max_height) = if el_height.is_some() {
+        (
+            Some(JpKg(net_bouyancy / 2.0 * -metfor::g)),
+            Some(max_height),
+        )
+    } else {
+        (None, None)
+    };
 
     Ok(PlumeAscentAnalysis {
         el_height,
@@ -241,12 +261,19 @@ fn plume_parcels(
         parcel.temperature = row.temperature.unwrap();
     }
 
+    let CelsiusDiff(inc_val) = increment;
+    let next_dt = CelsiusDiff(-inc_val);
+
+    let next_p = Parcel {
+        temperature: parcel.temperature + next_dt,
+        ..parcel
+    };
     let max_t = parcel.temperature + plus_range;
     Ok((
         parcel,
         PlumeParcelIterator {
-            next_p: parcel,
-            next_dt: CelsiusDiff(0.0),
+            next_p,
+            next_dt,
             max_t,
             increment,
         },
