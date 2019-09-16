@@ -2,11 +2,13 @@
 
 use crate::{
     error::{AnalysisError, Result},
-    parcel::{convective_parcel, lowest_level_parcel, mixed_layer_parcel, Parcel},
+    parcel::{mixed_layer_parcel, Parcel},
     parcel_profile::{
         find_parcel_start_data,
-        lift::{create_level_type_mapping, create_parcel_calc_t, parcel_lcl, AnalLevel},
-        ParcelAscentAnalysis,
+        lift::{
+            create_level_type_mapping, create_parcel_calc_t, parcel_lcl, AnalLevel, AnalLevelType,
+        },
+        ParcelAscentAnalysis, ParcelProfile,
     },
     sounding::Sounding,
 };
@@ -55,7 +57,7 @@ pub fn calc_plumes(
     let (_starting_parcel, parcels_iter) = plume_parcels(snd, max_range, increment)?;
 
     Ok(parcels_iter
-        .filter_map(|(_, pcl)| lift_plume_parcel(pcl, snd).ok())
+        .filter_map(|(_, pcl)| analyze_plume_parcel(pcl, snd).ok())
         .skip_while(|anal| anal.el_height.is_none())
         .take_while(|anal| anal.el_height.is_some())
         .collect())
@@ -70,7 +72,7 @@ pub fn blow_up(snd: &Sounding) -> Result<BlowUpAnalysis> {
     let (starting_parcel, parcel_iter) = plume_parcels(snd, MAX_RANGE, INCREMENT)?;
 
     let (delta_t, _max_deriv, height): (CelsiusDiff, f64, Meters) = parcel_iter
-        .filter_map(|(dt, pcl)| lift_plume_parcel(pcl, snd).ok().map(|anal| (dt, anal)))
+        .filter_map(|(dt, pcl)| analyze_plume_parcel(pcl, snd).ok().map(|anal| (dt, anal)))
         .skip_while(|(_dt, anal)| anal.el_height.is_none())
         .take_while(|(_dt, anal)| anal.el_height.is_some())
         .filter_map(|(dt, anal)| anal.el_height.map(|h| (dt, h)))
@@ -110,7 +112,145 @@ pub fn blow_up(snd: &Sounding) -> Result<BlowUpAnalysis> {
 }
 
 /// Lift a parcel until the net CAPE is zero.
-pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAnalysis> {
+pub fn analyze_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAnalysis> {
+    // Get the starting parcel and the iterator to lift it.
+    let (parcel, lift_iter) = lift_parcel(parcel, snd)?;
+
+    // Construct an iterator that selects the environment values and calculates the
+    // corresponding parcel values.
+    let (el_height, max_height, net_bouyancy) = lift_iter
+        // Fold to get the EL Level, Max Height, and max integrated bouyancy
+        .fold(
+            (None, Meters(0.0), 0.0f64),
+            |acc, (int_bouyancy, anal_level_type)| {
+                use crate::parcel_profile::lift::AnalLevelType::*;
+
+                let (el, _, max_bouyancy) = acc;
+
+                match anal_level_type {
+                    Normal(level) | LFC(level) | LCL(level) => {
+                        let max_hgt = level.height;
+                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
+                        (el, max_hgt, max_bouyancy)
+                    }
+                    EL(level) => {
+                        let el = Some(level.height);
+                        let max_hgt = level.height;
+                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
+                        (el, max_hgt, max_bouyancy)
+                    }
+                }
+            },
+        );
+
+    let (net_cape, max_height) = if el_height.is_some() {
+        (
+            Some(JpKg(net_bouyancy / 2.0 * -metfor::g)),
+            Some(max_height),
+        )
+    } else {
+        (None, None)
+    };
+
+    Ok(PlumeAscentAnalysis {
+        el_height,
+        max_height,
+        net_cape,
+        parcel,
+    })
+}
+
+/// Lift a parcel until the net CAPE is zero, don't analyze it just return the profile.
+pub fn lift_plume_parcel(
+    parcel: Parcel,
+    snd: &Sounding,
+) -> Result<(ParcelProfile, PlumeAscentAnalysis)> {
+    // Get the starting parcel and the iterator to lift it.
+    let (parcel, lift_iter) = lift_parcel(parcel, snd)?;
+
+    let len = snd.pressure_profile().len();
+    let mut pressure = Vec::with_capacity(len);
+    let mut height = Vec::with_capacity(len);
+    let mut parcel_t = Vec::with_capacity(len);
+    let mut environment_t = Vec::with_capacity(len);
+
+    // Construct an iterator that selects the environment values and calculates the
+    // corresponding parcel values.
+    let (el_height, max_height, net_bouyancy) = lift_iter
+        // Add the levels to the parcel profile.
+        .scan((), |_dummy, (int_bouyancy, anal_level_type)| {
+            use crate::parcel_profile::lift::AnalLevelType::*;
+            match anal_level_type {
+                Normal(lvl) | LFC(lvl) | LCL(lvl) | EL(lvl) => {
+                    let AnalLevel {
+                        pressure: p,
+                        height: h,
+                        pcl_virt_t,
+                        env_virt_t,
+                    } = lvl;
+                    pressure.push(p);
+                    height.push(h);
+                    parcel_t.push(pcl_virt_t);
+                    environment_t.push(env_virt_t);
+                }
+            }
+
+            Some((int_bouyancy, anal_level_type))
+        })
+        // Fold to get the EL Level, Max Height, and max integrated bouyancy
+        .fold(
+            (None, Meters(0.0), 0.0f64),
+            |acc, (int_bouyancy, anal_level_type)| {
+                use crate::parcel_profile::lift::AnalLevelType::*;
+
+                let (el, _, max_bouyancy) = acc;
+
+                match anal_level_type {
+                    Normal(level) | LFC(level) | LCL(level) => {
+                        let max_hgt = level.height;
+                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
+                        (el, max_hgt, max_bouyancy)
+                    }
+                    EL(level) => {
+                        let el = Some(level.height);
+                        let max_hgt = level.height;
+                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
+                        (el, max_hgt, max_bouyancy)
+                    }
+                }
+            },
+        );
+
+    let (net_cape, max_height) = if el_height.is_some() {
+        (
+            Some(JpKg(net_bouyancy / 2.0 * -metfor::g)),
+            Some(max_height),
+        )
+    } else {
+        (None, None)
+    };
+
+    Ok((
+        ParcelProfile {
+            pressure,
+            height,
+            parcel_t,
+            environment_t,
+        },
+        PlumeAscentAnalysis {
+            el_height,
+            max_height,
+            net_cape,
+            parcel,
+        },
+    ))
+}
+
+/// Get the starting parcel and build an iterator to lift it.
+fn lift_parcel<'a>(
+    parcel: Parcel,
+    snd: &'a Sounding,
+) -> Result<(Parcel, impl Iterator<Item = (f64, AnalLevelType)> + 'a)> {
     // Find the LCL
     let (pcl_lcl, _lcl_temperature) = parcel_lcl(&parcel, snd)?;
 
@@ -132,7 +272,7 @@ pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAn
 
     // Construct an iterator that selects the environment values and calculates the
     // corresponding parcel values.
-    let (el_height, max_height, net_bouyancy) = izip!(snd_pressure, hgt, env_t, env_dp)
+    let iter = izip!(snd_pressure, hgt, env_t, env_dp)
         // Remove rows with missing data
         .filter(|(p, h, t, dp)| p.is_some() && h.is_some() && t.is_some() && dp.is_some())
         // Unpack from the `Optioned` type
@@ -140,7 +280,7 @@ pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAn
         // Remove rows at or below the parcel level
         .filter(move |(p, _, _, _)| *p <= p0)
         // Calculate the parcel temperature, skip this level if there is an error
-        .filter_map(|(p, h, env_t, env_dp)| {
+        .filter_map(move |(p, h, env_t, env_dp)| {
             parcel_calc_t(p).map(|pcl_virt_t| (p, h, env_t, env_dp, pcl_virt_t))
         })
         // Calculate the environment virtual temperature, skip levels with errors
@@ -158,7 +298,7 @@ pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAn
         // Look at them two levels at a time to check for crossing any special levels
         .tuple_windows::<(_, _)>()
         // Find the level type and insert special levels if needed.
-        .flat_map(|(lvl0, lvl1)| level_type_mapping(lvl0, lvl1))
+        .flat_map(move |(lvl0, lvl1)| level_type_mapping(lvl0, lvl1))
         // Pair the levels up to integrate the bouyancy.
         .tuple_windows::<(_, _)>()
         // Integrate the bouyancy.
@@ -204,45 +344,9 @@ pub fn lift_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscentAn
         // case of a fire plume, near the surface things are chaotic, so we should punch through
         // a shallow surface stable layer.
         .take_while(|((int_bouyancy, count), _)| *int_bouyancy >= 0.0 || *count < 5)
-        // Fold to get the EL Level, Max Height, and max integrated bouyancy
-        .fold(
-            (None, Meters(0.0), 0.0f64),
-            |acc, ((int_bouyancy, _), anal_level_type)| {
-                use crate::parcel_profile::lift::AnalLevelType::*;
+        .map(|((int_bouyancy, _), anal_level)| (int_bouyancy, anal_level));
 
-                let (el, _, max_bouyancy) = acc;
-
-                match anal_level_type {
-                    Normal(level) | LFC(level) | LCL(level) => {
-                        let max_hgt = level.height;
-                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (el, max_hgt, max_bouyancy)
-                    }
-                    EL(level) => {
-                        let el = Some(level.height);
-                        let max_hgt = level.height;
-                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (el, max_hgt, max_bouyancy)
-                    }
-                }
-            },
-        );
-
-    let (net_cape, max_height) = if el_height.is_some() {
-        (
-            Some(JpKg(net_bouyancy / 2.0 * -metfor::g)),
-            Some(max_height),
-        )
-    } else {
-        (None, None)
-    };
-
-    Ok(PlumeAscentAnalysis {
-        el_height,
-        max_height,
-        net_cape,
-        parcel,
-    })
+    Ok((parcel, iter))
 }
 
 /// Given a sounding, return an iterator that creates parcels starting with the mixed layer parcel
@@ -305,226 +409,6 @@ impl Iterator for PlumeParcelIterator {
             Some((self.next_dt, self.next_p))
         }
     }
-}
-
-// -----------------------------------------------------------------------------------------------
-/// An analysis of the potential energy of a convective plume vs. a representative starting
-/// temperature.
-#[derive(Debug)]
-pub struct PlumePotentialAnal {
-    // Representative initial plume temperature and CAPE associated with that parcel.
-    //
-    // In reality it is much hotter at the surface, but there is a lot of entrainment to come still.
-    plume_vals: Vec<(Celsius, JpKg)>,
-}
-
-// Create another lift algorithm that calculates CAPE no matter what.
-// Once the LCL_P>EL_P, change indexes last_no_cloud and first_with_cloud
-
-impl PlumePotentialAnal {
-    /// Analyze a sounding for the plume potential
-    pub fn analyze(snd: &Sounding) -> Result<PlumePotentialAnal> {
-        const MAX_HEATING: CelsiusDiff = CelsiusDiff(30.0);
-        const DT: CelsiusDiff = CelsiusDiff(0.1);
-
-        let mut plume_vals = Vec::with_capacity(MAX_HEATING.unpack() as usize);
-
-        for (_, pcl) in plume_parcels(snd, MAX_HEATING, DT)?.1 {
-            if let Ok((cape, _)) = lift_parcel(pcl, snd) {
-                plume_vals.push((pcl.temperature, cape));
-            } else {
-                break;
-            }
-        }
-
-        Ok(PlumePotentialAnal { plume_vals })
-    }
-
-    /// Get the values of The plume surface temperature and associated CAPE
-    pub fn analysis_values(&self) -> &[(Celsius, JpKg)] {
-        &self.plume_vals
-    }
-}
-
-/// Analyze the sounding to get the values of (t˳, Δt˳, E˳, ΔE).
-pub fn convective_parcel_initiation_energetics(
-    snd: &Sounding,
-) -> Result<(Celsius, CelsiusDiff, JpKg, JpKg)> {
-    let starting_parcel = convective_parcel(snd)?;
-
-    let mut no_cloud_pcl = starting_parcel;
-    let mut no_cloud_pcl_data = lift_parcel(starting_parcel, snd)?;
-    let mut cloud_pcl = starting_parcel;
-    let mut cloud_pcl_data = no_cloud_pcl_data;
-
-    // bracket the cloud/no cloud boundary
-    let tgt_cloud_val = if no_cloud_pcl_data.1 {
-        false
-    } else if !cloud_pcl_data.1 {
-        true
-    } else {
-        unreachable!()
-    };
-
-    if tgt_cloud_val {
-        // Cloud parcel doesn't have a cloud! Increment until it does
-        cloud_pcl.temperature += CelsiusDiff(1.0);
-        cloud_pcl_data = lift_parcel(cloud_pcl, snd)?;
-    } else {
-        // No cloud parcel has a cloud! Decrement until it doesn't
-        no_cloud_pcl.temperature += CelsiusDiff(-1.0);
-        no_cloud_pcl_data = lift_parcel(no_cloud_pcl, snd)?;
-    }
-    while no_cloud_pcl_data.1 || !cloud_pcl_data.1 {
-        if tgt_cloud_val {
-            // Cloud parcel doesn't have a cloud! Increment until it does
-            cloud_pcl.temperature += CelsiusDiff(1.0);
-            cloud_pcl_data = lift_parcel(cloud_pcl, snd)?;
-        } else {
-            // No cloud parcel has a cloud! Decrement until it doesn't
-            no_cloud_pcl.temperature += CelsiusDiff(-1.0);
-            no_cloud_pcl_data = lift_parcel(no_cloud_pcl, snd)?;
-        }
-    }
-
-    // use bisection to narrow the gap between no-cloud and cloud to 0.1°C
-    let mut dt = cloud_pcl.temperature - no_cloud_pcl.temperature;
-    while dt > CelsiusDiff(0.1) {
-        let mid_t = no_cloud_pcl.temperature + CelsiusDiff(dt.unpack() / 2.0);
-        let test_pcl = Parcel {
-            temperature: mid_t,
-            ..no_cloud_pcl
-        };
-        let test_pcl_data = lift_parcel(test_pcl, snd)?;
-
-        if test_pcl_data.1 {
-            // In Cloud!
-            cloud_pcl = test_pcl;
-            cloud_pcl_data = test_pcl_data;
-        } else {
-            // Not in a cloud
-            no_cloud_pcl = test_pcl;
-            no_cloud_pcl_data = test_pcl_data;
-        }
-
-        dt = cloud_pcl.temperature - no_cloud_pcl.temperature;
-    }
-
-    let t0 = no_cloud_pcl.temperature;
-    let dt0 = t0 - lowest_level_parcel(snd)?.temperature;
-    let e0 = no_cloud_pcl_data.0;
-    let d_e = cloud_pcl_data.0 - e0;
-
-    // return (t˳, E˳, ΔE)
-    Ok((t0, dt0, e0, d_e))
-}
-
-fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<(JpKg, bool)> {
-    //
-    // Find the LCL
-    //
-    let (lcl_pressure, _lcl_temperature) = metfor::pressure_and_temperature_at_lcl(
-        parcel.temperature,
-        parcel.dew_point,
-        parcel.pressure,
-    )
-    .ok_or(AnalysisError::MetForError)?;
-
-    //
-    // The starting level to lift the parcel from
-    //
-    let (_, parcel) = find_parcel_start_data(snd, &parcel)?;
-
-    //
-    // How to calculate a parcel temperature for a given pressure level
-    //
-    let theta = parcel.theta();
-    let theta_e = parcel.theta_e()?;
-    let dry_mw = parcel.mixing_ratio()?;
-    let calc_parcel_t = |tgt_pres| {
-        if tgt_pres > lcl_pressure {
-            // Dry adiabatic lifting
-            let t_k = metfor::temperature_from_theta(theta, tgt_pres);
-            metfor::virtual_temperature(
-                t_k,
-                metfor::dew_point_from_p_and_mw(tgt_pres, dry_mw)?,
-                tgt_pres,
-            )
-            .map(Kelvin::from)
-        } else {
-            // Moist adiabatic lifting
-            metfor::temperature_from_theta_e_saturated_and_pressure(tgt_pres, theta_e)
-                .and_then(|t_c| metfor::virtual_temperature(t_c, t_c, tgt_pres))
-                .map(Kelvin::from)
-        }
-    };
-
-    //
-    // Get the environment data to iterate over.
-    //
-    let snd_pressure = snd.pressure_profile();
-    let hgt = snd.height_profile();
-    let env_t = snd.temperature_profile();
-    let env_dp = snd.dew_point_profile();
-
-    //
-    // Construct an iterator that selects the environment values and calculates the
-    // corresponding parcel values.
-    //
-    let (integrated_cape, cloud) = izip!(snd_pressure, hgt, env_t, env_dp)
-        // Remove rows with missing data and unpack `optional::Optioned` types
-        .filter_map(|(p, h, env_t, env_dp)| {
-            if p.is_some() && h.is_some() && env_t.is_some() && env_dp.is_some() {
-                Some((p.unpack(), h.unpack(), env_t.unpack(), env_dp.unpack()))
-            } else {
-                None
-            }
-        })
-        // Remove rows at or below the parcel level
-        .filter(move |(p, _, _, _)| *p < parcel.pressure)
-        // Calculate the parcel temperature, skip this level if there is an error
-        .filter_map(|(p, h, env_t, env_dp)| {
-            calc_parcel_t(p).map(|pcl_t| (p, h, env_t, env_dp, pcl_t))
-        })
-        // Calculate the environment virtual temperature, skip levels with errors
-        .filter_map(|(p, h, env_t, env_dp, pcl_t)| {
-            metfor::virtual_temperature(env_t, env_dp, p).map(|env_vt| (p, h, env_vt, pcl_t))
-        })
-        // Take while parcel is warmer than the environment. We don't need to worry about
-        // interpolating to the exact equilibrium level, because at the equilibrium level the
-        // the contribution to the integraged cape is 0.0. So just don't get any negative by going
-        // further!
-        .take_while(|(_p, _h, env_t, pcl_t)| pcl_t > env_t)
-        // Integrate witht the trapezoid rule
-        .fold(
-            (
-                (0.0, false), // CAPE integral, cloud initiated
-                Meters(std::f64::MAX),
-                Kelvin(0.0),
-                Kelvin(0.0),
-            ),
-            |acc, (p, h, env_t, pcl_t)| {
-                let ((mut cape, mut cloud), prev_h, prev_env_t, prev_pcl_t) = acc;
-
-                let dz = h - prev_h;
-
-                if dz <= Meters(0.0) {
-                    // Must be the first iteration, pass on the "old" values
-                    ((cape, cloud), h, env_t, pcl_t)
-                } else {
-                    cape += ((pcl_t - env_t).unpack() / env_t.unpack()
-                        + (prev_pcl_t - prev_env_t).unpack() / prev_env_t.unpack())
-                        * dz.unpack();
-
-                    cloud = p < lcl_pressure;
-
-                    ((cape, cloud), h, env_t, pcl_t)
-                }
-            },
-        )
-        .0;
-
-    Ok((JpKg(integrated_cape / 2.0 * -metfor::g), cloud))
 }
 
 /// Partition the CAPE between dry and moist ascent contributions. EXPERIMENTAL.
