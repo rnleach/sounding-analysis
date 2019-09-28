@@ -211,8 +211,9 @@ fn warm_layer_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<L
                     Some(None)
                 }
                 Crossing::OutOfWarmLayer(top_p) => {
-                    debug_assert!(bottom.is_some());
-                    Some(Some((bottom.take().unwrap(), top_p)))
+                    // If bottom is None, this is a surface based warm layer, not a warm layer
+                    // aloft.
+                    Some(bottom.take().map(|bottom_p| (bottom_p, top_p)))
                 }
             },
         )
