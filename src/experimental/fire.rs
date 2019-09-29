@@ -16,7 +16,7 @@ use itertools::{izip, Itertools};
 use metfor::{Celsius, CelsiusDiff, JpKg, Kelvin, Meters, Quantity};
 
 /// Result of lifting a parcel represntative of a plume core.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PlumeAscentAnalysis {
     /// The parcel this analysis was completed for.
     pub parcel: Parcel,
@@ -330,8 +330,8 @@ fn lift_parcel<'a>(
                 let Meters(dz) = h1 - h0;
                 debug_assert!(dz >= 0.0);
 
-                let b0 = (pcl0 - env0).unpack() / env0.unpack();
-                let b1 = (pcl1 - env1).unpack() / env1.unpack();
+                let b0 = (pcl0 - env0).unpack() / Kelvin::from(env0).unpack();
+                let b1 = (pcl1 - env1).unpack() / Kelvin::from(env1).unpack();
                 let bouyancy = (b0 + b1) * dz;
                 *int_bouyancy += bouyancy;
                 *count += 1;
