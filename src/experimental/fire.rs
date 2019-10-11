@@ -22,10 +22,12 @@ pub struct PlumeAscentAnalysis {
     pub parcel: Parcel,
     /// Net CAPE up to equilibrium level.
     pub net_cape: Option<JpKg>,
-    /// The level where net CAPE becomes zero, the plume rises no more
-    pub max_height: Option<Meters>,
+    /// The lifting condensation level of the parcel.
+    pub lcl_height: Option<Meters>,
     /// The last EL reached before max_height
     pub el_height: Option<Meters>,
+    /// The level where net CAPE becomes zero, the plume rises no more
+    pub max_height: Option<Meters>,
 }
 
 /// This characterizes how much heating it would take to cause a plume to "blow up" as defined by
@@ -118,26 +120,32 @@ pub fn analyze_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscen
 
     // Construct an iterator that selects the environment values and calculates the
     // corresponding parcel values.
-    let (el_height, max_height, net_bouyancy) = lift_iter
+    let (lcl_height, el_height, max_height, net_bouyancy) = lift_iter
         // Fold to get the EL Level, Max Height, and max integrated bouyancy
         .fold(
-            (None, Meters(0.0), 0.0f64),
+            (None, None, Meters(0.0), 0.0f64),
             |acc, (int_bouyancy, anal_level_type)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
-                let (el, _, max_bouyancy) = acc;
+                let (lcl, el, _, max_bouyancy) = acc;
 
                 match anal_level_type {
-                    Normal(level) | LFC(level) | LCL(level) => {
+                    Normal(level) | LFC(level) => {
                         let max_hgt = level.height;
                         let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (el, max_hgt, max_bouyancy)
+                        (lcl, el, max_hgt, max_bouyancy)
+                    }
+                    LCL(level) => {
+                        let lcl = Some(level.height);
+                        let max_hgt = level.height;
+                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
+                        (lcl, el, max_hgt, max_bouyancy)
                     }
                     EL(level) => {
                         let el = Some(level.height);
                         let max_hgt = level.height;
                         let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (el, max_hgt, max_bouyancy)
+                        (lcl, el, max_hgt, max_bouyancy)
                     }
                 }
             },
@@ -153,6 +161,7 @@ pub fn analyze_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscen
     };
 
     Ok(PlumeAscentAnalysis {
+        lcl_height,
         el_height,
         max_height,
         net_cape,
@@ -176,7 +185,7 @@ pub fn lift_plume_parcel(
 
     // Construct an iterator that selects the environment values and calculates the
     // corresponding parcel values.
-    let (el_height, max_height, net_bouyancy) = lift_iter
+    let (lcl_height, el_height, max_height, net_bouyancy) = lift_iter
         // Add the levels to the parcel profile.
         .scan((), |_dummy, (int_bouyancy, anal_level_type)| {
             use crate::parcel_profile::lift::AnalLevelType::*;
@@ -199,23 +208,29 @@ pub fn lift_plume_parcel(
         })
         // Fold to get the EL Level, Max Height, and max integrated bouyancy
         .fold(
-            (None, Meters(0.0), 0.0f64),
+            (None, None, Meters(0.0), 0.0f64),
             |acc, (int_bouyancy, anal_level_type)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
-                let (el, _, max_bouyancy) = acc;
+                let (lcl, el, _, max_bouyancy) = acc;
 
                 match anal_level_type {
-                    Normal(level) | LFC(level) | LCL(level) => {
+                    Normal(level) | LFC(level) => {
                         let max_hgt = level.height;
                         let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (el, max_hgt, max_bouyancy)
+                        (lcl, el, max_hgt, max_bouyancy)
+                    }
+                    LCL(level) => {
+                        let lcl = Some(level.height);
+                        let max_hgt = level.height;
+                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
+                        (lcl, el, max_hgt, max_bouyancy)
                     }
                     EL(level) => {
                         let el = Some(level.height);
                         let max_hgt = level.height;
                         let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (el, max_hgt, max_bouyancy)
+                        (lcl, el, max_hgt, max_bouyancy)
                     }
                 }
             },
@@ -238,6 +253,7 @@ pub fn lift_plume_parcel(
             environment_t,
         },
         PlumeAscentAnalysis {
+            lcl_height,
             el_height,
             max_height,
             net_cape,

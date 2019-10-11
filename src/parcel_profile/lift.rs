@@ -205,7 +205,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAscentAnalysi
 }
 
 // A level in the analysis
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct AnalLevel {
     pub pressure: HectoPascal,
     pub height: Meters,
@@ -213,7 +213,7 @@ pub(crate) struct AnalLevel {
     pub env_virt_t: Celsius,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum AnalLevelType {
     Normal(AnalLevel),
     LFC(AnalLevel),
@@ -341,7 +341,7 @@ pub(crate) fn create_level_type_mapping(
         let AnalLevel {
             pressure: lcl_p, ..
         } = lcl_info;
-        if p0 <= lcl_p && p1 >= lcl_p {
+        if p0 >= lcl_p && p1 <= lcl_p {
             iter.vals[next_idx] = Some(AnalLevelType::LCL(lcl_info));
         }
 
