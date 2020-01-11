@@ -23,7 +23,7 @@ pub fn precipitable_water(snd: &Sounding) -> Result<Mm> {
         // Unpack from the Optioned type
         .map(|(p, dp)| (p.unpack(), dp.unpack()))
         // Converte dew point to mixing ratio, removing failed levels.
-        .filter_map(|(p, dp)| mixing_ratio(dp, p).and_then(|mw| Some((p, mw))))
+        .filter_map(|(p, dp)| mixing_ratio(dp, p).map(|mw| (p, mw)))
         // View them as pairs for integration with the trapezoid method
         .tuple_windows::<(_, _)>()
         // Do the sum for integrating
@@ -185,7 +185,7 @@ pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
         // Convert t and dp to VPD, and remove any levels that error on calculating vapor pressure
         .filter_map(|(_, t, dp, ws)| {
             vapor_pressure_liquid_water(t).and_then(|sat_vap| {
-                vapor_pressure_liquid_water(dp).and_then(|vap| Some((sat_vap - vap, ws)))
+                vapor_pressure_liquid_water(dp).map(|vap| (sat_vap - vap, ws))
             })
         })
         // Convert knots to m/s and unpack all values from their Quantity types

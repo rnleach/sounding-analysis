@@ -94,7 +94,7 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
         // Get theta
         .map(|(p, t, dp)| (p, dp, metfor::theta(p, t)))
         // convert to mw
-        .filter_map(|(p, dp, th)| metfor::mixing_ratio(dp, p).and_then(|mw| Some((p, th, mw))))
+        .filter_map(|(p, dp, th)| metfor::mixing_ratio(dp, p).map(|mw| (p, th, mw)))
         // calculate the sums and count needed for the average
         .fold((HectoPascal(0.0), 0.0f64, 0.0f64), |acc, (p, theta, mw)| {
             let (sum_p, sum_t, sum_mw) = acc;
@@ -281,7 +281,7 @@ pub fn average_parcel(snd: &Sounding, layer: &Layer) -> Result<Parcel> {
         .skip_while(|&(p, _, _)| p > bottom_p)
         .take_while(|&(p, _, _)| p >= top_p)
         .map(|(p, t, dp)| (p, dp, metfor::theta(p, t)))
-        .filter_map(|(p, dp, th)| metfor::mixing_ratio(dp, p).and_then(|mw| Some((p, th, mw))))
+        .filter_map(|(p, dp, th)| metfor::mixing_ratio(dp, p).map(|mw| (p, th, mw)))
         .fold(
             (HectoPascal(0.0), 0.0f64, 0.0f64, 0),
             |acc, (p, theta, mw)| {

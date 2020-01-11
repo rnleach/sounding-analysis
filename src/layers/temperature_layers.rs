@@ -81,11 +81,11 @@ fn temperature_layer(
             let warm_p = linear_interp(warm_side, t0, t1, p0, p1);
             let cold_p = linear_interp(cold_side, t0, t1, p0, p1);
             Some(Crossing::Over(warm_p.max(cold_p), warm_p.min(cold_p)))
-        } else if t0 > cold_side && t0 < warm_side && t1 > warm_side {
+        } else if t0 >= cold_side && t0 <= warm_side && t1 > warm_side {
             // Crossed out of a layer into the warm side
             let warm_p = linear_interp(warm_side, t0, t1, p0, p1);
             Some(Crossing::Exit(warm_p))
-        } else if t0 > cold_side && t0 < warm_side && t1 < cold_side {
+        } else if t0 >= cold_side && t0 <= warm_side && t1 < cold_side {
             // Crossed out of a layer into the cold side
             let cold_p = linear_interp(cold_side, t0, t1, p0, p1);
             Some(Crossing::Exit(cold_p))
@@ -125,8 +125,14 @@ fn temperature_layer(
                     Some(None)
                 }
                 Crossing::Exit(top_p) => {
-                    debug_assert!(bottom_p.is_some());
-                    Some(Some((bottom_p.take().unwrap(), top_p)))
+                    if let Some(bp) = bottom_p.take() {
+                        Some(Some((bp, top_p)))
+                    } else {
+                        // We had a single surface point in the layer, so we never triggered
+                        // the Crossing::In variant. This is really rare, and the surface layer 
+                        // so thin, we can just ignore it.
+                        Some(None)
+                    }
                 }
                 Crossing::Over(p0, p1) => {
                     debug_assert!(bottom_p.is_none());
