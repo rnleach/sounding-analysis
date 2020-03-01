@@ -177,8 +177,6 @@ pub(crate) fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<
     Ok((second_guess, new_parcel))
 }
 
-// FIXME: Rename this or something. Maybe move it to the Parcel module, that is what we're really
-// looking for anyway, the convective parcel.
 /// A more robust convective parcel analysis.
 ///
 /// Some approximations are used in many algorithms which are usually good enough. However,
@@ -191,7 +189,7 @@ pub(crate) fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<
 /// that parcel. Otherwise it tweaks the parcel to find a better convective parcel. Better meaning
 /// that the EL is above or equal to the LCL. This algorithm  is MUCH slower in cases where the
 /// 'fast way' doesn't work.
-pub fn robust_convective_parcel(snd: &Sounding) -> Result<ParcelAscentAnalysis> {
+pub fn robust_convective_parcel_ascent(snd: &Sounding) -> Result<ParcelAscentAnalysis> {
     let mut start_parcel = crate::parcel::convective_parcel(snd)?;
     let mut analysis = lift_parcel(start_parcel, snd)?;
 

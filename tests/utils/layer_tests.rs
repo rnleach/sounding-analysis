@@ -113,7 +113,9 @@ pub fn test_warm_dry_bulb_aloft_and_cold_sfc_layers(
                 let num_cold_surface_layer_pressures = cold_surface_layer_pressures.len();
                 assert_eq!(num_cold_surface_layer_pressures, 2);
 
-                let cold_sfc_analysis = cold_surface_temperature_layer(&snd, &analysis).unwrap();
+                let cold_sfc_analysis = cold_surface_temperature_layer(&snd, &analysis)
+                    .unwrap() // Result
+                    .unwrap(); // Option - ok to unwrap this because we checked num_warm_layers
 
                 println!("cold_sfc_analysis: {:#?}", cold_sfc_analysis);
 

@@ -184,9 +184,8 @@ pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
         .take_while(|(h, _, _, _)| *h <= elevation + Meters(500.0))
         // Convert t and dp to VPD, and remove any levels that error on calculating vapor pressure
         .filter_map(|(_, t, dp, ws)| {
-            vapor_pressure_liquid_water(t).and_then(|sat_vap| {
-                vapor_pressure_liquid_water(dp).map(|vap| (sat_vap - vap, ws))
-            })
+            vapor_pressure_liquid_water(t)
+                .and_then(|sat_vap| vapor_pressure_liquid_water(dp).map(|vap| (sat_vap - vap, ws)))
         })
         // Convert knots to m/s and unpack all values from their Quantity types
         .map(|(vpd, ws)| (vpd.unpack(), MetersPSec::from(ws).unpack()))

@@ -61,7 +61,7 @@ pub fn linear_interpolate_sounding(snd: &Sounding, tgt_p: HectoPascal) -> Result
             BracketType::EndEquals(i) => snd.data_row(i),
         })
         // Map to error
-        .ok_or(AnalysisError::InvalidInput)
+        .ok_or(AnalysisError::InterpolationError)
 }
 
 /// Interpolate values given two parallel vectors of data and a target value.
@@ -126,11 +126,13 @@ where
 #[inline]
 pub(crate) fn linear_interp<X, Y>(x_val: X, x1: X, x2: X, y1: Y, y2: Y) -> Y
 where
-    X: Sub<X> + Copy,
+    X: Sub<X> + Copy + std::fmt::Debug + std::cmp::PartialEq,
     <X as Sub<X>>::Output: Quantity,
     Y: Quantity + Sub<Y>,
     <Y as Sub<Y>>::Output: Quantity,
 {
+    debug_assert_ne!(x1, x2);
+
     let run = (x2 - x1).unpack();
     let rise = (y2 - y1).unpack();
     let dx = (x_val - x1).unpack();

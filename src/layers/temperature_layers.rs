@@ -1,15 +1,16 @@
 use super::{Layer, Layers};
 use crate::{
-    error::{
-        AnalysisError::{InvalidInput, MissingProfile},
-        {AnalysisError, Result},
-    },
+    error::{AnalysisError, Result},
     interpolation::{linear_interp, linear_interpolate_sounding},
     sounding::Sounding,
 };
 use itertools::{izip, Itertools};
-use metfor::{Celsius, HectoPascal, FREEZING};
+use metfor::{
+    Celsius, CelsiusDiff, HectoPascal, JpKg, Kelvin, KelvinDiff, Meters, Quantity, FREEZING,
+};
 use optional::Optioned;
+
+use std::iter::once;
 
 /// Find the dendtritic growth zones throughout the profile. It is unusual, but possible there is
 /// more than one.
@@ -129,7 +130,7 @@ fn temperature_layer(
                         Some(Some((bp, top_p)))
                     } else {
                         // We had a single surface point in the layer, so we never triggered
-                        // the Crossing::In variant. This is really rare, and the surface layer 
+                        // the Crossing::In variant. This is really rare, and the surface layer
                         // so thin, we can just ignore it.
                         Some(None)
                     }
@@ -151,14 +152,16 @@ fn temperature_layer(
         .collect()
 }
 
-/// Assuming it is below freezing at the surface, this will find the warm layers aloft using the
-/// dry bulb temperature. Does not look above 500 hPa.
+/// This will find the warm layers aloft using the dry bulb temperature.
+///
+/// Does not look above 500 hPa.
 pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<Layers> {
     warm_layer_aloft(snd, snd.temperature_profile())
 }
 
-/// Assuming the wet bulb temperature is below freezing at the surface, this will find the warm
-/// layers aloft using the wet bulb temperature. Does not look above 500 hPa.
+/// This will find the warm layers aloft using the wet bulb temperature.
+///
+/// Does not look above 500 hPa.
 pub fn warm_wet_bulb_layer_aloft(snd: &Sounding) -> Result<Layers> {
     warm_layer_aloft(snd, snd.wet_bulb_profile())
 }
@@ -199,10 +202,10 @@ fn warm_layer_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<L
         .filter(|(p, t)| p.is_some() && t.is_some())
         // Unpack from the `Optioned` type
         .map(|(p, t)| (p.unpack(), t.unpack()))
-        // Ignore anything above 500 hPa, extremely unlikely for a warm layer up there.
-        .take_while(|&(p, _)| p > HectoPascal(500.0))
         // Skip any levels that start out in a surface based warm layer
         .skip_while(|&(_, t)| t > FREEZING)
+        // Ignore anything above 500 hPa, extremely unlikely for a warm layer up there.
+        .take_while(|&(p, _)| p > HectoPascal(500.0))
         // Pair them up to look at two adjacent points at a time
         .tuple_windows::<(_, _)>()
         // Map into the crossing type, and filter out any levels that aren't a crossing
@@ -234,8 +237,13 @@ fn warm_layer_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<L
         .collect()
 }
 
-/// Assuming a warm layer aloft given by `warm_layers`, measure the cold surface layer.
-pub fn cold_surface_temperature_layer(snd: &Sounding, warm_layers: &[Layer]) -> Result<Layer> {
+/// Assuming a warm layer aloft given by `warm_layers`, measure the cold surface layer. If there
+/// are no warm layers aloft, return `None` since cold surface layer extends the full depth of the
+/// atmosphere and is irrelevant.
+pub fn cold_surface_temperature_layer(
+    snd: &Sounding,
+    warm_layers: &[Layer],
+) -> Result<Option<Layer>> {
     cold_surface_layer(snd, snd.temperature_profile(), warm_layers)
 }
 
@@ -243,19 +251,14 @@ fn cold_surface_layer(
     snd: &Sounding,
     t_profile: &[Optioned<Celsius>],
     warm_layers: &[Layer],
-) -> Result<Layer> {
+) -> Result<Option<Layer>> {
     if warm_layers.is_empty() {
-        return Err(InvalidInput);
+        return Ok(None);
     }
 
     let p_profile = snd.pressure_profile();
 
-    if t_profile.is_empty() || p_profile.is_empty() {
-        // Should not happen since we SHOULD HAVE already used these to get the warm layers
-        return Err(MissingProfile);
-    }
-
-    izip!(0usize.., p_profile, t_profile)
+    let layer: Option<Layer> = izip!(0usize.., p_profile, t_profile)
         // Remove layers with missing data
         .filter(|(_, p, t)| p.is_some() && t.is_some())
         // Unpack from the `Optioned` type and discard the pressure, we don't need it anymore
@@ -269,7 +272,117 @@ fn cold_surface_layer(
         // Add the top level, if it exists
         .and_then(|bottom| warm_layers.get(0).map(|lyr| (bottom, lyr.bottom)))
         // Package it up in a layer
-        .map(|(bottom, top)| Layer { bottom, top }) // Option<Layer>
-        // Transform from option into result
-        .ok_or(InvalidInput)
+        .map(|(bottom, top)| Layer { bottom, top });
+
+    Ok(layer)
+}
+
+/// Find the surface layer above freezing.
+pub fn warm_surface_temperature_layer(snd: &Sounding) -> Result<Option<Layer>> {
+    warm_surface_layer(snd, snd.temperature_profile())
+}
+
+pub fn warm_surface_layer(
+    snd: &Sounding,
+    t_profile: &[Optioned<Celsius>],
+) -> Result<Option<Layer>> {
+    let p_profile = snd.pressure_profile();
+
+    if t_profile.is_empty() || p_profile.is_empty() {
+        return Err(AnalysisError::NotEnoughData);
+    }
+
+    let iter = izip!(0usize.., p_profile, t_profile)
+        // Remove layers with missing data
+        .filter(|(_, p, t)| p.is_some() && t.is_some())
+        // Unpack from the `Optioned` type and discard the pressure, we don't need it anymore
+        .map(|(i, p, t)| (i, p.unpack(), t.unpack()));
+
+    let bottom = iter
+        .clone()
+        .take_while(|(_, _, t)| *t >= FREEZING)
+        .nth(0)
+        .and_then(|(i, _, _)| snd.data_row(i));
+
+    let top = iter
+        .tuple_windows::<(_, _)>()
+        // For a surface based warm layer, we must start out above zero,
+        .take_while(|((_, _, t), _)| *t >= FREEZING)
+        // We need the last one for the top of the layer.
+        .last()
+        // Interpolate to get the top of the warm layer
+        .map(|((_, p0, t0), (_, p1, t1))| linear_interp(FREEZING, t0, t1, p0, p1))
+        .map(|target_p| linear_interpolate_sounding(snd, target_p))
+        .transpose()?;
+
+    Ok(bottom.and_then(|bottom| top.map(|top| Layer { bottom, top })))
+}
+
+/// Calculate the thermal energy relative to freezing in a layer. This is used in the Bourgouin
+/// algorithm for precipitation type.
+///
+/// Positive values indicate a melting layer, negative values indicate a freezing layer.
+///
+/// This algortihm implements equation 2 from "A Method to Determine Precipitation Types" by
+/// PIERRE BOURGOUIN, Weather and Forecasting, 2000.
+pub fn melting_freezing_energy_area(snd: &Sounding, lyr: &Layer) -> Result<JpKg> {
+    let top = &lyr.top;
+    let bottom = &lyr.bottom;
+
+    // This is a shortcut for doing a closed path integral on a thermodynamic chart where the "top"
+    // and "bottom" of the path are always at freezing. In the intended use cases, the top and
+    // bottom of all layers, except the bottom of surface based layers, will be at FREEZING anyway.
+    // In the bottom of the surface layer case, we need to close the loop by adding a point at the
+    // bottom pressure and FREEZING temperature, which we do with theta_bottom.
+    let theta_top: Kelvin = top
+        .pressure
+        .map(|p| metfor::theta(p, FREEZING))
+        .ok_or(AnalysisError::MissingValue)?;
+
+    let theta_bottom: Kelvin = bottom
+        .pressure
+        .map(|p| metfor::theta(p, FREEZING))
+        .ok_or(AnalysisError::MissingValue)?;
+
+    let bottom_h = bottom.height.ok_or(AnalysisError::MissingValue)?;
+    let top_h = top.height.ok_or(AnalysisError::MissingValue)?;
+
+    let bottom_iter = once((bottom.height, bottom.temperature))
+        .filter(|(h, t)| h.is_some() && t.is_some())
+        .map(|(h, t)| (h.unpack(), t.unpack()));
+    let top_iter = once((top.height, top.temperature))
+        .filter(|(h, t)| h.is_some() && t.is_some())
+        .map(|(h, t)| (h.unpack(), t.unpack()));
+
+    let middle_iter = izip!(snd.height_profile(), snd.temperature_profile())
+        .filter(|(h, t)| h.is_some() && t.is_some())
+        .map(|(h, t)| (h.unpack(), t.unpack()))
+        .skip_while(|(h, _)| *h <= bottom_h)
+        .take_while(|(h, _)| *h < top_h);
+
+    let iter = bottom_iter
+        .chain(middle_iter)
+        .chain(top_iter)
+        .map(|(h, t)| (h, Kelvin::from(t)))
+        .tuple_windows::<(_, _)>();
+
+    let (sum_dz, sum_kelvin_dz) = iter.fold((Meters(0.0), 0.0), |acc, ((h0, t0), (h1, t1))| {
+        let (mut sum_dz, mut sum_kelvin_dz) = acc;
+
+        let dz: Meters = h1 - h0;
+        let dt0: KelvinDiff = t0 - Kelvin::from(FREEZING);
+        let dt1: KelvinDiff = t1 - Kelvin::from(FREEZING);
+        let kelvin_dz = (dt0 + dt1).unpack() * dz.unpack();
+
+        sum_dz += dz;
+        sum_kelvin_dz += kelvin_dz;
+
+        (sum_dz, sum_kelvin_dz)
+    });
+
+    let mean_temp = CelsiusDiff(sum_kelvin_dz / sum_dz.unpack() / 2.0);
+
+    let energy = JpKg(metfor::cp.unpack() * mean_temp.unpack() * f64::ln(theta_top / theta_bottom));
+
+    Ok(energy)
 }

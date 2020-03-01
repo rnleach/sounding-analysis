@@ -1,4 +1,4 @@
-// FIXME: Add some examples of doing using analysis functions.
+// FIXME: Add some examples of using analysis functions.
 /*!
 Functions and data types for analyzing soundings from radiosondes or models.
 
@@ -110,8 +110,9 @@ pub use crate::{
     interpolation::{linear_interpolate, linear_interpolate_sounding},
     layers::{
         cold_surface_temperature_layer, dendritic_snow_zone, effective_inflow_layer,
-        hail_growth_zone, inversions, layer_agl, pressure_layer, sfc_based_inversion,
-        warm_temperature_layer_aloft, warm_wet_bulb_layer_aloft, Layer, Layers,
+        hail_growth_zone, inversions, layer_agl, melting_freezing_energy_area, pressure_layer,
+        sfc_based_inversion, warm_surface_temperature_layer, warm_temperature_layer_aloft,
+        warm_wet_bulb_layer_aloft, Layer, Layers,
     },
     levels::{
         freezing_levels, max_temperature_in_layer, max_temperature_in_profile,
@@ -122,8 +123,10 @@ pub use crate::{
         mixed_layer_parcel, most_unstable_parcel, pressure_parcel, surface_parcel, Parcel,
     },
     parcel_profile::{
-        dcape, lift_parcel, mix_down, robust_convective_parcel, ParcelAscentAnalysis, ParcelProfile,
+        dcape, lift_parcel, mix_down, robust_convective_parcel_ascent, ParcelAscentAnalysis,
+        ParcelProfile,
     },
+    precip_type::{adjust_precip_type_intensity, bourgouin_precip_type, PrecipType},
     profile::{
         equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,
         relative_humidity_ice, sfc_to_level_temperature_lapse_rate, temperature_lapse_rate,
@@ -150,6 +153,7 @@ mod layers;
 mod levels;
 mod parcel;
 mod parcel_profile;
+mod precip_type;
 mod profile;
 mod sounding;
 mod wind;

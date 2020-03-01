@@ -152,7 +152,8 @@ mod layer_tests {
 mod temperature_layers;
 pub use temperature_layers::{
     cold_surface_temperature_layer, dendritic_snow_zone, hail_growth_zone,
-    warm_temperature_layer_aloft, warm_wet_bulb_layer_aloft,
+    melting_freezing_energy_area, warm_surface_temperature_layer, warm_temperature_layer_aloft,
+    warm_wet_bulb_layer_aloft,
 };
 
 mod height_pressure;

@@ -1042,7 +1042,7 @@ impl<'a> Iterator for ProfileIterator<'a> {
     }
 }
 
-// FIXME: only configure for test and doc tests, not possible as of 1.36
+// FIXME: only configure for test and doc tests, not possible as of 1.41
 #[doc(hidden)]
 pub mod doctest {
     use super::*;
