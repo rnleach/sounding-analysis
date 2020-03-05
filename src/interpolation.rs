@@ -25,7 +25,7 @@ pub fn linear_interpolate_sounding(snd: &Sounding, tgt_p: HectoPascal) -> Result
         let (i1, p1): (_, HectoPascal) = pnt_1;
 
         // Always assume pressure is sorted in descending order
-        debug_assert!(p0 > p1);
+        debug_assert!(p0 >= p1);
         if p0 > tgt_p && p1 < tgt_p {
             Some(BracketType::Bracket(i0, i1))
         } else if (p0 - tgt_p).unpack().abs() < std::f64::EPSILON {

@@ -5,7 +5,7 @@
 //! The `Layer` type also provides some methods for doing basic analysis on a given layer.
 //!
 use crate::sounding::DataRow;
-use metfor::{CelsiusPKm, HectoPascal, Km, Meters, MetersPSec, Quantity, WindUV};
+use metfor::{CelsiusDiff, CelsiusPKm, HectoPascal, Km, Meters, MetersPSec, Quantity, WindUV};
 
 /// A layer in the atmosphere described by the values at the top and bottom.
 #[derive(Debug, Clone, Copy)]
@@ -25,7 +25,7 @@ impl Layer {
         let top_t = self.top.temperature.into_option()?;
         let bottom_t = self.bottom.temperature.into_option()?;
 
-        let dt = (top_t - bottom_t).unpack();
+        let dt = CelsiusDiff::from(top_t - bottom_t).unpack();
         let dz = Km::from(self.height_thickness()?).unpack();
 
         Some(CelsiusPKm(dt / dz))
@@ -119,7 +119,7 @@ mod layer_tests {
     fn test_lapse_rate() {
         let lyr = make_test_layer();
         println!(
-            "{:#?}\n\n -- \n\n {:#?} \n\n --",
+            "{:#?}\n\n -- \n\n Lapse Rate = {:#?} \n\n --",
             lyr,
             lyr.lapse_rate().unwrap()
         );

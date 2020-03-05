@@ -1,6 +1,6 @@
 [package]
 name = "sounding-analysis"
-version = "0.13.0"
+version = "0.13.1"
 authors = ["Ryan Leach <clumsycodemonkey@gmail.com>"]
 description = """Types and functions for working with weather soundings."""
 repository = "https://github.com/rnleach/sounding-analysis.git"
@@ -14,7 +14,7 @@ edition = "2018"
 [dependencies]
 itertools = "^0.8.0"
 chrono = "^0.4"
-metfor = { version = "^0.7.2", features = ["use_optional"]}
+metfor = { version = "^0.7.4", features = ["use_optional"]}
 optional = "^0.5.0"
 strum = "0.17.1"
 strum_macros = "0.17.1"

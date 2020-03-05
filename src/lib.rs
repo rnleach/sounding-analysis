@@ -104,6 +104,7 @@ dew point or humidity are often missing (if not totally inaccurate).
 //
 // API
 //
+#[allow(deprecated)]
 pub use crate::{
     error::{AnalysisError, Result},
     indexes::{haines, haines_high, haines_low, haines_mid, hot_dry_windy, precipitable_water},
@@ -126,7 +127,10 @@ pub use crate::{
         dcape, lift_parcel, mix_down, robust_convective_parcel_ascent, ParcelAscentAnalysis,
         ParcelProfile,
     },
-    precip_type::{adjust_precip_type_intensity, bourgouin_precip_type, PrecipType},
+    precip_type::{
+        adjust_precip_type_intensity, bourgouin_precip_type, check_precip_type_intensity,
+        PrecipType,
+    },
     profile::{
         equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,
         relative_humidity_ice, sfc_to_level_temperature_lapse_rate, temperature_lapse_rate,
