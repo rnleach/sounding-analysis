@@ -158,8 +158,7 @@ pub(crate) fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<
 
     let second_guess = snd
         .bottom_up()
-        .filter(good_row)
-        .nth(0)
+        .find(good_row)
         .ok_or(AnalysisError::NotEnoughData)?;
 
     let pressure = second_guess.pressure.ok_or(AnalysisError::InvalidInput)?;
@@ -387,7 +386,7 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, JpKg, Celsius)> {
     let top_p = p
         .iter()
         .filter_map(|p| p.into_option())
-        .nth(0)
+        .next()
         .ok_or(AnalysisError::NotEnoughData)?
         - HectoPascal(400.0);
 

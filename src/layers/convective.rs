@@ -28,7 +28,7 @@ pub fn effective_inflow_layer(snd: &Sounding) -> Option<Layer> {
         // Discard the cape and cin values, we only need the rows
         .map(|(row, _, _)| row);
 
-    let bottom = vals_iter.nth(0);
+    let bottom = vals_iter.next();
     let top = vals_iter.last();
 
     if let (Some(bottom), Some(top)) = (bottom, top) {

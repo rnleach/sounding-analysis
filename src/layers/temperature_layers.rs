@@ -266,7 +266,7 @@ fn cold_surface_layer(
         // For a surface based cold layer, we must start out below zero,
         .take_while(|(_, t)| *t <= FREEZING)
         // We only want the first one, the bottom of the layer, if it exists at all
-        .nth(0) // Option<(i, t)>
+        .next() // Option<(i, t)>
         // translate it to a full data row in the sounding
         .and_then(|(i, _)| snd.data_row(i)) // Option<DataRow>
         // Add the top level, if it exists
@@ -301,7 +301,7 @@ pub fn warm_surface_layer(
     let bottom = iter
         .clone()
         .take_while(|(_, _, t)| *t >= FREEZING)
-        .nth(0)
+        .next()
         .and_then(|(i, _, _)| snd.data_row(i));
 
     let top = iter

@@ -163,7 +163,7 @@ pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
         .height_profile()
         .iter()
         .filter_map(|optd| optd.into_option())
-        .nth(0)
+        .next()
     {
         lowest_h
     } else {

@@ -50,7 +50,7 @@ pub fn linear_interpolate_sounding(snd: &Sounding, tgt_p: HectoPascal) -> Result
         // at most one bracket in the iterator!
         .filter_map(|(pnt_0, pnt_1)| make_bracket(pnt_0, pnt_1))
         // Get the first (and only) bracket
-        .nth(0) // Option<BracketType>
+        .next() // Option<BracketType>
         // Perform the interpolation!
         .and_then(|bracket| match bracket {
             BracketType::Bracket(i0, i1) => {
@@ -109,7 +109,7 @@ where
         // Make a bracket and filter out all levels the don't create a bracket.
         .filter_map(|(pnt_0, pnt_1)| make_bracket(pnt_0, pnt_1))
         // Get the first (and only) one that brackets the target value
-        .nth(0) // This is an Option<BracketType>
+        .next() // This is an Option<BracketType>
         // Map from the bracket type to the interpolated value
         .map(|val| match val {
             BracketType::Bracket(pnt_0, pnt_1) => {

@@ -78,7 +78,7 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
         // Remove None values
         .filter_map(|&p| p.into_option())
         // Get the first of the non-None values
-        .nth(0)
+        .next()
         // Check to make sure we got one, return error if not.
         .ok_or(AnalysisError::NoDataProfile)?;
 
@@ -143,7 +143,7 @@ pub fn surface_parcel(snd: &Sounding) -> Result<Parcel> {
 pub fn lowest_level_parcel(snd: &Sounding) -> Result<Parcel> {
     snd.bottom_up()
         .filter_map(Parcel::from_datarow)
-        .nth(0)
+        .next()
         .ok_or(AnalysisError::NotEnoughData)
 }
 
@@ -172,7 +172,7 @@ pub fn most_unstable_parcel(snd: &Sounding) -> Result<Parcel> {
     let top_pressure = press
         .iter()
         .filter_map(|p| p.into_option())
-        .nth(0)
+        .next()
         .ok_or(AnalysisError::NotEnoughData)?
         - HectoPascal(300.0);
 
@@ -238,7 +238,7 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
             }
         })
         // Take the first (and probably only) one, if it exists.
-        .nth(0)
+        .next()
         // Probably a bad choice to use an error to signal this, but it is impossible to tell if
         // we never found it because there wasn't enough data, or it just didn't exist.
         .ok_or(AnalysisError::NotEnoughData)?;

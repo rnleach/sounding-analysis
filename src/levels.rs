@@ -202,9 +202,7 @@ pub(crate) fn height_level(tgt_height: Meters, snd: &Sounding) -> Result<Level> 
         // look at levels in pairs to find when the data crosses the desired height
         .tuple_windows::<(_, _)>()
         // Filter out all pairs that don't have a crossover
-        .filter(|&((_p0, h0), (_p1, h1))| is_cross_over(h0, h1, tgt_height))
-        // Should be only one (if any) pairs remaining, and it will bracket the desired level
-        .nth(0) // now we have an option
+        .find(|&((_p0, h0), (_p1, h1))| is_cross_over(h0, h1, tgt_height))
         // Map the bracket into the pressure at the target height via interpolation
         .map(|((p0, h0), (p1, h1))| linear_interp(tgt_height, h0, h1, p0, p1))
         // map the option into a result

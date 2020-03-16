@@ -19,12 +19,12 @@ use crate::{
 };
 use itertools::izip;
 use metfor::{Celsius, JpKg, Mm, StatuteMiles};
-use std::convert::From;
+use std::{convert::From, fmt::Display};
 use strum_macros::EnumIter;
 
 /// Precipitation type enum. Values are meant to correspond to the code values from table 4680 in
 /// the WMO Manual On Codes Vol I.1 Part A, Alphanumeric Codes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Hash, PartialOrd, Ord)]
 #[repr(u8)]
 #[allow(missing_docs)]
 pub enum PrecipType {
@@ -142,6 +142,12 @@ impl From<u8> for PrecipType {
     }
 }
 
+impl Display for PrecipType {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(formatter, "{} => {:?}", *self as u8, self)
+    }
+}
+
 /// Analyze a sounding using the Bourgouin technique for precipitation type.
 ///
 /// Since the sounding generally doesn't come with information convective or stratiform and the
@@ -168,10 +174,7 @@ pub fn bourgouin_precip_type(snd: &Sounding) -> Result<PrecipType> {
 
     if is_drizzler(snd) {
         match b_type {
-            BourgouinType::A {
-                cold_surface: _, ..
-            }
-            | BourgouinType::D => p_type = PrecipType::LightFreezingDrizzle,
+            BourgouinType::A { .. } | BourgouinType::D => p_type = PrecipType::LightFreezingDrizzle,
             _ => p_type = PrecipType::LightDrizzle,
         }
     }
@@ -214,7 +217,7 @@ fn is_drizzler(snd: &Sounding) -> bool {
 
 fn analyze_bourgouin_type(snd: &Sounding) -> Result<BourgouinType> {
     let warm_layers = warm_temperature_layer_aloft(snd)?;
-    let warm_layer_aloft: Option<Layer> = warm_layers.get(0).map(|lyr| lyr.clone());
+    let warm_layer_aloft: Option<Layer> = warm_layers.get(0).cloned();
 
     let b_type = match warm_layer_aloft {
         Some(warm_layer_aloft) => {
@@ -223,15 +226,13 @@ fn analyze_bourgouin_type(snd: &Sounding) -> Result<BourgouinType> {
                     warm_layer_aloft,
                     cold_surface,
                 }
-            } else {
-                if let Some(warm_sfc_layer) = warm_surface_temperature_layer(snd)? {
-                    BourgouinType::B {
-                        warm_layer_aloft,
-                        warm_sfc_layer,
-                    }
-                } else {
-                    unreachable!()
+            } else if let Some(warm_sfc_layer) = warm_surface_temperature_layer(snd)? {
+                BourgouinType::B {
+                    warm_layer_aloft,
+                    warm_sfc_layer,
                 }
+            } else {
+                unreachable!()
             }
         }
         None => {
