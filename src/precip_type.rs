@@ -199,7 +199,7 @@ fn is_drizzler(snd: &Sounding) -> bool {
     let ts = snd.temperature_profile();
     let tds = snd.dew_point_profile();
 
-    izip!(ts, tds)
+    !izip!(ts, tds)
         // Remove levels with missing data
         .filter(|(t, td)| t.is_some() && td.is_some())
         // Unpack `Optioned` values
@@ -209,7 +209,7 @@ fn is_drizzler(snd: &Sounding) -> bool {
         // Map to RH values
         .filter_map(|(t, td)| metfor::rh(t, td))
         // Find if any are over 90% rh
-        .any(|rh_val| rh_val >= 0.90)
+        .any(|rh_val| rh_val >= 0.80)
 }
 
 fn analyze_bourgouin_type(snd: &Sounding) -> Result<BourgouinType> {
