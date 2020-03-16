@@ -24,7 +24,7 @@ use strum_macros::EnumIter;
 
 /// Precipitation type enum. Values are meant to correspond to the code values from table 4680 in
 /// the WMO Manual On Codes Vol I.1 Part A, Alphanumeric Codes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Hash)]
 #[repr(u8)]
 #[allow(missing_docs)]
 pub enum PrecipType {
