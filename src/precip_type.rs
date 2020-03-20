@@ -175,7 +175,8 @@ pub fn bourgouin_precip_type(snd: &Sounding) -> Result<PrecipType> {
     if is_drizzler(snd) {
         match b_type {
             BourgouinType::A { .. } | BourgouinType::D => p_type = PrecipType::LightFreezingDrizzle,
-            _ => p_type = PrecipType::LightDrizzle,
+            // Can't tell the difference between drizzle and warm rain processes.
+            _ => {}
         }
     }
 
@@ -183,6 +184,7 @@ pub fn bourgouin_precip_type(snd: &Sounding) -> Result<PrecipType> {
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 enum BourgouinType {
     A {
         cold_surface: Layer,

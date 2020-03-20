@@ -25,6 +25,7 @@ impl Layer {
         let top_t = self.top.temperature.into_option()?;
         let bottom_t = self.bottom.temperature.into_option()?;
 
+        #[allow(clippy::identity_conversion)]
         let dt = CelsiusDiff::from(top_t - bottom_t).unpack();
         let dz = Km::from(self.height_thickness()?).unpack();
 
