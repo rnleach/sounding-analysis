@@ -129,7 +129,7 @@ pub use crate::{
     },
     precip_type::{
         adjust_precip_type_intensity, bourgouin_precip_type, check_precip_type_intensity,
-        PrecipType,
+        nssl_precip_type, PrecipType,
     },
     profile::{
         equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,
