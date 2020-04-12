@@ -31,8 +31,7 @@ pub struct PlumeAscentAnalysis {
     pub max_height: Option<Meters>,
 }
 
-/// This characterizes how much heating it would take to cause a plume to "blow up" as defined by
-/// the sudden change in the parcel equilibrium level with respect to parcel heating.
+/// This characterizes how much heating it would take to cause a plume to "blow up".
 ///
 /// The blow up ΔT is the difference in temperature from the parcel that blows up to the parcel the
 /// analysis started with (usually the mixed layer parcel). The blow up height is the difference in
@@ -40,14 +39,29 @@ pub struct PlumeAscentAnalysis {
 /// difference was chosen because using the (numerical) derivative is extremely sensitive to the
 /// stepsize used when calculating the derivative. This makes sense, since there is actually a step
 /// discontinuity at the blow up temperature.
+///
+/// Two kinds of blow up are analyzed, the blow up of the plume top and the of the equilibrium
+/// level. The plume top is defined as the level where the net CAPE becomes 0 again, implying that
+/// that all the potential energy (CAPE) that was converted to kinetic energy (updraft) has been
+/// used up due to negative bouyancy. At this level, parcels will start descending again.
+///
+/// The ΔT required to get the plume top over the LCL, and thus to create a cloud is also
+/// calculated. This can be a useful for determining if a plume will have a cap cloud but will
+/// not be unstable enough to blow up.
 #[derive(Debug)]
 pub struct BlowUpAnalysis {
     /// The original parcel we started with while searching for the blow up.
     pub starting_parcel: Parcel,
-    /// The amount of warming required to cause a blow up.
-    pub delta_t: CelsiusDiff,
-    /// The change in height from the blow up.
-    pub height: Meters,
+    /// The amount of warming required to cause a blow up of the equilibrium level.
+    pub delta_t_el: CelsiusDiff,
+    /// The amount of warming required to cause a blow up of the plume top.
+    pub delta_t_top: CelsiusDiff,
+    /// The amount of warming required to cause a cloud to form.
+    pub delta_t_cloud: CelsiusDiff,
+    /// The change in height from the blow up of the equilibrium level.
+    pub delta_z_el: Meters,
+    /// The change in height from the blow up of the plume top.
+    pub delta_z_top: Meters,
 }
 
 /// Generate a series of `PlumeAscentAnalysis`s for a given sounding starting at the mixed layer
@@ -90,43 +104,131 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
 
     let (starting_parcel, parcel_iter) = plume_parcels(snd, MAX_RANGE, INCREMENT, moisture_ratio)?;
 
-    let (delta_t, _max_deriv, height): (CelsiusDiff, f64, Meters) = parcel_iter
+    let (delta_t_cloud, delta_t_el, delta_t_top, _, _, delta_z_el, delta_z_top): (
+        CelsiusDiff,
+        CelsiusDiff,
+        CelsiusDiff,
+        f64,
+        f64,
+        Meters,
+        Meters,
+    ) = parcel_iter
+        // Do the analysis, ignore errors.
         .filter_map(|(dt, pcl)| analyze_plume_parcel(pcl, snd).ok().map(|anal| (dt, anal)))
-        .skip_while(|(_dt, anal)| anal.el_height.is_none())
-        .take_while(|(_dt, anal)| anal.el_height.is_some())
-        .filter_map(|(dt, anal)| anal.el_height.map(|h| (dt, h)))
-        .scan(Meters(0.0), |prev, (dt, el)| {
-            if el >= *prev {
-                *prev = el;
-                Some(Some((dt, el)))
-            } else {
-                Some(None)
-            }
+        // Skip levels with no useful information.
+        .skip_while(|(_dt, anal)| {
+            anal.el_height.is_none() && anal.max_height.is_none() && anal.lcl_height.is_none()
         })
+        // Take while there is some useful information.
+        .take_while(|(_dt, anal)| {
+            anal.el_height.is_some() || anal.max_height.is_some() || anal.lcl_height.is_some()
+        })
+        // Filter out noise due to rounding errors etc. where warmer parcels don't rise as high.
+        // This smooths it out so that deriviatives work well too.
+        .scan(
+            (Meters(0.0), Meters(0.0), Meters(0.0)),
+            |(prev_lcl, prev_el, prev_max_z), (dt, anal)| {
+                if let Some(lcl) = anal.lcl_height {
+                    if lcl >= *prev_lcl {
+                        *prev_lcl = lcl;
+                    } else {
+                        return Some(None);
+                    }
+                }
+
+                if let Some(el) = anal.el_height {
+                    if el >= *prev_el {
+                        *prev_el = el;
+                    } else {
+                        return Some(None);
+                    }
+                }
+
+                if let Some(max_z) = anal.max_height {
+                    if max_z >= *prev_max_z {
+                        *prev_max_z = max_z;
+                    } else {
+                        return Some(None);
+                    }
+                }
+
+                Some(Some((dt, anal)))
+            },
+        )
+        // Filter out "bad" layers.
         .filter_map(|opt| opt)
+        // Pair up for simple derivative calculations.
         .tuple_windows::<(_, _)>()
-        .fold((CelsiusDiff(0.0), 0.0, Meters(0.0)), |acc, (lvl0, lvl1)| {
-            let (blow_up_dt, deriv, jump) = acc;
+        .fold(
+            (
+                CelsiusDiff(0.0),
+                CelsiusDiff(0.0),
+                CelsiusDiff(0.0),
+                0.0,
+                0.0,
+                Meters(0.0),
+                Meters(0.0),
+            ),
+            |acc, (lvl0, lvl1)| {
+                let (
+                    mut cloud_dt,
+                    mut el_blow_up_dt,
+                    mut max_z_blow_up_dt,
+                    mut deriv_el,
+                    mut deriv_max_z,
+                    mut jump_el,
+                    mut jump_max_z,
+                ) = acc;
 
-            let (dt0, el0) = lvl0;
-            let (dt1, el1) = lvl1;
+                let (dt0, anal0) = lvl0;
+                let (dt1, anal1) = lvl1;
 
-            debug_assert_ne!(dt0, dt1); // Required for division below
+                debug_assert_ne!(dt0, dt1); // Required for division below
+                let dx = (dt1 - dt0).unpack();
 
-            let derivative = (el1 - el0).unpack() / (dt1 - dt0).unpack();
-            let diff = el1 - el0;
-            if derivative > deriv {
-                let actual_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
-                (actual_dt, derivative, diff)
-            } else {
-                (blow_up_dt, deriv, jump)
-            }
-        });
+                if let (Some(el0), Some(el1)) = (anal0.el_height, anal1.el_height) {
+                    let derivative = (el1 - el0).unpack() / dx;
+                    if derivative > deriv_el {
+                        el_blow_up_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
+                        deriv_el = derivative;
+                        jump_el = el1 - el0;
+                    }
+                }
+
+                if let (Some(max_z_0), Some(max_z_1)) = (anal0.max_height, anal1.max_height) {
+                    let derivative = (max_z_1 - max_z_0).unpack() / dx;
+                    if derivative > deriv_max_z {
+                        max_z_blow_up_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
+                        deriv_max_z = derivative;
+                        jump_max_z = max_z_1 - max_z_0;
+                    }
+                }
+
+                if let (None, Some(_)) = (anal0.lcl_height, anal1.lcl_height) {
+                    if cloud_dt == CelsiusDiff(0.0) {
+                        cloud_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
+                    }
+                }
+
+                (
+                    cloud_dt,
+                    el_blow_up_dt,
+                    max_z_blow_up_dt,
+                    deriv_el,
+                    deriv_max_z,
+                    jump_el,
+                    jump_max_z,
+                )
+            },
+        );
 
     Ok(BlowUpAnalysis {
         starting_parcel,
-        delta_t,
-        height,
+        delta_t_cloud,
+        delta_t_el,
+        delta_z_el,
+        delta_t_top,
+        delta_z_top,
     })
 }
 
