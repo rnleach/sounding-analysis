@@ -2,6 +2,7 @@
 
 use crate::{
     error::{AnalysisError, Result},
+    interpolation::linear_interp,
     parcel::{mixed_layer_parcel, Parcel},
     parcel_profile::{
         find_parcel_start_data,
@@ -134,46 +135,70 @@ pub fn analyze_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscen
     // Get the starting parcel and the iterator to lift it.
     let (parcel, lift_iter) = lift_parcel(parcel, snd)?;
 
+    let mut max_height: Option<Meters> = None;
+
     // Construct an iterator that selects the environment values and calculates the
     // corresponding parcel values.
-    let (lcl_height, el_height, max_height, net_bouyancy) = lift_iter
+    let (lcl_height, el_height, net_bouyancy) = lift_iter
+        // Scan to get the max_height
+        .scan(
+            (0.0, Meters(0.0)),
+            |(prev_bouyancy, prev_height), (int_bouyancy, anal_level_type)| {
+                use crate::parcel_profile::lift::AnalLevelType::*;
+
+                let height_val = match anal_level_type {
+                    Normal(level) | LFC(level) | LCL(level) | EL(level) => level.height,
+                };
+
+                if *prev_bouyancy >= 0.0 && int_bouyancy < 0.0 {
+                    let mx_height =
+                        linear_interp(0.0, *prev_bouyancy, int_bouyancy, *prev_height, height_val);
+                    max_height = Some(mx_height);
+                }
+
+                *prev_bouyancy = int_bouyancy;
+                *prev_height = height_val;
+
+                Some((int_bouyancy, anal_level_type))
+            },
+        )
         // Fold to get the EL Level, Max Height, and max integrated bouyancy
         .fold(
-            (None, None, Meters(0.0), 0.0f64),
+            (None, None, 0.0f64),
             |acc, (int_bouyancy, anal_level_type)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
-                let (lcl, el, _, max_bouyancy) = acc;
+                let (mut lcl, mut el, mut max_bouyancy) = acc;
 
+                max_bouyancy = max_bouyancy.max(int_bouyancy);
                 match anal_level_type {
-                    Normal(level) | LFC(level) => {
-                        let max_hgt = level.height;
-                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (lcl, el, max_hgt, max_bouyancy)
-                    }
+                    Normal(_) | LFC(_) => {}
                     LCL(level) => {
-                        let lcl = Some(level.height);
-                        let max_hgt = level.height;
-                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (lcl, el, max_hgt, max_bouyancy)
+                        lcl = Some(level.height);
                     }
                     EL(level) => {
-                        let el = Some(level.height);
-                        let max_hgt = level.height;
-                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (lcl, el, max_hgt, max_bouyancy)
+                        el = Some(level.height);
                     }
                 }
+                (lcl, el, max_bouyancy)
             },
         );
 
-    let (net_cape, max_height) = if el_height.is_some() {
-        (
-            Some(JpKg(net_bouyancy / 2.0 * -metfor::g)),
-            Some(max_height),
-        )
+    let net_cape = if el_height.is_some() {
+        Some(JpKg(net_bouyancy / 2.0 * -metfor::g))
     } else {
-        (None, None)
+        None
+    };
+
+    // Make sure LCL is below max height
+    let lcl_height = if let (Some(mxh), Some(lcl)) = (max_height, lcl_height) {
+        if mxh > lcl {
+            Some(lcl)
+        } else {
+            None
+        }
+    } else {
+        lcl_height
     };
 
     Ok(PlumeAscentAnalysis {
@@ -185,7 +210,7 @@ pub fn analyze_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscen
     })
 }
 
-/// Lift a parcel until the net CAPE is zero, don't analyze it just return the profile.
+/// Lift a parcel until the net CAPE is zero.
 pub fn lift_plume_parcel(
     parcel: Parcel,
     snd: &Sounding,
@@ -199,9 +224,11 @@ pub fn lift_plume_parcel(
     let mut parcel_t = Vec::with_capacity(len);
     let mut environment_t = Vec::with_capacity(len);
 
+    let mut max_height: Option<Meters> = None;
+
     // Construct an iterator that selects the environment values and calculates the
     // corresponding parcel values.
-    let (lcl_height, el_height, max_height, net_bouyancy) = lift_iter
+    let (lcl_height, el_height, net_bouyancy) = lift_iter
         // Add the levels to the parcel profile.
         .scan((), |_dummy, (int_bouyancy, anal_level_type)| {
             use crate::parcel_profile::lift::AnalLevelType::*;
@@ -222,43 +249,65 @@ pub fn lift_plume_parcel(
 
             Some((int_bouyancy, anal_level_type))
         })
+        // Scan to get the max_height
+        .scan(
+            (0.0, Meters(0.0)),
+            |(prev_bouyancy, prev_height), (int_bouyancy, anal_level_type)| {
+                use crate::parcel_profile::lift::AnalLevelType::*;
+
+                let height_val = match anal_level_type {
+                    Normal(level) | LFC(level) | LCL(level) | EL(level) => level.height,
+                };
+
+                if *prev_bouyancy >= 0.0 && int_bouyancy < 0.0 {
+                    let mx_height =
+                        linear_interp(0.0, *prev_bouyancy, int_bouyancy, *prev_height, height_val);
+                    max_height = Some(mx_height);
+                }
+
+                *prev_bouyancy = int_bouyancy;
+                *prev_height = height_val;
+
+                Some((int_bouyancy, anal_level_type))
+            },
+        )
         // Fold to get the EL Level, Max Height, and max integrated bouyancy
         .fold(
-            (None, None, Meters(0.0), 0.0f64),
+            (None, None, 0.0f64),
             |acc, (int_bouyancy, anal_level_type)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
-                let (lcl, el, _, max_bouyancy) = acc;
+                let (mut lcl, mut el, mut max_bouyancy) = acc;
 
+                max_bouyancy = max_bouyancy.max(int_bouyancy);
                 match anal_level_type {
-                    Normal(level) | LFC(level) => {
-                        let max_hgt = level.height;
-                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (lcl, el, max_hgt, max_bouyancy)
-                    }
+                    Normal(_) | LFC(_) => {}
                     LCL(level) => {
-                        let lcl = Some(level.height);
-                        let max_hgt = level.height;
-                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (lcl, el, max_hgt, max_bouyancy)
+                        lcl = Some(level.height);
                     }
                     EL(level) => {
-                        let el = Some(level.height);
-                        let max_hgt = level.height;
-                        let max_bouyancy = max_bouyancy.max(int_bouyancy);
-                        (lcl, el, max_hgt, max_bouyancy)
+                        el = Some(level.height);
                     }
                 }
+                (lcl, el, max_bouyancy)
             },
         );
 
-    let (net_cape, max_height) = if el_height.is_some() {
-        (
-            Some(JpKg(net_bouyancy / 2.0 * -metfor::g)),
-            Some(max_height),
-        )
+    let net_cape = if el_height.is_some() {
+        Some(JpKg(net_bouyancy / 2.0 * -metfor::g))
     } else {
-        (None, None)
+        None
+    };
+
+    // Make sure LCL is below max height
+    let lcl_height = if let (Some(mxh), Some(lcl)) = (max_height, lcl_height) {
+        if mxh > lcl {
+            Some(lcl)
+        } else {
+            None
+        }
+    } else {
+        lcl_height
     };
 
     Ok((
@@ -335,8 +384,8 @@ fn lift_parcel<'a>(
         .tuple_windows::<(_, _)>()
         // Integrate the bouyancy.
         .scan(
-            (0.0, 0usize),
-            |(int_bouyancy, count), (anal_level_type0, anal_level_type1)| {
+            (0.0, 0.0, 0usize),
+            |(prev_int_bouyancy, int_bouyancy, count), (anal_level_type0, anal_level_type1)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
                 let level_data0: &AnalLevel = match &anal_level_type0 {
@@ -365,9 +414,13 @@ fn lift_parcel<'a>(
                 let b0 = (pcl0 - env0).unpack() / Kelvin::from(env0).unpack();
                 let b1 = (pcl1 - env1).unpack() / Kelvin::from(env1).unpack();
                 let bouyancy = (b0 + b1) * dz;
+                *prev_int_bouyancy = *int_bouyancy;
                 *int_bouyancy += bouyancy;
                 *count += 1;
-                Some(((*int_bouyancy, *count), anal_level_type1))
+                Some((
+                    (*prev_int_bouyancy, *int_bouyancy, *count),
+                    anal_level_type1,
+                ))
             },
         )
         // Take until the bouyancy goes negative, then we're done, just run through the first five
@@ -375,8 +428,11 @@ fn lift_parcel<'a>(
         // the parcel temperature is the same as the sounding surface temperature. Also, for the
         // case of a fire plume, near the surface things are chaotic, so we should punch through
         // a shallow surface stable layer.
-        .take_while(|((int_bouyancy, count), _)| *int_bouyancy >= 0.0 || *count < 5)
-        .map(|((int_bouyancy, _), anal_level)| (int_bouyancy, anal_level));
+        //
+        // Use the prev_int_bouyancy to at least one point past where the bouyancy becomes zero
+        // so we have enough data to interpolate.
+        .take_while(|((prev_int_bouyancy, _, count), _)| *prev_int_bouyancy >= 0.0 || *count < 5)
+        .map(|((_, int_bouyancy, _), anal_level)| (int_bouyancy, anal_level));
 
     Ok((parcel, iter))
 }
