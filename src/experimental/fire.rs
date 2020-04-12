@@ -16,7 +16,7 @@ use crate::{
 use itertools::{izip, Itertools};
 use metfor::{self, Celsius, CelsiusDiff, JpKg, Kelvin, Meters, Quantity};
 
-/// Result of lifting a parcel represntative of a plume core.
+/// Result of lifting a parcel represntative of a fire plume core.
 #[derive(Debug, Clone, Copy)]
 pub struct PlumeAscentAnalysis {
     /// The parcel this analysis was completed for.
@@ -35,10 +35,7 @@ pub struct PlumeAscentAnalysis {
 ///
 /// The blow up ΔT is the difference in temperature from the parcel that blows up to the parcel the
 /// analysis started with (usually the mixed layer parcel). The blow up height is the difference in
-/// the equilibrium level of the blow up ΔT plus 0.5C and the blow up ΔT minus 0.5C. This
-/// difference was chosen because using the (numerical) derivative is extremely sensitive to the
-/// stepsize used when calculating the derivative. This makes sense, since there is actually a step
-/// discontinuity at the blow up temperature.
+/// the equilibrium level of the blow up ΔT plus 0.05C and the blow up ΔT minus 0.05C. 
 ///
 /// Two kinds of blow up are analyzed, the blow up of the plume top and the of the equilibrium
 /// level. The plume top is defined as the level where the net CAPE becomes 0 again, implying that
@@ -237,79 +234,7 @@ pub fn analyze_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscen
     // Get the starting parcel and the iterator to lift it.
     let (parcel, lift_iter) = lift_parcel(parcel, snd)?;
 
-    let mut max_height: Option<Meters> = None;
-
-    // Construct an iterator that selects the environment values and calculates the
-    // corresponding parcel values.
-    let (lcl_height, el_height, net_bouyancy) = lift_iter
-        // Scan to get the max_height
-        .scan(
-            (0.0, Meters(0.0)),
-            |(prev_bouyancy, prev_height), (int_bouyancy, anal_level_type)| {
-                use crate::parcel_profile::lift::AnalLevelType::*;
-
-                let height_val = match anal_level_type {
-                    Normal(level) | LFC(level) | LCL(level) | EL(level) => level.height,
-                };
-
-                if *prev_bouyancy >= 0.0 && int_bouyancy < 0.0 {
-                    let mx_height =
-                        linear_interp(0.0, *prev_bouyancy, int_bouyancy, *prev_height, height_val);
-                    max_height = Some(mx_height);
-                }
-
-                *prev_bouyancy = int_bouyancy;
-                *prev_height = height_val;
-
-                Some((int_bouyancy, anal_level_type))
-            },
-        )
-        // Fold to get the EL Level, Max Height, and max integrated bouyancy
-        .fold(
-            (None, None, 0.0f64),
-            |acc, (int_bouyancy, anal_level_type)| {
-                use crate::parcel_profile::lift::AnalLevelType::*;
-
-                let (mut lcl, mut el, mut max_bouyancy) = acc;
-
-                max_bouyancy = max_bouyancy.max(int_bouyancy);
-                match anal_level_type {
-                    Normal(_) | LFC(_) => {}
-                    LCL(level) => {
-                        lcl = Some(level.height);
-                    }
-                    EL(level) => {
-                        el = Some(level.height);
-                    }
-                }
-                (lcl, el, max_bouyancy)
-            },
-        );
-
-    let net_cape = if el_height.is_some() {
-        Some(JpKg(net_bouyancy / 2.0 * -metfor::g))
-    } else {
-        None
-    };
-
-    // Make sure LCL is below max height
-    let lcl_height = if let (Some(mxh), Some(lcl)) = (max_height, lcl_height) {
-        if mxh > lcl {
-            Some(lcl)
-        } else {
-            None
-        }
-    } else {
-        lcl_height
-    };
-
-    Ok(PlumeAscentAnalysis {
-        lcl_height,
-        el_height,
-        max_height,
-        net_cape,
-        parcel,
-    })
+    Ok(analyze_plume_parcel_iter(parcel, lift_iter))
 }
 
 /// Lift a parcel until the net CAPE is zero.
@@ -326,11 +251,8 @@ pub fn lift_plume_parcel(
     let mut parcel_t = Vec::with_capacity(len);
     let mut environment_t = Vec::with_capacity(len);
 
-    let mut max_height: Option<Meters> = None;
-
-    // Construct an iterator that selects the environment values and calculates the
-    // corresponding parcel values.
-    let (lcl_height, el_height, net_bouyancy) = lift_iter
+    // An iterator that adds the values to the profile vectors as it goes.
+    let lift_iter = lift_iter
         // Add the levels to the parcel profile.
         .scan((), |_dummy, (int_bouyancy, anal_level_type)| {
             use crate::parcel_profile::lift::AnalLevelType::*;
@@ -350,9 +272,30 @@ pub fn lift_plume_parcel(
             }
 
             Some((int_bouyancy, anal_level_type))
-        })
-        // FIXME: STOP HERE, pass this iterator to analyze_plume_parcel to get the plume ascent
-        // analysis. This will reduce the duplication of code!!!!
+        });
+
+    let plume_ascent_anal = analyze_plume_parcel_iter(parcel, lift_iter);
+
+    Ok((
+        ParcelProfile {
+            pressure,
+            height,
+            parcel_t,
+            environment_t,
+        },
+        plume_ascent_anal,
+    ))
+}
+
+fn analyze_plume_parcel_iter(
+    parcel: Parcel,
+    iter: impl Iterator<Item = (f64, AnalLevelType)>,
+) -> PlumeAscentAnalysis {
+    let mut max_height: Option<Meters> = None;
+
+    // Construct an iterator that selects the environment values and calculates the
+    // corresponding parcel values.
+    let (lcl_height, el_height, net_bouyancy) = iter
         // Scan to get the max_height
         .scan(
             (0.0, Meters(0.0)),
@@ -414,21 +357,13 @@ pub fn lift_plume_parcel(
         lcl_height
     };
 
-    Ok((
-        ParcelProfile {
-            pressure,
-            height,
-            parcel_t,
-            environment_t,
-        },
-        PlumeAscentAnalysis {
-            lcl_height,
-            el_height,
-            max_height,
-            net_cape,
-            parcel,
-        },
-    ))
+    PlumeAscentAnalysis {
+        lcl_height,
+        el_height,
+        max_height,
+        net_cape,
+        parcel,
+    }
 }
 
 /// Get the starting parcel and build an iterator to lift it.
