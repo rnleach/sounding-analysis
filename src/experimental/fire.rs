@@ -249,6 +249,8 @@ pub fn lift_plume_parcel(
 
             Some((int_bouyancy, anal_level_type))
         })
+        // FIXME: STOP HERE, pass this iterator to analyze_plume_parcel to get the plume ascent
+        // analysis. This will reduce the duplication of code!!!!
         // Scan to get the max_height
         .scan(
             (0.0, Meters(0.0)),
