@@ -14,7 +14,7 @@ use crate::{
     sounding::Sounding,
 };
 use itertools::{izip, Itertools};
-use metfor::{self, Celsius, CelsiusDiff, JpKg, Kelvin, Meters, Quantity};
+use metfor::{self, Celsius, CelsiusDiff, HectoPascal, JpKg, Kelvin, Meters, Quantity};
 
 /// Result of lifting a parcel represntative of a fire plume core.
 #[derive(Debug, Clone, Copy)]
@@ -35,7 +35,7 @@ pub struct PlumeAscentAnalysis {
 ///
 /// The blow up ΔT is the difference in temperature from the parcel that blows up to the parcel the
 /// analysis started with (usually the mixed layer parcel). The blow up height is the difference in
-/// the equilibrium level of the blow up ΔT plus 0.05C and the blow up ΔT minus 0.05C. 
+/// the equilibrium level of the blow up ΔT plus 0.05C and the blow up ΔT minus 0.05C.
 ///
 /// Two kinds of blow up are analyzed, the blow up of the plume top and the of the equilibrium
 /// level. The plume top is defined as the level where the net CAPE becomes 0 again, implying that
@@ -237,7 +237,7 @@ pub fn analyze_plume_parcel(parcel: Parcel, snd: &Sounding) -> Result<PlumeAscen
     Ok(analyze_plume_parcel_iter(parcel, lift_iter))
 }
 
-/// Lift a parcel until the net CAPE is zero.
+/// Lift a parcel until the net CAPE is zero. Lift it at least 100 hPa above the surface.
 pub fn lift_plume_parcel(
     parcel: Parcel,
     snd: &Sounding,
@@ -306,7 +306,7 @@ fn analyze_plume_parcel_iter(
                     Normal(level) | LFC(level) | LCL(level) | EL(level) => level.height,
                 };
 
-                if *prev_bouyancy >= 0.0 && int_bouyancy < 0.0 {
+                if *prev_bouyancy > 0.0 && int_bouyancy < 0.0 {
                     let mx_height =
                         linear_interp(0.0, *prev_bouyancy, int_bouyancy, *prev_height, height_val);
                     max_height = Some(mx_height);
@@ -423,8 +423,8 @@ fn lift_parcel<'a>(
         .tuple_windows::<(_, _)>()
         // Integrate the bouyancy.
         .scan(
-            (0.0, 0.0, 0usize),
-            |(prev_int_bouyancy, int_bouyancy, count), (anal_level_type0, anal_level_type1)| {
+            (0.0, 0.0),
+            |(prev_int_bouyancy, int_bouyancy), (anal_level_type0, anal_level_type1)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
                 let level_data0: &AnalLevel = match &anal_level_type0 {
@@ -435,10 +435,10 @@ fn lift_parcel<'a>(
                 };
 
                 let &AnalLevel {
+                    pressure: bottom_pres,
                     height: h0,
                     pcl_virt_t: pcl0,
                     env_virt_t: env0,
-                    ..
                 } = level_data0;
                 let &AnalLevel {
                     height: h1,
@@ -455,9 +455,8 @@ fn lift_parcel<'a>(
                 let bouyancy = (b0 + b1) * dz;
                 *prev_int_bouyancy = *int_bouyancy;
                 *int_bouyancy += bouyancy;
-                *count += 1;
                 Some((
-                    (*prev_int_bouyancy, *int_bouyancy, *count),
+                    (*prev_int_bouyancy, *int_bouyancy, bottom_pres),
                     anal_level_type1,
                 ))
             },
@@ -470,7 +469,9 @@ fn lift_parcel<'a>(
         //
         // Use the prev_int_bouyancy to at least one point past where the bouyancy becomes zero
         // so we have enough data to interpolate.
-        .take_while(|((prev_int_bouyancy, _, count), _)| *prev_int_bouyancy >= 0.0 || *count < 5)
+        .take_while(move |((prev_int_bouyancy, _, pres), _)| {
+            *prev_int_bouyancy >= 0.0 || *pres > p0 - HectoPascal(100.0)
+        })
         .map(|((_, int_bouyancy, _), anal_level)| (int_bouyancy, anal_level));
 
     Ok((parcel, iter))
@@ -478,9 +479,6 @@ fn lift_parcel<'a>(
 
 /// Given a sounding, return an iterator that creates parcels starting with the mixed layer parcel
 /// and then incrementing the parcel temperature up to `plus_range` in increments of `increment`.
-///
-/// If the surface temperature is warmer than the mixed layer parcel temperature, then the starting
-/// parcel will use the surface temperature with the mixed layer moisture.
 ///
 /// Arguments:
 /// * snd - the environmental sounding.
@@ -496,10 +494,7 @@ fn plume_parcels(
     moisture_ratio: Option<f64>,
 ) -> Result<(Parcel, impl Iterator<Item = (CelsiusDiff, Parcel)>)> {
     let parcel = mixed_layer_parcel(snd)?;
-    let (row, mut parcel) = find_parcel_start_data(snd, &parcel)?;
-    if row.temperature.unwrap() > parcel.temperature {
-        parcel.temperature = row.temperature.unwrap();
-    }
+    let (_row, parcel) = find_parcel_start_data(snd, &parcel)?;
 
     let CelsiusDiff(inc_val) = increment;
     let next_dt = CelsiusDiff(-inc_val);
