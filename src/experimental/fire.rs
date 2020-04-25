@@ -491,6 +491,9 @@ fn lift_parcel<'a>(
 
                 *prev_int_bouyancy = *int_bouyancy;
                 *int_bouyancy += bouyancy;
+
+                *dry_int_bouyancy = dry_int_bouyancy.min(*int_bouyancy);
+
                 Some((
                     (
                         *prev_int_bouyancy,
