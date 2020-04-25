@@ -21,8 +21,10 @@ use metfor::{self, Celsius, CelsiusDiff, HectoPascal, JpKg, Kelvin, Meters, Quan
 pub struct PlumeAscentAnalysis {
     /// The parcel this analysis was completed for.
     pub parcel: Parcel,
-    /// Net CAPE up to equilibrium level.
-    pub net_cape: Option<JpKg>,
+    /// Maximum integrated bouyancy.
+    pub max_int_bouyancy: Option<JpKg>,
+    /// Maximum integrated bouyancy without latent heat.
+    pub max_dry_int_bouyancy: Option<JpKg>,
     /// The lifting condensation level of the parcel.
     pub lcl_height: Option<Meters>,
     /// The last EL reached before max_height
@@ -254,25 +256,28 @@ pub fn lift_plume_parcel(
     // An iterator that adds the values to the profile vectors as it goes.
     let lift_iter = lift_iter
         // Add the levels to the parcel profile.
-        .scan((), |_dummy, (int_bouyancy, anal_level_type)| {
-            use crate::parcel_profile::lift::AnalLevelType::*;
-            match anal_level_type {
-                Normal(lvl) | LFC(lvl) | LCL(lvl) | EL(lvl) => {
-                    let AnalLevel {
-                        pressure: p,
-                        height: h,
-                        pcl_virt_t,
-                        env_virt_t,
-                    } = lvl;
-                    pressure.push(p);
-                    height.push(h);
-                    parcel_t.push(pcl_virt_t);
-                    environment_t.push(env_virt_t);
+        .scan(
+            (),
+            |_dummy, (int_bouyancy, dry_int_bouyancy, anal_level_type)| {
+                use crate::parcel_profile::lift::AnalLevelType::*;
+                match anal_level_type {
+                    Normal(lvl) | LFC(lvl) | LCL(lvl) | EL(lvl) => {
+                        let AnalLevel {
+                            pressure: p,
+                            height: h,
+                            pcl_virt_t,
+                            env_virt_t,
+                        } = lvl;
+                        pressure.push(p);
+                        height.push(h);
+                        parcel_t.push(pcl_virt_t);
+                        environment_t.push(env_virt_t);
+                    }
                 }
-            }
 
-            Some((int_bouyancy, anal_level_type))
-        });
+                Some((int_bouyancy, dry_int_bouyancy, anal_level_type))
+            },
+        );
 
     let plume_ascent_anal = analyze_plume_parcel_iter(parcel, lift_iter);
 
@@ -289,17 +294,17 @@ pub fn lift_plume_parcel(
 
 fn analyze_plume_parcel_iter(
     parcel: Parcel,
-    iter: impl Iterator<Item = (f64, AnalLevelType)>,
+    iter: impl Iterator<Item = (f64, f64, AnalLevelType)>,
 ) -> PlumeAscentAnalysis {
     let mut max_height: Option<Meters> = None;
 
     // Construct an iterator that selects the environment values and calculates the
     // corresponding parcel values.
-    let (lcl_height, el_height, net_bouyancy) = iter
+    let (lcl_height, el_height, net_bouyancy, dry_net_bouyancy) = iter
         // Scan to get the max_height
         .scan(
             (0.0, Meters(0.0)),
-            |(prev_bouyancy, prev_height), (int_bouyancy, anal_level_type)| {
+            |(prev_bouyancy, prev_height), (int_bouyancy, dry_int_bouyancy, anal_level_type)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
                 let height_val = match anal_level_type {
@@ -315,18 +320,19 @@ fn analyze_plume_parcel_iter(
                 *prev_bouyancy = int_bouyancy;
                 *prev_height = height_val;
 
-                Some((int_bouyancy, anal_level_type))
+                Some((int_bouyancy, dry_int_bouyancy, anal_level_type))
             },
         )
         // Fold to get the EL Level, Max Height, and max integrated bouyancy
         .fold(
-            (None, None, 0.0f64),
-            |acc, (int_bouyancy, anal_level_type)| {
+            (None, None, 0.0f64, 0.0f64),
+            |acc, (int_bouyancy, dry_int_bouyancy, anal_level_type)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
-                let (mut lcl, mut el, mut max_bouyancy) = acc;
+                let (mut lcl, mut el, mut max_bouyancy, mut dry_max_bouyancy) = acc;
 
                 max_bouyancy = max_bouyancy.max(int_bouyancy);
+                dry_max_bouyancy = dry_max_bouyancy.max(dry_int_bouyancy);
                 match anal_level_type {
                     Normal(_) | LFC(_) => {}
                     LCL(level) => {
@@ -336,14 +342,17 @@ fn analyze_plume_parcel_iter(
                         el = Some(level.height);
                     }
                 }
-                (lcl, el, max_bouyancy)
+                (lcl, el, max_bouyancy, dry_max_bouyancy)
             },
         );
 
-    let net_cape = if el_height.is_some() {
-        Some(JpKg(net_bouyancy / 2.0 * -metfor::g))
+    let (max_int_bouyancy, max_dry_int_bouyancy) = if el_height.is_some() {
+        (
+            Some(JpKg(net_bouyancy / 2.0 * -metfor::g)),
+            Some(JpKg(dry_net_bouyancy / 2.0 * -metfor::g)),
+        )
     } else {
-        None
+        (None, None)
     };
 
     // Make sure LCL is below max height
@@ -361,7 +370,8 @@ fn analyze_plume_parcel_iter(
         lcl_height,
         el_height,
         max_height,
-        net_cape,
+        max_int_bouyancy,
+        max_dry_int_bouyancy,
         parcel,
     }
 }
@@ -370,7 +380,7 @@ fn analyze_plume_parcel_iter(
 fn lift_parcel<'a>(
     parcel: Parcel,
     snd: &'a Sounding,
-) -> Result<(Parcel, impl Iterator<Item = (f64, AnalLevelType)> + 'a)> {
+) -> Result<(Parcel, impl Iterator<Item = (f64, f64, AnalLevelType)> + 'a)> {
     // Find the LCL
     let (pcl_lcl, _lcl_temperature) = parcel_lcl(&parcel, snd)?;
 
@@ -389,6 +399,7 @@ fn lift_parcel<'a>(
     let env_dp = snd.dew_point_profile();
 
     let p0 = parcel.pressure;
+    let theta0 = parcel.theta();
 
     // Construct an iterator that selects the environment values and calculates the
     // corresponding parcel values.
@@ -423,8 +434,9 @@ fn lift_parcel<'a>(
         .tuple_windows::<(_, _)>()
         // Integrate the bouyancy.
         .scan(
-            (0.0, 0.0),
-            |(prev_int_bouyancy, int_bouyancy), (anal_level_type0, anal_level_type1)| {
+            (0.0, 0.0, 0.0),
+            move |(prev_int_bouyancy, int_bouyancy, dry_int_bouyancy),
+                  (anal_level_type0, anal_level_type1)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
                 let level_data0: &AnalLevel = match &anal_level_type0 {
@@ -444,8 +456,24 @@ fn lift_parcel<'a>(
                     height: h1,
                     pcl_virt_t: pcl1,
                     env_virt_t: env1,
-                    ..
+                    pressure: top_pres,
                 } = level_data1;
+
+                let dry_pcl0 = if bottom_pres > pcl_lcl.pressure {
+                    Some(pcl0)
+                } else {
+                    let pcl_dry_t = metfor::temperature_from_theta(theta0, bottom_pres);
+                    metfor::virtual_temperature(pcl_dry_t, pcl_dry_t, bottom_pres)
+                        .map(Celsius::from)
+                };
+
+                let dry_pcl1 = if top_pres > pcl_lcl.pressure {
+                    Some(pcl1)
+                } else {
+                    let pcl_dry_t = metfor::temperature_from_theta(theta0, top_pres);
+                    metfor::virtual_temperature(pcl_dry_t, pcl_dry_t, bottom_pres)
+                        .map(Celsius::from)
+                };
 
                 let Meters(dz) = h1 - h0;
                 debug_assert!(dz >= 0.0);
@@ -453,10 +481,23 @@ fn lift_parcel<'a>(
                 let b0 = (pcl0 - env0).unpack() / Kelvin::from(env0).unpack();
                 let b1 = (pcl1 - env1).unpack() / Kelvin::from(env1).unpack();
                 let bouyancy = (b0 + b1) * dz;
+
+                if let (Some(dry_pcl0), Some(dry_pcl1)) = (dry_pcl0, dry_pcl1) {
+                    let db0 = (dry_pcl0 - env0).unpack() / Kelvin::from(env0).unpack();
+                    let db1 = (dry_pcl1 - env1).unpack() / Kelvin::from(env1).unpack();
+                    let dry_bouyancy = (db0 + db1) * dz;
+                    *dry_int_bouyancy += dry_bouyancy;
+                }
+
                 *prev_int_bouyancy = *int_bouyancy;
                 *int_bouyancy += bouyancy;
                 Some((
-                    (*prev_int_bouyancy, *int_bouyancy, bottom_pres),
+                    (
+                        *prev_int_bouyancy,
+                        *int_bouyancy,
+                        *dry_int_bouyancy,
+                        bottom_pres,
+                    ),
                     anal_level_type1,
                 ))
             },
@@ -469,10 +510,12 @@ fn lift_parcel<'a>(
         //
         // Use the prev_int_bouyancy to at least one point past where the bouyancy becomes zero
         // so we have enough data to interpolate.
-        .take_while(move |((prev_int_bouyancy, _, pres), _)| {
+        .take_while(move |((prev_int_bouyancy, _, _, pres), _)| {
             *prev_int_bouyancy >= 0.0 || *pres > p0 - HectoPascal(100.0)
         })
-        .map(|((_, int_bouyancy, _), anal_level)| (int_bouyancy, anal_level));
+        .map(|((_, int_bouyancy, dry_int_bouyancy, _), anal_level)| {
+            (int_bouyancy, dry_int_bouyancy, anal_level)
+        });
 
     Ok((parcel, iter))
 }
