@@ -2,10 +2,12 @@ use metfor::Meters;
 use optional::Optioned;
 
 /// Station information including location data and identification number.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct StationInfo {
     /// station number, USAF number, eg 727730
     num: Optioned<i32>,
+    /// station id, usually a 3 or 4 letter value
+    id: Option<String>,
     /// Latitude and longitude.
     location: Option<(f64, f64)>,
     /// Elevation, this may be in model terrain which is not necessarily the same as the real world.
@@ -29,26 +31,32 @@ impl StationInfo {
     /// use sounding_analysis::StationInfo;
     /// use optional::{some, none};
     ///
-    /// let _stn = StationInfo::new_with_values(12345, (45.2,-113.5), Meters(2000.0));
-    /// let _stn = StationInfo::new_with_values(12345, (45.2,-113.5), Feet(2000.0));
-    /// let _stn = StationInfo::new_with_values(12345, (45.2,-113.5), some(Meters(2000.0)));
-    /// let _stn = StationInfo::new_with_values(12345, (45.2,-113.5), some(Feet(2000.0)));
-    /// let _stn = StationInfo::new_with_values(12345, Some((45.2,-113.5)), Meters(2000.0));
-    /// let _stn = StationInfo::new_with_values(12345, Some((45.2,-113.5)), Feet(2000.0));
-    /// let _stn = StationInfo::new_with_values(12345, Some((45.2,-113.5)), some(Meters(2000.0)));
-    /// let _stn = StationInfo::new_with_values(12345, Some((45.2,-113.5)), some(Feet(2000.0)));
-    /// let _stn = StationInfo::new_with_values(Some(12345), None, Meters(2000.0));
-    /// let _stn = StationInfo::new_with_values(Some(12345), None, Feet(2000.0));
-    /// let _stn = StationInfo::new_with_values(None, (45.2,-113.5), some(Meters(2000.0)));
-    /// let _stn = StationInfo::new_with_values(None, (45.2,-113.5), some(Feet(2000.0)));
+    /// let _stn = StationInfo::new_with_values(12345, None, (45.2,-113.5), Meters(2000.0));
+    /// let _stn = StationInfo::new_with_values(12345, None, (45.2,-113.5), Feet(2000.0));
+    /// let _stn = StationInfo::new_with_values(12345, None, (45.2,-113.5), some(Meters(2000.0)));
+    /// let _stn = StationInfo::new_with_values(12345, None, (45.2,-113.5), some(Feet(2000.0)));
+    /// let _stn = StationInfo::new_with_values(12345, None, Some((45.2,-113.5)), Meters(2000.0));
+    /// let _stn = StationInfo::new_with_values(12345, None, Some((45.2,-113.5)), Feet(2000.0));
+    /// let _stn = StationInfo::new_with_values(12345, None, Some((45.2,-113.5)), some(Meters(2000.0)));
+    /// let _stn = StationInfo::new_with_values(12345, None, Some((45.2,-113.5)), some(Feet(2000.0)));
+    /// let _stn = StationInfo::new_with_values(Some(12345), None, None, Meters(2000.0));
+    /// let _stn = StationInfo::new_with_values(Some(12345), None, None, Feet(2000.0));
+    /// let _stn = StationInfo::new_with_values(None, None, (45.2,-113.5), some(Meters(2000.0)));
+    /// let _stn = StationInfo::new_with_values(None, None, (45.2,-113.5), some(Feet(2000.0)));
     ///
     /// // Note that lat-lon is an `Option` and not an `Optioned`
-    /// let _stn = StationInfo::new_with_values(some(12345), None, none::<Feet>());
-    /// let _stn = StationInfo::new_with_values(some(12345), None, none::<Meters>());
+    /// let _stn = StationInfo::new_with_values(some(12345), None, None, none::<Feet>());
+    /// let _stn = StationInfo::new_with_values(some(12345), None, None, none::<Meters>());
     /// ```
     #[inline]
-    pub fn new_with_values<T, U, V, W>(station_num: T, location: U, elevation: V) -> Self
+    pub fn new_with_values<S, T, U, V, W>(
+        station_num: T,
+        station_id: S,
+        location: U,
+        elevation: V,
+    ) -> Self
     where
+        S: Into<Option<String>>,
         T: Into<Optioned<i32>>,
         U: Into<Option<(f64, f64)>>,
         Optioned<W>: From<V>,
@@ -60,6 +68,7 @@ impl StationInfo {
 
         StationInfo {
             num: station_num.into(),
+            id: station_id.into(),
             location: location.into(),
             elevation: elev,
         }

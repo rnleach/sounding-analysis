@@ -162,14 +162,14 @@ impl Sounding {
     /// # use sounding_analysis::doctest::make_test_sounding;
     ///
     /// let snd = make_test_sounding();
-    /// let stn: StationInfo = snd.station_info();
+    /// let stn: &StationInfo = snd.station_info();
     ///
     /// println!("{:?}", stn);
     ///
     /// ```
     #[inline]
-    pub fn station_info(&self) -> StationInfo {
-        self.station
+    pub fn station_info(&self) -> &StationInfo {
+        &self.station
     }
 
     make_profile_setter!(

@@ -30,7 +30,7 @@ fn main() {
             .collect();
 
     // Create some station info
-    let stn = StationInfo::new_with_values(None, (45.6789, -115.6789), Feet(992.0));
+    let stn = StationInfo::new_with_values(None, None, (45.6789, -115.6789), Feet(992.0));
 
     // Create a valid time. This uses a `chrono::NaiveDateTime`, and you should always assume
     // that valid times are in UTC.
@@ -104,7 +104,6 @@ dew point or humidity are often missing (if not totally inaccurate).
 //
 // API
 //
-#[allow(deprecated)]
 pub use crate::{
     error::{AnalysisError, Result},
     indexes::{haines, haines_high, haines_low, haines_mid, hot_dry_windy, precipitable_water},
@@ -128,8 +127,7 @@ pub use crate::{
         ParcelProfile,
     },
     precip_type::{
-        adjust_precip_type_intensity, bourgouin_precip_type, check_precip_type_intensity,
-        nssl_precip_type, PrecipType,
+        bourgouin_precip_type, check_precip_type_intensity, nssl_precip_type, PrecipType,
     },
     profile::{
         equivalent_potential_temperature, hydrolapse, potential_temperature, relative_humidity,

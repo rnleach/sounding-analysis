@@ -163,33 +163,6 @@ fn is_drizzler(snd: &Sounding) -> bool {
         .any(|rh_val| rh_val >= 0.80)
 }
 
-/// Given a `PrecipType` and an hourly precipitation amount, adjust the intensity.
-///
-/// The adjustments are based on the definition of light, moderate, and heavy under the rain entry
-/// in the American Meteorological Society Glossary of Meteorology.
-///
-/// This function is not exhuastive, but it is a best effort attempt to handle the most common
-/// precipitation types: rain, snow, and freezing rain. It only works with the light intensity
-/// level for these types since that is the default return type from the algorithms provided here
-/// which have no way of knowing intensity. If a weather code provided by some other provider has
-/// some more information, it should be used rather than adjusted by this routine.
-///
-/// Intensity for snow is actually determined by visibility, but that information is often not
-/// available, so it is treated the same as rain which will probably cause a low bias in the
-/// intensity of snow.
-#[deprecated]
-pub fn adjust_precip_type_intensity<L: Into<Mm>>(
-    precip_type: PrecipType,
-    hourly_precipitation: L,
-) -> PrecipType {
-    check_precip_type_intensity(
-        precip_type,
-        Some(hourly_precipitation),
-        Option::<Mm>::None,
-        Option::<StatuteMiles>::None,
-    )
-}
-
 /// Given a `PrecipType` and potentially hourly precipitation, hourly convective precipitation, and
 /// visibility, make a best effor to correct the weather type code, or PrecipType.
 ///
@@ -442,7 +415,6 @@ fn visibility_to_intensity(vsby: StatuteMiles) -> Intensity {
 }
 
 #[cfg(test)]
-#[allow(deprecated)]
 mod test {
     use super::PrecipType::*;
     use super::*;
@@ -450,27 +422,27 @@ mod test {
 
     #[test]
     #[rustfmt::skip]
-    fn test_adjust_precip_type_intensity() {
+    fn test_adjust_check_precip_type_intensity() {
 
-        assert_eq!(adjust_precip_type_intensity(LightDrizzle, Mm(0.01)), LightDrizzle);
-        assert_eq!(adjust_precip_type_intensity(LightDrizzle, Mm(0.4)), ModerateDrizzle);
-        assert_eq!(adjust_precip_type_intensity(LightDrizzle, Mm(0.6)), HeavyDrizzle);
+        assert_eq!(check_precip_type_intensity(LightDrizzle, Some(Mm(0.01)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), LightDrizzle);
+        assert_eq!(check_precip_type_intensity(LightDrizzle, Some(Mm(0.4)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), ModerateDrizzle);
+        assert_eq!(check_precip_type_intensity(LightDrizzle, Some(Mm(0.6)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), HeavyDrizzle);
 
-        assert_eq!(adjust_precip_type_intensity(LightFreezingDrizzle, Mm(0.1)), LightFreezingDrizzle);
-        assert_eq!(adjust_precip_type_intensity(LightFreezingDrizzle, Mm(0.4)), ModerateFreezingDrizzle);
-        assert_eq!(adjust_precip_type_intensity(LightFreezingDrizzle, Mm(0.6)), HeavyFreezingDrizzle);
+        assert_eq!(check_precip_type_intensity(LightFreezingDrizzle, Some(Mm(0.1)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), LightFreezingDrizzle);
+        assert_eq!(check_precip_type_intensity(LightFreezingDrizzle, Some(Mm(0.4)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), ModerateFreezingDrizzle);
+        assert_eq!(check_precip_type_intensity(LightFreezingDrizzle, Some(Mm(0.6)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), HeavyFreezingDrizzle);
 
-        assert_eq!(adjust_precip_type_intensity(LightRain, Mm(1.0)), LightRain);
-        assert_eq!(adjust_precip_type_intensity(LightRain, Mm(5.0)), ModerateRain);
-        assert_eq!(adjust_precip_type_intensity(LightRain, Mm(8.0)), HeavyRain);
+        assert_eq!(check_precip_type_intensity(LightRain, Some(Mm(1.0)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), LightRain);
+        assert_eq!(check_precip_type_intensity(LightRain, Some(Mm(5.0)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), ModerateRain);
+        assert_eq!(check_precip_type_intensity(LightRain, Some(Mm(8.0)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), HeavyRain);
 
-        assert_eq!(adjust_precip_type_intensity(LightFreezingRain, Mm(1.0)), LightFreezingRain);
-        assert_eq!(adjust_precip_type_intensity(LightFreezingRain, Mm(5.0)), ModerateFreezingRain);
-        assert_eq!(adjust_precip_type_intensity(LightFreezingRain, Mm(8.0)), HeavyFreezingRain);
+        assert_eq!(check_precip_type_intensity(LightFreezingRain, Some(Mm(1.0)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), LightFreezingRain);
+        assert_eq!(check_precip_type_intensity(LightFreezingRain, Some(Mm(5.0)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), ModerateFreezingRain);
+        assert_eq!(check_precip_type_intensity(LightFreezingRain, Some(Mm(8.0)), Some(Mm(0.0)), Some(StatuteMiles(10.0))), HeavyFreezingRain);
 
-        assert_eq!(adjust_precip_type_intensity(LightSnow, Mm(1.0)), LightSnow);
-        assert_eq!(adjust_precip_type_intensity(LightSnow, Mm(5.0)), ModerateSnow);
-        assert_eq!(adjust_precip_type_intensity(LightSnow, Mm(8.0)), HeavySnow);
+        assert_eq!(check_precip_type_intensity(LightSnow, Some(Mm(1.0)), Some(Mm(0.0)), std::option::Option::<StatuteMiles>::None), LightSnow);
+        assert_eq!(check_precip_type_intensity(LightSnow, Some(Mm(5.0)), Some(Mm(0.0)), std::option::Option::<StatuteMiles>::None), ModerateSnow);
+        assert_eq!(check_precip_type_intensity(LightSnow, Some(Mm(8.0)), Some(Mm(0.0)), std::option::Option::<StatuteMiles>::None), HeavySnow);
 
         for variant in PrecipType::iter() {
             // Skip special cases handled above
@@ -483,7 +455,7 @@ mod test {
             }
 
             for &qpf in &[Mm(1.0), Mm(5.0), Mm(8.0)] {
-                assert_eq!(adjust_precip_type_intensity(variant, qpf), variant);
+                assert_eq!(check_precip_type_intensity(variant, Some(qpf), Some(Mm(0.0)), Some(StatuteMiles(10.0))), variant);
             }
         }
     }
