@@ -21,10 +21,12 @@ use metfor::{self, Celsius, CelsiusDiff, HectoPascal, JpKg, Kelvin, Meters, Quan
 pub struct PlumeAscentAnalysis {
     /// The parcel this analysis was completed for.
     pub parcel: Parcel,
-    /// Maximum integrated bouyancy.
-    pub max_int_bouyancy: Option<JpKg>,
-    /// Maximum integrated bouyancy without latent heat.
-    pub max_dry_int_bouyancy: Option<JpKg>,
+    /// Maximum integrated buoyancy.
+    pub max_int_buoyancy: Option<JpKg>,
+    /// Level of maximum integrated buoyancy.
+    pub level_max_int_buoyancy: Option<Meters>,
+    /// Maximum integrated buoyancy without latent heat.
+    pub max_dry_int_buoyancy: Option<JpKg>,
     /// The lifting condensation level of the parcel.
     pub lcl_height: Option<Meters>,
     /// The last EL reached before max_height
@@ -37,12 +39,12 @@ pub struct PlumeAscentAnalysis {
 ///
 /// The blow up ΔT is the difference in temperature from the parcel that blows up to the parcel the
 /// analysis started with (usually the mixed layer parcel). The blow up height is the difference in
-/// the equilibrium level of the blow up ΔT plus 0.05C and the blow up ΔT minus 0.05C.
+/// the level max integrated buoyancy of the blow up ΔT plus 0.05C and the blow up ΔT minus 0.05C.
 ///
-/// Two kinds of blow up are analyzed, the blow up of the plume top and the of the equilibrium
-/// level. The plume top is defined as the level where the net CAPE becomes 0 again, implying that
-/// that all the potential energy (CAPE) that was converted to kinetic energy (updraft) has been
-/// used up due to negative bouyancy. At this level, parcels will start descending again.
+/// Two kinds of blow up are analyzed, the blow up of the plume top and the of the level of maximum
+/// integrated buoyancy. The plume top is defined as the level where the net CAPE becomes 0 again,
+/// implying that all the potential energy (CAPE) that was converted to kinetic energy (updraft)
+/// has been used up due to negative buoyancy. At this level, parcels will start descending again.
 ///
 /// The ΔT required to get the plume top over the LCL, and thus to create a cloud is also
 /// calculated. This can be a useful for determining if a plume will have a cap cloud but will
@@ -51,14 +53,15 @@ pub struct PlumeAscentAnalysis {
 pub struct BlowUpAnalysis {
     /// The original parcel we started with while searching for the blow up.
     pub starting_parcel: Parcel,
-    /// The amount of warming required to cause a blow up of the equilibrium level.
-    pub delta_t_el: CelsiusDiff,
+    /// The amount of warming required to cause a blow up of the level of maximum integrated
+    /// buoyancy.
+    pub delta_t_lmib: CelsiusDiff,
     /// The amount of warming required to cause a blow up of the plume top.
     pub delta_t_top: CelsiusDiff,
     /// The amount of warming required to cause a cloud to form.
     pub delta_t_cloud: CelsiusDiff,
-    /// The change in height from the blow up of the equilibrium level.
-    pub delta_z_el: Meters,
+    /// The change in height from the blow up of the level of maximum integrated buoyancy.
+    pub delta_z_lmib: Meters,
     /// The change in height from the blow up of the plume top.
     pub delta_z_top: Meters,
 }
@@ -90,7 +93,7 @@ pub fn calc_plumes(
 }
 
 /// Find the parcel that causes the plume to blow up by finding the maximum derivative of the
-/// equilibrium level vs parcel temperature.
+/// level of maximum integrated buoyancy vs parcel temperature.
 ///
 /// Arguments:
 /// * snd - the environmental sounding.
@@ -103,7 +106,7 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
 
     let (starting_parcel, parcel_iter) = plume_parcels(snd, MAX_RANGE, INCREMENT, moisture_ratio)?;
 
-    let (delta_t_cloud, delta_t_el, delta_t_top, _, _, delta_z_el, delta_z_top): (
+    let (delta_t_cloud, delta_t_lmib, delta_t_top, _, _, delta_z_lmib, delta_z_top): (
         CelsiusDiff,
         CelsiusDiff,
         CelsiusDiff,
@@ -116,17 +119,21 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
         .filter_map(|(dt, pcl)| analyze_plume_parcel(pcl, snd).ok().map(|anal| (dt, anal)))
         // Skip levels with no useful information.
         .skip_while(|(_dt, anal)| {
-            anal.el_height.is_none() && anal.max_height.is_none() && anal.lcl_height.is_none()
+            anal.level_max_int_buoyancy.is_none()
+                && anal.max_height.is_none()
+                && anal.lcl_height.is_none()
         })
         // Take while there is some useful information.
         .take_while(|(_dt, anal)| {
-            anal.el_height.is_some() || anal.max_height.is_some() || anal.lcl_height.is_some()
+            anal.level_max_int_buoyancy.is_some()
+                || anal.max_height.is_some()
+                || anal.lcl_height.is_some()
         })
         // Filter out noise due to rounding errors etc. where warmer parcels don't rise as high.
         // This smooths it out so that deriviatives work well too.
         .scan(
             (Meters(0.0), Meters(0.0), Meters(0.0)),
-            |(prev_lcl, prev_el, prev_max_z), (dt, anal)| {
+            |(prev_lcl, prev_lmib, prev_max_z), (dt, anal)| {
                 if let Some(lcl) = anal.lcl_height {
                     if lcl >= *prev_lcl {
                         *prev_lcl = lcl;
@@ -135,9 +142,9 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                     }
                 }
 
-                if let Some(el) = anal.el_height {
-                    if el >= *prev_el {
-                        *prev_el = el;
+                if let Some(lmib) = anal.level_max_int_buoyancy {
+                    if lmib >= *prev_lmib {
+                        *prev_lmib = lmib;
                     } else {
                         return Some(None);
                     }
@@ -171,11 +178,11 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
             |acc, (lvl0, lvl1)| {
                 let (
                     mut cloud_dt,
-                    mut el_blow_up_dt,
+                    mut lmib_blow_up_dt,
                     mut max_z_blow_up_dt,
-                    mut deriv_el,
+                    mut deriv_lmib,
                     mut deriv_max_z,
-                    mut jump_el,
+                    mut jump_lmib,
                     mut jump_max_z,
                 ) = acc;
 
@@ -185,12 +192,14 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                 debug_assert_ne!(dt0, dt1); // Required for division below
                 let dx = (dt1 - dt0).unpack();
 
-                if let (Some(el0), Some(el1)) = (anal0.el_height, anal1.el_height) {
-                    let derivative = (el1 - el0).unpack() / dx;
-                    if derivative > deriv_el {
-                        el_blow_up_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
-                        deriv_el = derivative;
-                        jump_el = el1 - el0;
+                if let (Some(lmib0), Some(lmib1)) =
+                    (anal0.level_max_int_buoyancy, anal1.level_max_int_buoyancy)
+                {
+                    let derivative = (lmib1 - lmib0).unpack() / dx;
+                    if derivative > deriv_lmib {
+                        lmib_blow_up_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
+                        deriv_lmib = derivative;
+                        jump_lmib = lmib1 - lmib0;
                     }
                 }
 
@@ -211,11 +220,11 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
 
                 (
                     cloud_dt,
-                    el_blow_up_dt,
+                    lmib_blow_up_dt,
                     max_z_blow_up_dt,
-                    deriv_el,
+                    deriv_lmib,
                     deriv_max_z,
-                    jump_el,
+                    jump_lmib,
                     jump_max_z,
                 )
             },
@@ -224,8 +233,8 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
     Ok(BlowUpAnalysis {
         starting_parcel,
         delta_t_cloud,
-        delta_t_el,
-        delta_z_el,
+        delta_t_lmib,
+        delta_z_lmib,
         delta_t_top,
         delta_z_top,
     })
@@ -258,7 +267,7 @@ pub fn lift_plume_parcel(
         // Add the levels to the parcel profile.
         .scan(
             (),
-            |_dummy, (int_bouyancy, dry_int_bouyancy, anal_level_type)| {
+            |_dummy, (int_buoyancy, dry_int_buoyancy, anal_level_type)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
                 match anal_level_type {
                     Normal(lvl) | LFC(lvl) | LCL(lvl) | EL(lvl) => {
@@ -275,7 +284,7 @@ pub fn lift_plume_parcel(
                     }
                 }
 
-                Some((int_bouyancy, dry_int_bouyancy, anal_level_type))
+                Some((int_buoyancy, dry_int_buoyancy, anal_level_type))
             },
         );
 
@@ -300,56 +309,69 @@ fn analyze_plume_parcel_iter(
 
     // Construct an iterator that selects the environment values and calculates the
     // corresponding parcel values.
-    let (lcl_height, el_height, net_bouyancy, dry_net_bouyancy) = iter
+    let (lcl_height, el_height, max_int_buoyancy, level_max_int_buoyancy, dry_net_buoyancy) = iter
         // Scan to get the max_height
         .scan(
             (0.0, Meters(0.0)),
-            |(prev_bouyancy, prev_height), (int_bouyancy, dry_int_bouyancy, anal_level_type)| {
+            |(prev_buoyancy, prev_height), (int_buoyancy, dry_int_buoyancy, anal_level_type)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
                 let height_val = match anal_level_type {
                     Normal(level) | LFC(level) | LCL(level) | EL(level) => level.height,
                 };
 
-                if *prev_bouyancy > 0.0 && int_bouyancy < 0.0 {
+                if *prev_buoyancy > 0.0 && int_buoyancy < 0.0 {
                     let mx_height =
-                        linear_interp(0.0, *prev_bouyancy, int_bouyancy, *prev_height, height_val);
+                        linear_interp(0.0, *prev_buoyancy, int_buoyancy, *prev_height, height_val);
                     max_height = Some(mx_height);
                 }
 
-                *prev_bouyancy = int_bouyancy;
+                *prev_buoyancy = int_buoyancy;
                 *prev_height = height_val;
 
-                Some((int_bouyancy, dry_int_bouyancy, anal_level_type))
+                Some((int_buoyancy, dry_int_buoyancy, anal_level_type))
             },
         )
-        // Fold to get the EL Level, Max Height, and max integrated bouyancy
+        // Fold to get the EL Level, Max Height, and max integrated buoyancy
         .fold(
-            (None, None, 0.0f64, 0.0f64),
-            |acc, (int_bouyancy, dry_int_bouyancy, anal_level_type)| {
+            (None, None, 0.0f64, None, 0.0f64),
+            |acc, (int_buoyancy, dry_int_buoyancy, anal_level_type)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
-                let (mut lcl, mut el, mut max_bouyancy, mut dry_max_bouyancy) = acc;
+                let (
+                    mut lcl,
+                    mut el,
+                    mut max_buoyancy,
+                    mut level_max_buoyancy,
+                    mut dry_max_buoyancy,
+                ) = acc;
 
-                max_bouyancy = max_bouyancy.max(int_bouyancy);
-                dry_max_bouyancy = dry_max_bouyancy.max(dry_int_bouyancy);
-                match anal_level_type {
-                    Normal(_) | LFC(_) => {}
+                let height = match anal_level_type {
+                    Normal(level) | LFC(level) => level.height,
                     LCL(level) => {
                         lcl = Some(level.height);
+                        level.height
                     }
                     EL(level) => {
                         el = Some(level.height);
+                        level.height
                     }
+                };
+
+                dry_max_buoyancy = dry_max_buoyancy.max(dry_int_buoyancy);
+                if int_buoyancy >= max_buoyancy {
+                    max_buoyancy = int_buoyancy;
+                    level_max_buoyancy = Some(height);
                 }
-                (lcl, el, max_bouyancy, dry_max_bouyancy)
+
+                (lcl, el, max_buoyancy, level_max_buoyancy, dry_max_buoyancy)
             },
         );
 
-    let (max_int_bouyancy, max_dry_int_bouyancy) = if el_height.is_some() {
+    let (max_int_buoyancy, max_dry_int_buoyancy) = if el_height.is_some() {
         (
-            Some(JpKg(net_bouyancy / 2.0 * -metfor::g)),
-            Some(JpKg(dry_net_bouyancy / 2.0 * -metfor::g)),
+            Some(JpKg(max_int_buoyancy / 2.0 * -metfor::g)),
+            Some(JpKg(dry_net_buoyancy / 2.0 * -metfor::g)),
         )
     } else {
         (None, None)
@@ -370,8 +392,9 @@ fn analyze_plume_parcel_iter(
         lcl_height,
         el_height,
         max_height,
-        max_int_bouyancy,
-        max_dry_int_bouyancy,
+        max_int_buoyancy,
+        level_max_int_buoyancy,
+        max_dry_int_buoyancy,
         parcel,
     }
 }
@@ -430,12 +453,12 @@ fn lift_parcel<'a>(
         .tuple_windows::<(_, _)>()
         // Find the level type and insert special levels if needed.
         .flat_map(move |(lvl0, lvl1)| level_type_mapping(lvl0, lvl1))
-        // Pair the levels up to integrate the bouyancy.
+        // Pair the levels up to integrate the buoyancy.
         .tuple_windows::<(_, _)>()
-        // Integrate the bouyancy.
+        // Integrate the buoyancy.
         .scan(
             (0.0, 0.0, 0.0),
-            move |(prev_int_bouyancy, int_bouyancy, dry_int_bouyancy),
+            move |(prev_int_buoyancy, int_buoyancy, dry_int_buoyancy),
                   (anal_level_type0, anal_level_type1)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
@@ -480,44 +503,44 @@ fn lift_parcel<'a>(
 
                 let b0 = (pcl0 - env0).unpack() / Kelvin::from(env0).unpack();
                 let b1 = (pcl1 - env1).unpack() / Kelvin::from(env1).unpack();
-                let bouyancy = (b0 + b1) * dz;
+                let buoyancy = (b0 + b1) * dz;
 
                 if let (Some(dry_pcl0), Some(dry_pcl1)) = (dry_pcl0, dry_pcl1) {
                     let db0 = (dry_pcl0 - env0).unpack() / Kelvin::from(env0).unpack();
                     let db1 = (dry_pcl1 - env1).unpack() / Kelvin::from(env1).unpack();
-                    let dry_bouyancy = (db0 + db1) * dz;
-                    *dry_int_bouyancy += dry_bouyancy;
+                    let dry_buoyancy = (db0 + db1) * dz;
+                    *dry_int_buoyancy += dry_buoyancy;
                 }
 
-                *prev_int_bouyancy = *int_bouyancy;
-                *int_bouyancy += bouyancy;
+                *prev_int_buoyancy = *int_buoyancy;
+                *int_buoyancy += buoyancy;
 
-                *dry_int_bouyancy = dry_int_bouyancy.min(*int_bouyancy);
+                *dry_int_buoyancy = dry_int_buoyancy.min(*int_buoyancy);
 
                 Some((
                     (
-                        *prev_int_bouyancy,
-                        *int_bouyancy,
-                        *dry_int_bouyancy,
+                        *prev_int_buoyancy,
+                        *int_buoyancy,
+                        *dry_int_buoyancy,
                         bottom_pres,
                     ),
                     anal_level_type1,
                 ))
             },
         )
-        // Take until the bouyancy goes negative, then we're done, just run through the first five
+        // Take until the buoyancy goes negative, then we're done, just run through the first five
         // to ensure we get through any goofy surface layers. This is also needed to get started if
         // the parcel temperature is the same as the sounding surface temperature. Also, for the
         // case of a fire plume, near the surface things are chaotic, so we should punch through
         // a shallow surface stable layer.
         //
-        // Use the prev_int_bouyancy to at least one point past where the bouyancy becomes zero
+        // Use the prev_int_buoyancy to at least one point past where the buoyancy becomes zero
         // so we have enough data to interpolate.
-        .take_while(move |((prev_int_bouyancy, _, _, pres), _)| {
-            *prev_int_bouyancy >= 0.0 || *pres > p0 - HectoPascal(100.0)
+        .take_while(move |((prev_int_buoyancy, _, _, pres), _)| {
+            *prev_int_buoyancy >= 0.0 || *pres > p0 - HectoPascal(100.0)
         })
-        .map(|((_, int_bouyancy, dry_int_bouyancy, _), anal_level)| {
-            (int_bouyancy, dry_int_bouyancy, anal_level)
+        .map(|((_, int_buoyancy, dry_int_buoyancy, _), anal_level)| {
+            (int_buoyancy, dry_int_buoyancy, anal_level)
         });
 
     Ok((parcel, iter))
@@ -680,10 +703,10 @@ pub fn partition_cape(pa: &ParcelAscentAnalysis) -> Result<(JpKg, JpKg)> {
                         // Must be just starting out, save the previous layer and move on
                         (cape, h, pt, et)
                     } else {
-                        let bouyancy = ((pt - et).unpack() / et.unpack()
+                        let buoyancy = ((pt - et).unpack() / et.unpack()
                             + (prev_pt - prev_et).unpack() / prev_et.unpack())
                             * dz.unpack();
-                        cape += bouyancy;
+                        cape += buoyancy;
 
                         (cape, h, pt, et)
                     }
