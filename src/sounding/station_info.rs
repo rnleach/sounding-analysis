@@ -169,6 +169,18 @@ impl StationInfo {
         self
     }
 
+    /// Builder method to add a station ID. These are usually 3 or 4 alphanumeric codes that may
+    /// not be unique to the location like the station number is supposed to be.
+    #[inline]
+    pub fn with_station_id<T>(mut self, station_id: T) -> Self
+        where
+            Option<String>: From<T>,
+    {
+        let id: Option<String> = Option::from(station_id);
+        self.id = id;
+        self 
+    }
+
     /// station number, USAF number, eg 727730
     #[inline]
     pub fn station_num(&self) -> Optioned<i32> {
@@ -186,5 +198,20 @@ impl StationInfo {
     #[inline]
     pub fn elevation(&self) -> Optioned<Meters> {
         self.elevation
+    }
+
+    /// Get the station ID that was used with this station. This is normally a series of 3 or 4
+    /// letters. It is not unique to the location like the station number is supposed to be.
+    ///
+    /// # Examples
+    /// ```
+    /// use sounding_analysis::StationInfo;
+    /// 
+    /// let info = StationInfo::new().with_station_id("KXLY".to_owned());
+    /// assert_eq!(Some("KXLY"), info.station_id());
+    /// ```
+    #[inline]
+    pub fn station_id(&self) -> Option<&str> {
+        self.id.as_ref().map(|s| s.as_ref() )
     }
 }
