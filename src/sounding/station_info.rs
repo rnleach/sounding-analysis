@@ -173,12 +173,12 @@ impl StationInfo {
     /// not be unique to the location like the station number is supposed to be.
     #[inline]
     pub fn with_station_id<T>(mut self, station_id: T) -> Self
-        where
-            Option<String>: From<T>,
+    where
+        Option<String>: From<T>,
     {
         let id: Option<String> = Option::from(station_id);
         self.id = id;
-        self 
+        self
     }
 
     /// station number, USAF number, eg 727730
@@ -206,12 +206,12 @@ impl StationInfo {
     /// # Examples
     /// ```
     /// use sounding_analysis::StationInfo;
-    /// 
+    ///
     /// let info = StationInfo::new().with_station_id("KXLY".to_owned());
     /// assert_eq!(Some("KXLY"), info.station_id());
     /// ```
     #[inline]
     pub fn station_id(&self) -> Option<&str> {
-        self.id.as_ref().map(|s| s.as_ref() )
+        self.id.as_ref().map(|s| s.as_ref())
     }
 }
