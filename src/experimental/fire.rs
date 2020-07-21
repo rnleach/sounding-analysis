@@ -39,12 +39,11 @@ pub struct PlumeAscentAnalysis {
 ///
 /// The blow up ΔT is the difference in temperature from the parcel that blows up to the parcel the
 /// analysis started with (usually the mixed layer parcel). The blow up height is the difference in
-/// the level max integrated buoyancy of the blow up ΔT plus 0.05C and the blow up ΔT minus 0.05C.
-///
-/// Two kinds of blow up are analyzed, the blow up of the plume top and the of the level of maximum
-/// integrated buoyancy. The plume top is defined as the level where the net CAPE becomes 0 again,
-/// implying that all the potential energy (CAPE) that was converted to kinetic energy (updraft)
-/// has been used up due to negative buoyancy. At this level, parcels will start descending again.
+/// the level of max integrated buoyancy of the blow up ΔT plus 0.05C and the blow up ΔT minus
+/// 0.05C. The level of max integrated buoyancy is also an equilibrium level (EL). Usually, but not
+/// always, there is only a single EL which corresponds to the level of max integrated buoyancy. So
+/// the level of max integrated buoyancy will be referred to as the EL, and in cases where there is
+/// multiple ELs, it will be the one that corresponds to the max integrated buoyancy.
 ///
 /// The ΔT required to get the plume top over the LCL, and thus to create a cloud is also
 /// calculated. This can be a useful for determining if a plume will have a cap cloud but will
@@ -54,16 +53,12 @@ pub struct BlowUpAnalysis {
     /// The original parcel we started with while searching for the blow up.
     pub starting_parcel: Parcel,
     /// The amount of warming required to cause a blow up of the level of maximum integrated
-    /// buoyancy.
-    pub delta_t_lmib: CelsiusDiff,
-    /// The amount of warming required to cause a blow up of the plume top.
-    pub delta_t_top: CelsiusDiff,
+    /// buoyancy, or the equilibrium level.
+    pub delta_t_el: CelsiusDiff,
     /// The amount of warming required to cause a cloud to form.
     pub delta_t_cloud: CelsiusDiff,
-    /// The change in height from the blow up of the level of maximum integrated buoyancy.
-    pub delta_z_lmib: Meters,
-    /// The change in height from the blow up of the plume top.
-    pub delta_z_top: Meters,
+    /// The change in height from the blow up of the equilbrium level.
+    pub delta_z_el: Meters,
 }
 
 /// Generate a series of `PlumeAscentAnalysis`s for a given sounding starting at the mixed layer
@@ -106,13 +101,10 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
 
     let (starting_parcel, parcel_iter) = plume_parcels(snd, MAX_RANGE, INCREMENT, moisture_ratio)?;
 
-    let (delta_t_cloud, delta_t_lmib, delta_t_top, _, _, delta_z_lmib, delta_z_top): (
-        CelsiusDiff,
+    let (delta_t_cloud, delta_t_el, _deriv_el, delta_z_el): (
         CelsiusDiff,
         CelsiusDiff,
         f64,
-        f64,
-        Meters,
         Meters,
     ) = parcel_iter
         // Do the analysis, ignore errors.
@@ -166,25 +158,9 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
         // Pair up for simple derivative calculations.
         .tuple_windows::<(_, _)>()
         .fold(
-            (
-                CelsiusDiff(0.0),
-                CelsiusDiff(0.0),
-                CelsiusDiff(0.0),
-                0.0,
-                0.0,
-                Meters(0.0),
-                Meters(0.0),
-            ),
+            (CelsiusDiff(0.0), CelsiusDiff(0.0), 0.0, Meters(0.0)),
             |acc, (lvl0, lvl1)| {
-                let (
-                    mut cloud_dt,
-                    mut lmib_blow_up_dt,
-                    mut max_z_blow_up_dt,
-                    mut deriv_lmib,
-                    mut deriv_max_z,
-                    mut jump_lmib,
-                    mut jump_max_z,
-                ) = acc;
+                let (mut cloud_dt, mut lmib_blow_up_dt, mut deriv_lmib, mut jump_lmib) = acc;
 
                 let (dt0, anal0) = lvl0;
                 let (dt1, anal1) = lvl1;
@@ -203,40 +179,21 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                     }
                 }
 
-                if let (Some(max_z_0), Some(max_z_1)) = (anal0.max_height, anal1.max_height) {
-                    let derivative = (max_z_1 - max_z_0).unpack() / dx;
-                    if derivative > deriv_max_z {
-                        max_z_blow_up_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
-                        deriv_max_z = derivative;
-                        jump_max_z = max_z_1 - max_z_0;
-                    }
-                }
-
                 if let (None, Some(_)) = (anal0.lcl_height, anal1.lcl_height) {
                     if cloud_dt == CelsiusDiff(0.0) {
                         cloud_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
                     }
                 }
 
-                (
-                    cloud_dt,
-                    lmib_blow_up_dt,
-                    max_z_blow_up_dt,
-                    deriv_lmib,
-                    deriv_max_z,
-                    jump_lmib,
-                    jump_max_z,
-                )
+                (cloud_dt, lmib_blow_up_dt, deriv_lmib, jump_lmib)
             },
         );
 
     Ok(BlowUpAnalysis {
         starting_parcel,
         delta_t_cloud,
-        delta_t_lmib,
-        delta_z_lmib,
-        delta_t_top,
-        delta_z_top,
+        delta_t_el,
+        delta_z_el,
     })
 }
 
