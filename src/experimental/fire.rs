@@ -69,32 +69,35 @@ pub struct BlowUpAnalysis {
 }
 
 impl BlowUpAnalysis {
-
     /// There's a lot of information packed into a `BlowUpAnalysis`, which is a simplification
     /// itself. This is an attempt to condense it even more so it could more easily used in things
-    /// like climatology. 
+    /// like climatology.
     ///
-    /// The things we are looking for in an index include: 
+    /// The things we are looking for in an index include:
     ///  - High values for low ΔT values. Values above 10 should lead to a zero index because it is
-    ///  very unlikely a blow up of any kind could occur. (In my experience so far). 
+    ///  very unlikely a blow up of any kind could occur. (In my experience so far).
     ///  - High values for high ΔZ values. Values above 10km should saturate the index because that
-    ///  is a huge blow up. 
+    ///  is a huge blow up.
     ///  - If there is no latent heat contribution, the index should be zero. It should maximize
     ///  where the contribution from latent heat balances that from sensible heat, and a blow up
     ///  that is dominated by latent heat should still show up in the index, but not as large as
     ///  one that is balanced between latent heat and sensible heat.
     pub fn as_index(&self) -> f64 {
         let dt_contribution = (10.0 - self.delta_t_el.unpack()) / 10.0;
-        if dt_contribution < 0.0 { return 0.0; }
+        if dt_contribution < 0.0 {
+            return 0.0;
+        }
 
         let mut dz_contribution = self.delta_z_el.unpack() / 10_000.0;
-        if dz_contribution > 1.0 { dz_contribution = 1.0; }
+        if dz_contribution > 1.0 {
+            dz_contribution = 1.0;
+        }
 
-        debug_assert!( self.pct_wet <= 1.0 && self.pct_wet >= 0.0);
+        debug_assert!(self.pct_wet <= 1.0 && self.pct_wet >= 0.0);
         let pct_wet_contribution = if self.pct_wet <= 0.5 {
-            2.0 * self.pct_wet 
+            2.0 * self.pct_wet
         } else {
-            1.5 - self.pct_wet 
+            1.5 - self.pct_wet
         };
 
         // Use the geometric mean of each contributing factor.
@@ -258,7 +261,11 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
             },
         );
 
-        if pct_wet < 0.0 { pct_wet = 0.0 } else if pct_wet > 1.0 { pct_wet = 1.0 }
+    if pct_wet < 0.0 {
+        pct_wet = 0.0
+    } else if pct_wet > 1.0 {
+        pct_wet = 1.0
+    }
 
     Ok(BlowUpAnalysis {
         starting_parcel,
