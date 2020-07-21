@@ -48,6 +48,9 @@ pub struct PlumeAscentAnalysis {
 /// The ΔT required to get the plume top over the LCL, and thus to create a cloud is also
 /// calculated. This can be a useful for determining if a plume will have a cap cloud but will
 /// not be unstable enough to blow up.
+///
+/// After blow up of the equilibrium level, the maximum integrated buoyancy and the percentage of
+/// it that is due to latent heat release are also recorded.
 #[derive(Debug)]
 pub struct BlowUpAnalysis {
     /// The original parcel we started with while searching for the blow up.
@@ -59,6 +62,44 @@ pub struct BlowUpAnalysis {
     pub delta_t_cloud: CelsiusDiff,
     /// The change in height from the blow up of the equilbrium level.
     pub delta_z_el: Meters,
+    /// The maximum integrated buoyancy after blow up.
+    pub mib: JpKg,
+    /// The percentage of the `mib` that is due to latent heat release.
+    pub pct_wet: f64,
+}
+
+impl BlowUpAnalysis {
+
+    /// There's a lot of information packed into a `BlowUpAnalysis`, which is a simplification
+    /// itself. This is an attempt to condense it even more so it could more easily used in things
+    /// like climatology. 
+    ///
+    /// The things we are looking for in an index include: 
+    ///  - High values for low ΔT values. Values above 10 should lead to a zero index because it is
+    ///  very unlikely a blow up of any kind could occur. (In my experience so far). 
+    ///  - High values for high ΔZ values. Values above 10km should saturate the index because that
+    ///  is a huge blow up. 
+    ///  - If there is no latent heat contribution, the index should be zero. It should maximize
+    ///  where the contribution from latent heat balances that from sensible heat, and a blow up
+    ///  that is dominated by latent heat should still show up in the index, but not as large as
+    ///  one that is balanced between latent heat and sensible heat.
+    pub fn as_index(&self) -> f64 {
+        let dt_contribution = (10.0 - self.delta_t_el.unpack()) / 10.0;
+        if dt_contribution < 0.0 { return 0.0; }
+
+        let mut dz_contribution = self.delta_z_el.unpack() / 10_000.0;
+        if dz_contribution > 1.0 { dz_contribution = 1.0; }
+
+        debug_assert!( self.pct_wet <= 1.0 && self.pct_wet >= 0.0);
+        let pct_wet_contribution = if self.pct_wet <= 0.5 {
+            2.0 * self.pct_wet 
+        } else {
+            1.5 - self.pct_wet 
+        };
+
+        // Use the geometric mean of each contributing factor.
+        (dt_contribution * dz_contribution * pct_wet_contribution).cbrt()
+    }
 }
 
 /// Generate a series of `PlumeAscentAnalysis`s for a given sounding starting at the mixed layer
@@ -101,11 +142,13 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
 
     let (starting_parcel, parcel_iter) = plume_parcels(snd, MAX_RANGE, INCREMENT, moisture_ratio)?;
 
-    let (delta_t_cloud, delta_t_el, _deriv_el, delta_z_el): (
+    let (delta_t_cloud, delta_t_el, _deriv_el, delta_z_el, mib, mut pct_wet): (
         CelsiusDiff,
         CelsiusDiff,
         f64,
         Meters,
+        JpKg,
+        f64,
     ) = parcel_iter
         // Do the analysis, ignore errors.
         .filter_map(|(dt, pcl)| analyze_plume_parcel(pcl, snd).ok().map(|anal| (dt, anal)))
@@ -158,9 +201,23 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
         // Pair up for simple derivative calculations.
         .tuple_windows::<(_, _)>()
         .fold(
-            (CelsiusDiff(0.0), CelsiusDiff(0.0), 0.0, Meters(0.0)),
+            (
+                CelsiusDiff(0.0),
+                CelsiusDiff(0.0),
+                0.0,
+                Meters(0.0),
+                JpKg(0.0),
+                0.0,
+            ),
             |acc, (lvl0, lvl1)| {
-                let (mut cloud_dt, mut lmib_blow_up_dt, mut deriv_lmib, mut jump_lmib) = acc;
+                let (
+                    mut cloud_dt,
+                    mut lmib_blow_up_dt,
+                    mut deriv_lmib,
+                    mut jump_lmib,
+                    mut mib,
+                    mut pct_wet,
+                ) = acc;
 
                 let (dt0, anal0) = lvl0;
                 let (dt1, anal1) = lvl1;
@@ -168,14 +225,19 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                 debug_assert_ne!(dt0, dt1); // Required for division below
                 let dx = (dt1 - dt0).unpack();
 
-                if let (Some(lmib0), Some(lmib1)) =
-                    (anal0.level_max_int_buoyancy, anal1.level_max_int_buoyancy)
-                {
+                if let (Some(lmib0), Some(lmib1), Some(mib1), Some(dry_buoyancy1)) = (
+                    anal0.level_max_int_buoyancy,
+                    anal1.level_max_int_buoyancy,
+                    anal1.max_int_buoyancy,
+                    anal1.max_dry_int_buoyancy,
+                ) {
                     let derivative = (lmib1 - lmib0).unpack() / dx;
                     if derivative > deriv_lmib {
                         lmib_blow_up_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
                         deriv_lmib = derivative;
                         jump_lmib = lmib1 - lmib0;
+                        mib = mib1;
+                        pct_wet = (mib1 - dry_buoyancy1) / mib1;
                     }
                 }
 
@@ -185,15 +247,26 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                     }
                 }
 
-                (cloud_dt, lmib_blow_up_dt, deriv_lmib, jump_lmib)
+                (
+                    cloud_dt,
+                    lmib_blow_up_dt,
+                    deriv_lmib,
+                    jump_lmib,
+                    mib,
+                    pct_wet,
+                )
             },
         );
+
+        if pct_wet < 0.0 { pct_wet = 0.0 } else if pct_wet > 1.0 { pct_wet = 1.0 }
 
     Ok(BlowUpAnalysis {
         starting_parcel,
         delta_t_cloud,
         delta_t_el,
         delta_z_el,
+        mib,
+        pct_wet,
     })
 }
 
