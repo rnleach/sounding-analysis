@@ -64,7 +64,7 @@ pub struct BlowUpAnalysis {
     pub delta_z_el: Meters,
     /// The maximum integrated buoyancy after blow up.
     pub mib: JpKg,
-    /// The percentage of the `mib` that is due to latent heat release.
+    /// The percentage of the `mib` that is due to latent heat release at `delta_t_el` + 1.0C
     pub pct_wet: f64,
 }
 
@@ -235,11 +235,14 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                     anal1.max_dry_int_buoyancy,
                 ) {
                     let derivative = (lmib1 - lmib0).unpack() / dx;
+                    let dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
                     if derivative > deriv_lmib {
-                        lmib_blow_up_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
+                        lmib_blow_up_dt = dt;
                         deriv_lmib = derivative;
                         jump_lmib = lmib1 - lmib0;
                         mib = mib1;
+                    }
+                    if dt.unpack() - 1.0 - lmib_blow_up_dt.unpack() <= 1.0e-4 {
                         pct_wet = (mib1 - dry_buoyancy1) / mib1;
                     }
                 }
