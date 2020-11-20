@@ -84,24 +84,39 @@ impl BlowUpAnalysis {
     ///  one that is balanced between latent heat and sensible heat.
     pub fn as_index(&self) -> f64 {
         let dt_contribution = (10.0 - self.delta_t_el.unpack()) / 10.0;
-        if dt_contribution < 0.0 {
+        if dt_contribution <= 0.0 {
             return 0.0;
         }
 
-        let mut dz_contribution = self.delta_z_el.unpack() / 10_000.0;
+        let mut dz_contribution = (self.delta_z_el.unpack() - 2000.0) / 4_000.0;
         if dz_contribution > 1.0 {
             dz_contribution = 1.0;
+        } else if dz_contribution <= 0.0 {
+            return 0.0;
         }
 
         debug_assert!(self.pct_wet <= 1.0 && self.pct_wet >= 0.0);
-        let pct_wet_contribution = if self.pct_wet <= 0.5 {
+        let mut pct_wet_contribution = if self.pct_wet <= 0.5 {
             2.0 * self.pct_wet
         } else {
-            1.5 - self.pct_wet
+            1.25 - self.pct_wet / 2.0
         };
+        if pct_wet_contribution > 1.0 {
+            pct_wet_contribution = 1.0;
+        } else if pct_wet_contribution <= 0.0 {
+            return 0.0;
+        }
+
+        let eff = self.mib.unpack() / (self.delta_t_el.unpack() * metfor::cp.unpack());
+        let mut eff_contribution = (eff - 0.05) / 0.15;
+        if eff_contribution > 1.0 {
+            eff_contribution = 1.0;
+        } else if eff_contribution <= 0.0 {
+            return 0.0;
+        }
 
         // Use the geometric mean of each contributing factor.
-        (dt_contribution * dz_contribution * pct_wet_contribution).cbrt()
+        (dt_contribution * dz_contribution * pct_wet_contribution * eff_contribution).powf(1.0/4.0)
     }
 }
 
@@ -172,24 +187,14 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
         .scan(
             (Meters(0.0), Meters(0.0), Meters(0.0)),
             |(prev_lcl, prev_lmib, prev_max_z), (dt, anal)| {
-                if let Some(lcl) = anal.lcl_height {
-                    if lcl >= *prev_lcl {
+                if let (Some(lcl), Some(lmib), Some(max_z)) = (
+                    anal.lcl_height,
+                    anal.level_max_int_buoyancy,
+                    anal.max_height,
+                ) {
+                    if lcl >= *prev_lcl && lmib >= *prev_lmib && max_z >= *prev_max_z {
                         *prev_lcl = lcl;
-                    } else {
-                        return Some(None);
-                    }
-                }
-
-                if let Some(lmib) = anal.level_max_int_buoyancy {
-                    if lmib >= *prev_lmib {
                         *prev_lmib = lmib;
-                    } else {
-                        return Some(None);
-                    }
-                }
-
-                if let Some(max_z) = anal.max_height {
-                    if max_z >= *prev_max_z {
                         *prev_max_z = max_z;
                     } else {
                         return Some(None);
@@ -228,10 +233,19 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                 debug_assert_ne!(dt0, dt1); // Required for division below
                 let dx = (dt1 - dt0).unpack();
 
-                if let (Some(lmib0), Some(lmib1), Some(mib1), Some(dry_buoyancy1)) = (
+                if let (
+                    Some(lmib0),
+                    Some(lmib1),
+                    Some(mib0),
+                    Some(mib1),
+                    Some(dry_buoyancy0),
+                    Some(dry_buoyancy1),
+                ) = (
                     anal0.level_max_int_buoyancy,
                     anal1.level_max_int_buoyancy,
+                    anal0.max_int_buoyancy,
                     anal1.max_int_buoyancy,
+                    anal0.max_dry_int_buoyancy,
                     anal1.max_dry_int_buoyancy,
                 ) {
                     let derivative = (lmib1 - lmib0).unpack() / dx;
@@ -242,8 +256,10 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                         jump_lmib = lmib1 - lmib0;
                         mib = mib1;
                     }
-                    if dt.unpack() - 1.0 - lmib_blow_up_dt.unpack() <= 1.0e-4 {
-                        pct_wet = (mib1 - dry_buoyancy1) / mib1;
+                    if (dt.unpack() - 1.0 - lmib_blow_up_dt.unpack()).abs() <= 1.0e-4 {
+                        let avg_mib = (mib0 + mib1).unpack() / 2.0;
+                        let avg_dryb = (dry_buoyancy0 + dry_buoyancy1).unpack() / 2.0;
+                        pct_wet = (avg_mib - avg_dryb) / avg_mib;
                     }
                 }
 
