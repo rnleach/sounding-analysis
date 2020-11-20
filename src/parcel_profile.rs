@@ -382,7 +382,7 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, JpKg, Celsius)> {
     let dp = snd.dew_point_profile();
     let p = snd.pressure_profile();
 
-    // Find the lowest pressure, 400 mb above the surface (or starting level)
+    // Find the lowest pressure, 400 hPa above the surface (or starting level)
     let top_p = p
         .iter()
         .filter_map(|p| p.into_option())
