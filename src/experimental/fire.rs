@@ -15,8 +15,7 @@ use crate::{
 };
 use itertools::{izip, Itertools};
 use metfor::{self, Celsius, CelsiusDiff, HectoPascal, JpKg, Kelvin, Meters, Quantity};
-
-// TODO: Make use of optional module
+use optional::{none, some, Optioned};
 
 /// Result of lifting a parcel represntative of a fire plume core.
 #[derive(Debug, Clone, Copy)]
@@ -24,16 +23,16 @@ pub struct PlumeAscentAnalysis {
     /// The parcel this analysis was completed for.
     pub parcel: Parcel,
     /// Maximum integrated buoyancy.
-    pub max_int_buoyancy: Option<JpKg>,
+    pub max_int_buoyancy: Optioned<JpKg>,
     /// Maximum integrated buoyancy without latent heat.
-    pub max_dry_int_buoyancy: Option<JpKg>,
+    pub max_dry_int_buoyancy: Optioned<JpKg>,
     /// The lifting condensation level of the parcel.
-    pub lcl_height: Option<Meters>,
+    pub lcl_height: Optioned<Meters>,
     /// The equilibrium level. If there are multiple equilibrium levels, this is the one that
     /// corresponds to the maximum integrated buoyancy.
-    pub el_height: Option<Meters>,
+    pub el_height: Optioned<Meters>,
     /// The level where net CAPE becomes zero, the plume rises no more
-    pub max_height: Option<Meters>,
+    pub max_height: Optioned<Meters>,
 }
 
 /// Various analysis results of lifting plumes parcels vs the heating supplied.
@@ -44,17 +43,17 @@ pub struct PlumeHeatingAnalysis {
     /// Ordinate
     pub dts: Vec<CelsiusDiff>,
     /// Buoyancies
-    pub max_int_buoyancies: Vec<Option<JpKg>>,
+    pub max_int_buoyancies: Vec<Optioned<JpKg>>,
     /// Wet Ratio 0-1
-    pub wet_ratio: Vec<Option<f64>>,
+    pub wet_ratio: Vec<Optioned<f64>>,
     /// LCL
-    pub lcl_heights: Vec<Option<Meters>>,
+    pub lcl_heights: Vec<Optioned<Meters>>,
     /// EL
-    pub el_heights: Vec<Option<Meters>>,
+    pub el_heights: Vec<Optioned<Meters>>,
     /// Max Plume Height
-    pub max_heights: Vec<Option<Meters>>,
+    pub max_heights: Vec<Optioned<Meters>>,
     /// Heat input to CAPE
-    pub fire_efficiencies: Vec<Option<f64>>, // MIB / Fire
+    pub fire_efficiencies: Vec<Optioned<f64>>, // MIB / Fire
     /// How fast the plume grows relative more heating.
     pub plume_growth_efficiencies: Vec<(CelsiusDiff, f64)>, // dMIB / dFire, Fire = (dt * cp)
 }
@@ -148,9 +147,11 @@ fn plumes_heating_iter(
         .scan(
             (Meters(0.0), Meters(0.0), Meters(0.0)),
             |(prev_lcl, prev_lmib, prev_max_z), (dt, anal)| {
-                if let (Some(lcl), Some(lmib), Some(max_z)) =
-                    (anal.lcl_height, anal.el_height, anal.max_height)
-                {
+                if let (Some(lcl), Some(lmib), Some(max_z)) = (
+                    anal.lcl_height.into_option(),
+                    anal.el_height.into_option(),
+                    anal.max_height.into_option(),
+                ) {
                     if lcl >= *prev_lcl && lmib >= *prev_lmib && max_z >= *prev_max_z {
                         *prev_lcl = lcl;
                         *prev_lmib = lmib;
@@ -222,12 +223,12 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                     Some(dry_buoyancy0),
                     Some(dry_buoyancy1),
                 ) = (
-                    anal0.el_height,
-                    anal1.el_height,
-                    anal0.max_int_buoyancy,
-                    anal1.max_int_buoyancy,
-                    anal0.max_dry_int_buoyancy,
-                    anal1.max_dry_int_buoyancy,
+                    anal0.el_height.into_option(),
+                    anal1.el_height.into_option(),
+                    anal0.max_int_buoyancy.into_option(),
+                    anal1.max_int_buoyancy.into_option(),
+                    anal0.max_dry_int_buoyancy.into_option(),
+                    anal1.max_dry_int_buoyancy.into_option(),
                 ) {
                     let derivative = (lmib1 - lmib0).unpack() / dx;
                     let dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
@@ -244,7 +245,10 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                     }
                 }
 
-                if let (None, Some(_)) = (anal0.lcl_height, anal1.lcl_height) {
+                if let (None, Some(_)) = (
+                    anal0.lcl_height.into_option(),
+                    anal1.lcl_height.into_option(),
+                ) {
                     if cloud_dt == CelsiusDiff(0.0) {
                         cloud_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
                     }
@@ -285,12 +289,12 @@ pub fn plume_heating_analysis(
     let (starting_parcel, anal_iter) = plumes_heating_iter(snd, moisture_ratio)?;
 
     let mut dts: Vec<CelsiusDiff> = vec![];
-    let mut max_int_buoyancies: Vec<Option<JpKg>> = vec![];
-    let mut wet_ratio: Vec<Option<f64>> = vec![];
-    let mut lcl_heights: Vec<Option<Meters>> = vec![];
-    let mut el_heights: Vec<Option<Meters>> = vec![];
-    let mut max_heights: Vec<Option<Meters>> = vec![];
-    let mut fire_efficiencies: Vec<Option<f64>> = vec![];
+    let mut max_int_buoyancies: Vec<Optioned<JpKg>> = vec![];
+    let mut wet_ratio: Vec<Optioned<f64>> = vec![];
+    let mut lcl_heights: Vec<Optioned<Meters>> = vec![];
+    let mut el_heights: Vec<Optioned<Meters>> = vec![];
+    let mut max_heights: Vec<Optioned<Meters>> = vec![];
+    let mut fire_efficiencies: Vec<Optioned<f64>> = vec![];
     let mut plume_growth_efficiencies: Vec<(CelsiusDiff, f64)> = vec![];
 
     anal_iter
@@ -299,7 +303,7 @@ pub fn plume_heating_analysis(
             max_int_buoyancies.push(anal.max_int_buoyancy);
 
             let a_wet_ratio = anal.max_dry_int_buoyancy.and_then(|dry| {
-                anal.max_int_buoyancy.map(|total| {
+                anal.max_int_buoyancy.map_t(|total| {
                     if total > JpKg(0.0) {
                         (total - dry) / total
                     } else {
@@ -312,7 +316,7 @@ pub fn plume_heating_analysis(
             el_heights.push(anal.el_height);
             max_heights.push(anal.max_height);
 
-            let fire_eff = anal.max_int_buoyancy.map(|buoy| {
+            let fire_eff = anal.max_int_buoyancy.map_t(|buoy| {
                 if dt > CelsiusDiff(0.0) {
                     buoy.unpack() / (dt.unpack() * metfor::cp.unpack())
                 } else {
@@ -325,7 +329,7 @@ pub fn plume_heating_analysis(
         })
         .tuple_windows::<(_, _)>()
         .filter_map(|((dt0, anal0), (dt1, anal1))| {
-            anal0.max_int_buoyancy.and_then(|buoy0| {
+            anal0.max_int_buoyancy.into_option().and_then(|buoy0| {
                 anal1
                     .max_int_buoyancy
                     .map(|buoy1| ((dt0, buoy0), (dt1, buoy1)))
@@ -416,7 +420,7 @@ fn analyze_plume_parcel_iter(
     parcel: Parcel,
     iter: impl Iterator<Item = (f64, f64, AnalLevelType)>,
 ) -> PlumeAscentAnalysis {
-    let mut max_height: Option<Meters> = None;
+    let mut max_height: Optioned<Meters> = none();
 
     // Construct an iterator that selects the environment values and calculates the
     // corresponding parcel values.
@@ -434,7 +438,7 @@ fn analyze_plume_parcel_iter(
                 if *prev_buoyancy > 0.0 && int_buoyancy < 0.0 {
                     let mx_height =
                         linear_interp(0.0, *prev_buoyancy, int_buoyancy, *prev_height, height_val);
-                    max_height = Some(mx_height);
+                    max_height = some(mx_height);
                 }
 
                 *prev_buoyancy = int_buoyancy;
@@ -445,7 +449,7 @@ fn analyze_plume_parcel_iter(
         )
         // Fold to get the EL Level, LCL Height, and max integrated buoyancy
         .fold(
-            (None, None, 0.0f64, 0.0f64),
+            (none(), none(), 0.0f64, 0.0f64),
             |acc, (int_buoyancy, dry_int_buoyancy, anal_level_type)| {
                 use crate::parcel_profile::lift::AnalLevelType::*;
 
@@ -454,7 +458,7 @@ fn analyze_plume_parcel_iter(
                 let height = match anal_level_type {
                     Normal(level) | LFC(level) | EL(level) => level.height,
                     LCL(level) => {
-                        lcl = Some(level.height);
+                        lcl = some(level.height);
                         level.height
                     }
                 };
@@ -462,7 +466,7 @@ fn analyze_plume_parcel_iter(
                 dry_max_buoyancy = dry_max_buoyancy.max(dry_int_buoyancy);
                 if int_buoyancy >= max_buoyancy {
                     max_buoyancy = int_buoyancy;
-                    el = Some(height);
+                    el = some(height);
                 }
 
                 (lcl, el, max_buoyancy, dry_max_buoyancy)
@@ -471,23 +475,24 @@ fn analyze_plume_parcel_iter(
 
     let (max_int_buoyancy, max_dry_int_buoyancy) = if el_height.is_some() {
         (
-            Some(JpKg(max_int_buoyancy / 2.0 * -metfor::g)),
-            Some(JpKg(dry_net_buoyancy / 2.0 * -metfor::g)),
+            some(JpKg(max_int_buoyancy / 2.0 * -metfor::g)),
+            some(JpKg(dry_net_buoyancy / 2.0 * -metfor::g)),
         )
     } else {
-        (None, None)
+        (none(), none())
     };
 
     // Make sure LCL is below max height
-    let lcl_height = if let (Some(mxh), Some(lcl)) = (max_height, lcl_height) {
-        if mxh > lcl {
-            Some(lcl)
+    let lcl_height =
+        if let (Some(mxh), Some(lcl)) = (max_height.into_option(), lcl_height.into_option()) {
+            if mxh > lcl {
+                some(lcl)
+            } else {
+                none()
+            }
         } else {
-            None
-        }
-    } else {
-        lcl_height
-    };
+            lcl_height.into()
+        };
 
     PlumeAscentAnalysis {
         lcl_height,
