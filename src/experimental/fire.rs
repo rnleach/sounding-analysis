@@ -298,17 +298,27 @@ pub fn plume_heating_analysis(
             dts.push(dt);
             max_int_buoyancies.push(anal.max_int_buoyancy);
 
-            let a_wet_ratio = anal
-                .max_dry_int_buoyancy
-                .and_then(|dry| anal.max_int_buoyancy.map(|total| dry / total));
+            let a_wet_ratio = anal.max_dry_int_buoyancy.and_then(|dry| {
+                anal.max_int_buoyancy.map(|total| {
+                    if total > JpKg(0.0) {
+                        (total - dry) / total
+                    } else {
+                        0.0
+                    }
+                })
+            });
             wet_ratio.push(a_wet_ratio);
             lcl_heights.push(anal.lcl_height);
             el_heights.push(anal.el_height);
             max_heights.push(anal.max_height);
 
-            let fire_eff = anal
-                .max_int_buoyancy
-                .map(|buoy| buoy.unpack() / (dt.unpack() * metfor::cp.unpack()));
+            let fire_eff = anal.max_int_buoyancy.map(|buoy| {
+                if dt > CelsiusDiff(0.0) {
+                    buoy.unpack() / (dt.unpack() * metfor::cp.unpack())
+                } else {
+                    0.0
+                }
+            });
             fire_efficiencies.push(fire_eff);
 
             Some((dt, anal))
@@ -323,7 +333,7 @@ pub fn plume_heating_analysis(
         })
         .for_each(|((dt0, mib0), (dt1, mib1))| {
             let dt: CelsiusDiff = CelsiusDiff((dt0 + dt1).unpack() / 2.0);
-            let run = (dt1 - dt0).unpack();
+            let run = (dt1 - dt0).unpack() * metfor::cp.unpack();
             let rise = (mib1 - mib0).unpack();
             plume_growth_efficiencies.push((dt, rise / run));
         });
