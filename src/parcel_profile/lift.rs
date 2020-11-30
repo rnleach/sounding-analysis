@@ -434,15 +434,13 @@ fn cape_cin(
 
                 let (pt, et) = (Kelvin::from(pt), Kelvin::from(et));
 
-                let dz = h - prev_h;
+                let Meters(dz) = h - prev_h;
 
-                if dz <= Meters(0.0) {
+                if dz <= 0.0 {
                     // Must be just starting out, save the previous layer and move on
                     ((cape, cin, hail_cape), h, pt, et)
                 } else {
-                    let bouyancy = ((pt - et).unpack() / et.unpack()
-                        + (prev_pt - prev_et).unpack() / prev_et.unpack())
-                        * dz.unpack();
+                    let bouyancy = ((pt - et) / et + (prev_pt - prev_et) / prev_et) * dz;
                     if bouyancy > 0.0 && p <= lfc {
                         cape += bouyancy;
                         if pt <= Celsius(-10.0) && pt >= Celsius(-30.0) {

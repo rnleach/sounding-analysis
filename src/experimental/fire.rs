@@ -212,9 +212,6 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                 let (dt0, anal0) = lvl0;
                 let (dt1, anal1) = lvl1;
 
-                debug_assert_ne!(dt0, dt1); // Required for division below
-                let dx = (dt1 - dt0).unpack();
-
                 if let (
                     Some(lmib0),
                     Some(lmib1),
@@ -230,17 +227,20 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                     anal0.max_dry_int_buoyancy.into_option(),
                     anal1.max_dry_int_buoyancy.into_option(),
                 ) {
-                    let derivative = (lmib1 - lmib0).unpack() / dx;
-                    let dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
+                    debug_assert_ne!(dt0, dt1); // Required for division below
+                    let dx = dt1 - dt0;
+
+                    let derivative = (lmib1 - lmib0).unpack() / dx.unpack();
+                    let dt = (dt1 + dt0) / 2.0;
                     if derivative > deriv_lmib {
                         lmib_blow_up_dt = dt;
                         deriv_lmib = derivative;
                         jump_lmib = lmib1 - lmib0;
                         mib = mib1;
                     }
-                    if (dt.unpack() - 1.0 - lmib_blow_up_dt.unpack()).abs() <= 1.0e-4 {
-                        let avg_mib = (mib0 + mib1).unpack() / 2.0;
-                        let avg_dryb = (dry_buoyancy0 + dry_buoyancy1).unpack() / 2.0;
+                    if (dt - CelsiusDiff(1.0) - lmib_blow_up_dt).abs() <= CelsiusDiff(1.0e-4) {
+                        let avg_mib = (mib0 + mib1) / 2.0;
+                        let avg_dryb = (dry_buoyancy0 + dry_buoyancy1) / 2.0;
                         pct_wet = (avg_mib - avg_dryb) / avg_mib;
                     }
                 }
@@ -250,7 +250,7 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
                     anal1.lcl_height.into_option(),
                 ) {
                     if cloud_dt == CelsiusDiff(0.0) {
-                        cloud_dt = CelsiusDiff((dt1 + dt0).unpack() / 2.0);
+                        cloud_dt = (dt1 + dt0) / 2.0;
                     }
                 }
 
@@ -318,7 +318,7 @@ pub fn plume_heating_analysis(
 
             let fire_eff = anal.max_int_buoyancy.map_t(|buoy| {
                 if dt > CelsiusDiff(0.0) {
-                    buoy.unpack() / (dt.unpack() * metfor::cp.unpack())
+                    buoy / (dt * metfor::cp)
                 } else {
                     0.0
                 }
@@ -336,9 +336,9 @@ pub fn plume_heating_analysis(
             })
         })
         .for_each(|((dt0, mib0), (dt1, mib1))| {
-            let dt: CelsiusDiff = CelsiusDiff((dt0 + dt1).unpack() / 2.0);
-            let run = (dt1 - dt0).unpack() * metfor::cp.unpack();
-            let rise = (mib1 - mib0).unpack();
+            let dt: CelsiusDiff = (dt0 + dt1) / 2.0;
+            let run = (dt1 - dt0) * metfor::cp;
+            let rise = mib1 - mib0;
             plume_growth_efficiencies.push((dt, rise / run));
         });
 
@@ -606,13 +606,13 @@ fn lift_parcel<'a>(
                 let Meters(dz) = h1 - h0;
                 debug_assert!(dz >= 0.0);
 
-                let b0 = (pcl0 - env0).unpack() / Kelvin::from(env0).unpack();
-                let b1 = (pcl1 - env1).unpack() / Kelvin::from(env1).unpack();
+                let b0 = (pcl0 - env0) / Kelvin::from(env0);
+                let b1 = (pcl1 - env1) / Kelvin::from(env1);
                 let buoyancy = (b0 + b1) * dz;
 
                 if let (Some(dry_pcl0), Some(dry_pcl1)) = (dry_pcl0, dry_pcl1) {
-                    let db0 = (dry_pcl0 - env0).unpack() / Kelvin::from(env0).unpack();
-                    let db1 = (dry_pcl1 - env1).unpack() / Kelvin::from(env1).unpack();
+                    let db0 = (dry_pcl0 - env0) / Kelvin::from(env0);
+                    let db1 = (dry_pcl1 - env1) / Kelvin::from(env1);
                     let dry_buoyancy = (db0 + db1) * dz;
                     *dry_int_buoyancy += dry_buoyancy;
                 }

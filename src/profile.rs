@@ -138,7 +138,7 @@ pub fn sfc_to_level_temperature_lapse_rate(snd: &Sounding) -> Vec<Optioned<Celsi
     izip!(z_profile, t_profile)
         .map(|(z_opt, t_opt)| {
             if let (Some(z), Some(t)) = (z_opt.into_option(), t_opt.into_option()) {
-                if (z - z_sfc).unpack().abs() < ::std::f64::EPSILON {
+                if (z - z_sfc).abs() < Meters(std::f64::EPSILON) {
                     none()
                 } else {
                     let CelsiusDiff(dt) = t - t_sfc;
