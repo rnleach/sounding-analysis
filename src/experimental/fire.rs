@@ -491,7 +491,7 @@ fn analyze_plume_parcel_iter(
                 none()
             }
         } else {
-            lcl_height.into()
+            lcl_height
         };
 
     PlumeAscentAnalysis {
