@@ -98,7 +98,8 @@ impl BlowUpAnalysis {}
 ///
 /// Arguments:
 /// * snd - the environmental sounding.
-/// * max_range - the maximum amount of heating to apply.
+/// * min_dt - the minimum amount of heating to apply, may be negative.
+/// * max_dt - the maximum amount of heating to apply.
 /// * increment - the difference in temperature between parcels.
 /// * moisture_ratio - a value of 10 means for every 10C of heating (dt), add 1 g/kg of moisture
 ///   to the parcel. If it is `None`, don't add any moisture.
@@ -106,11 +107,12 @@ impl BlowUpAnalysis {}
 pub fn calc_plumes(
     snd: &Sounding,
     increment: CelsiusDiff,
-    max_range: CelsiusDiff,
+    min_dt: CelsiusDiff,
+    max_dt: CelsiusDiff,
     moisture_ratio: Option<f64>,
 ) -> Result<Vec<PlumeAscentAnalysis>> {
     let (_starting_parcel, parcels_iter) =
-        plume_parcels(snd, max_range, increment, moisture_ratio)?;
+        plume_parcels(snd, min_dt, max_dt, increment, moisture_ratio)?;
 
     Ok(parcels_iter
         .filter_map(|(_, pcl)| analyze_plume_parcel(pcl, snd).ok())
@@ -127,9 +129,11 @@ fn plumes_heating_iter(
     impl Iterator<Item = (CelsiusDiff, PlumeAscentAnalysis)> + '_,
 )> {
     const INCREMENT: CelsiusDiff = CelsiusDiff(0.1);
-    const MAX_RANGE: CelsiusDiff = CelsiusDiff(20.0);
+    const MIN_DT: CelsiusDiff = CelsiusDiff(-1.0);
+    const MAX_DT: CelsiusDiff = CelsiusDiff(20.0);
 
-    let (starting_parcel, parcel_iter) = plume_parcels(snd, MAX_RANGE, INCREMENT, moisture_ratio)?;
+    let (starting_parcel, parcel_iter) =
+        plume_parcels(snd, MIN_DT, MAX_DT, INCREMENT, moisture_ratio)?;
 
     let anal_iter = parcel_iter
         // Do the analysis, ignore errors.
@@ -180,7 +184,9 @@ fn plumes_heating_iter(
 pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnalysis> {
     let (starting_parcel, anal_iter) = plumes_heating_iter(snd, moisture_ratio)?;
 
-    let (delta_t_cloud, delta_t_el, _deriv_el, delta_z_el, mib, mut pct_wet): (
+    let (mut anal_iter0, anal_iter) = anal_iter.tee();
+
+    let (mut delta_t_cloud, mut delta_t_el, _deriv_el, mut delta_z_el, mut mib, mut pct_wet): (
         CelsiusDiff,
         CelsiusDiff,
         f64,
@@ -265,6 +271,41 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
             },
         );
 
+    let (dt0, el0, lcl_opt, mib0, dry_mib0) = anal_iter0
+        .next()
+        .and_then(|anal| {
+            anal.1.el_height.into_option().map(|el| {
+                (
+                    anal.0,
+                    el,
+                    anal.1.lcl_height,
+                    anal.1.max_int_buoyancy,
+                    anal.1.max_dry_int_buoyancy,
+                )
+            })
+        })
+        .ok_or(AnalysisError::NotEnoughData)?;
+
+    // For cases where there is no jump because delta_t_el is really 0, the derivative approach
+    // will find the wrong value, it should really be the first value.
+    if el0 > Meters(5000.0) {
+        if lcl_opt.is_some() {
+            delta_t_cloud = dt0;
+        }
+
+        delta_t_el = dt0;
+        delta_z_el = el0;
+
+        if let Some(mib0) = mib0.into_option() {
+            mib = mib0;
+
+            if let Some(dry_mib0) = dry_mib0.into_option() {
+                pct_wet = (mib0 - dry_mib0) / mib0;
+            }
+        }
+    }
+
+    // Force between 0 and 1
     if pct_wet < 0.0 {
         pct_wet = 0.0
     } else if pct_wet > 1.0 {
@@ -656,29 +697,30 @@ fn lift_parcel<'a>(
 ///
 /// Arguments:
 /// * snd - the environmental sounding.
-/// * plus_range - the maximum amount of heating to apply.
+/// * min_dt - the minimum amount of heating to apply, which may be negative.
+/// * max_dt - the maximum amount of heating to apply.
 /// * increment - the difference in temperature between parcels.
 /// * moisture_ratio - a value of 10 means for every 10C of heating (dt), add 1 g/kg of moisture
 ///   to the parcel. If it is `None`, don't add any moisture.
 ///
 fn plume_parcels(
     snd: &Sounding,
-    plus_range: CelsiusDiff,
+    min_dt: CelsiusDiff,
+    max_dt: CelsiusDiff,
     increment: CelsiusDiff,
     moisture_ratio: Option<f64>,
 ) -> Result<(Parcel, impl Iterator<Item = (CelsiusDiff, Parcel)>)> {
     let parcel = mixed_layer_parcel(snd)?;
     let (_row, parcel) = find_parcel_start_data(snd, &parcel)?;
 
-    let CelsiusDiff(inc_val) = increment;
-    let next_dt = CelsiusDiff(-inc_val);
+    let next_dt = min_dt - increment;
 
     Ok((
         parcel,
         PlumeParcelIterator {
             starting_pcl: parcel,
             next_dt,
-            max_dt: plus_range,
+            max_dt,
             increment,
             moisture_ratio,
         },
