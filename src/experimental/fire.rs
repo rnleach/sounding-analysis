@@ -174,7 +174,7 @@ fn plumes_heating_iter(
     Ok((starting_parcel, anal_iter))
 }
 /// Find the parcel that causes the plume to blow up by finding the maximum derivative of the
-/// equilibrium level vs parcel temperature.
+/// equilibrium level vs parcel heating.
 ///
 /// Arguments:
 /// * snd - the environmental sounding.
@@ -184,142 +184,140 @@ fn plumes_heating_iter(
 pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnalysis> {
     let (starting_parcel, anal_iter) = plumes_heating_iter(snd, moisture_ratio)?;
 
-    let (mut anal_iter0, anal_iter) = anal_iter.tee();
+    let (anal_iter0, anal_iter) = anal_iter.tee();
 
-    let (mut delta_t_cloud, mut delta_t_el, _deriv_el, mut delta_z_el, mut mib, mut pct_wet): (
-        CelsiusDiff,
-        CelsiusDiff,
-        f64,
-        Meters,
-        JpKg,
-        f64,
-    ) = anal_iter
+    match check_for_immediate_blow_up(starting_parcel, anal_iter0) {
+        Some(immediate_blow_up) => return Ok(immediate_blow_up),
+        None => {}
+    }
+
+    let (mut dt_el, mut delta_z_el, mut mib) = (CelsiusDiff(0.0), Meters(0.0), JpKg(0.0));
+    let mut pct_wet = 0.0;
+    let mut dt_cloud = CelsiusDiff(0.0);
+
+    anal_iter
+        // Extract necessary parts and filter out points missing critical data.
+        .filter_map(|(dt, anal)| {
+            if let (Some(el), Some(mib), Some(dry_mib)) = (
+                anal.el_height.into_option(),
+                anal.max_int_buoyancy.into_option(),
+                anal.max_dry_int_buoyancy.into_option(),
+            ) {
+                Some((dt, el, mib, dry_mib, anal.lcl_height))
+            } else {
+                None
+            }
+        })
         // Pair up for simple derivative calculations.
         .tuple_windows::<(_, _)>()
-        .fold(
-            (
-                CelsiusDiff(0.0),
-                CelsiusDiff(0.0),
-                0.0,
-                Meters(0.0),
-                JpKg(0.0),
-                0.0,
-            ),
-            |acc, (lvl0, lvl1)| {
-                let (
-                    mut cloud_dt,
-                    mut lmib_blow_up_dt,
-                    mut deriv_lmib,
-                    mut jump_lmib,
-                    mut mib,
-                    mut pct_wet,
-                ) = acc;
+        // Scan derivative for dt_el and delta_z_el
+        .scan(0.0f64, |deriv, (lvl0, lvl1)| {
+            let (dt0, el0, _, _, _) = lvl0;
+            let (dt1, el1, mib1, _, _) = lvl1;
 
-                let (dt0, anal0) = lvl0;
-                let (dt1, anal1) = lvl1;
+            debug_assert_ne!(dt0, dt1); // Required for division below
+            let dx = dt1 - dt0;
 
-                if let (
-                    Some(lmib0),
-                    Some(lmib1),
-                    Some(mib0),
-                    Some(mib1),
-                    Some(dry_buoyancy0),
-                    Some(dry_buoyancy1),
-                ) = (
-                    anal0.el_height.into_option(),
-                    anal1.el_height.into_option(),
-                    anal0.max_int_buoyancy.into_option(),
-                    anal1.max_int_buoyancy.into_option(),
-                    anal0.max_dry_int_buoyancy.into_option(),
-                    anal1.max_dry_int_buoyancy.into_option(),
-                ) {
-                    debug_assert_ne!(dt0, dt1); // Required for division below
-                    let dx = dt1 - dt0;
-
-                    let derivative = (lmib1 - lmib0).unpack() / dx.unpack();
-                    let dt = (dt1 + dt0) / 2.0;
-                    if derivative > deriv_lmib {
-                        lmib_blow_up_dt = dt;
-                        deriv_lmib = derivative;
-                        jump_lmib = lmib1 - lmib0;
-                        mib = mib1;
-                    }
-                    if (dt - CelsiusDiff(1.0) - lmib_blow_up_dt).abs() <= CelsiusDiff(1.0e-4) {
-                        let avg_mib = (mib0 + mib1) / 2.0;
-                        let avg_dryb = (dry_buoyancy0 + dry_buoyancy1) / 2.0;
-                        pct_wet = (avg_mib - avg_dryb) / avg_mib;
-                    }
-                }
-
-                if let (None, Some(_)) = (
-                    anal0.lcl_height.into_option(),
-                    anal1.lcl_height.into_option(),
-                ) {
-                    if cloud_dt == CelsiusDiff(0.0) {
-                        cloud_dt = (dt1 + dt0) / 2.0;
-                    }
-                }
-
-                (
-                    cloud_dt,
-                    lmib_blow_up_dt,
-                    deriv_lmib,
-                    jump_lmib,
-                    mib,
-                    pct_wet,
-                )
-            },
-        );
-
-    let (dt0, el0, lcl_opt, mib0, dry_mib0) = anal_iter0
-        .next()
-        .and_then(|anal| {
-            anal.1.el_height.into_option().map(|el| {
-                (
-                    anal.0,
-                    el,
-                    anal.1.lcl_height,
-                    anal.1.max_int_buoyancy,
-                    anal.1.max_dry_int_buoyancy,
-                )
-            })
-        })
-        .ok_or(AnalysisError::NotEnoughData)?;
-
-    // For cases where there is no jump because delta_t_el is really 0, the derivative approach
-    // will find the wrong value, it should really be the first value.
-    if el0 > Meters(5000.0) {
-        if lcl_opt.is_some() {
-            delta_t_cloud = dt0;
-        }
-
-        delta_t_el = dt0;
-        delta_z_el = el0;
-
-        if let Some(mib0) = mib0.into_option() {
-            mib = mib0;
-
-            if let Some(dry_mib0) = dry_mib0.into_option() {
-                pct_wet = (mib0 - dry_mib0) / mib0;
+            let derivative = (el1 - el0).unpack() / dx.unpack();
+            let dt = (dt1 + dt0) / 2.0;
+            if derivative > *deriv {
+                dt_el = dt;
+                *deriv = derivative;
+                delta_z_el = el1 - el0;
+                mib = mib1;
             }
-        }
-    }
 
-    // Force between 0 and 1
-    if pct_wet < 0.0 {
-        pct_wet = 0.0
-    } else if pct_wet > 1.0 {
-        pct_wet = 1.0
-    }
+            Some((dt, dt_el, lvl0, lvl1))
+        })
+        // Inspect to find pct_wet at dt_el + CelsiusDiff(1.0)
+        .map(|(dt, curr_dt_el, lvl0, lvl1)| {
+            let (_, _, mib0, dry0, lcl0) = lvl0;
+            let (_, _, mib1, dry1, lcl1) = lvl1;
+
+            if (dt - CelsiusDiff(1.0) - curr_dt_el).abs() <= CelsiusDiff(1.0e-4) {
+                let avg_mib = (mib0 + mib1) / 2.0;
+                let avg_dryb = (dry0 + dry1) / 2.0;
+                pct_wet = (avg_mib - avg_dryb) / avg_mib;
+            }
+
+            (dt, lcl0, lcl1)
+        })
+        // Find dt_cloud
+        .for_each(|(dt, lcl0, lcl1)| {
+            if lcl0.is_none() && lcl1.is_some() && dt_cloud == CelsiusDiff(0.0) {
+                dt_cloud = dt;
+            }
+        });
 
     Ok(BlowUpAnalysis {
         starting_parcel,
-        delta_t_cloud,
-        delta_t_el,
+        delta_t_cloud: dt_cloud,
+        delta_t_el: dt_el,
         delta_z_el,
         mib,
         pct_wet,
     })
+}
+
+/// This checks if the plume blows up at the very first dt step. This causes the derivative method
+/// to fail, so it is a special case.
+fn check_for_immediate_blow_up(
+    starting_parcel: Parcel,
+    mut iter: impl Iterator<Item = (CelsiusDiff, PlumeAscentAnalysis)>,
+) -> Option<BlowUpAnalysis> {
+    if let Some((dt0, el0, lcl_opt, mib0, dry_mib0)) = iter.next().and_then(|anal| {
+        anal.1.el_height.into_option().map(|el| {
+            (
+                anal.0,
+                el,
+                anal.1.lcl_height,
+                anal.1.max_int_buoyancy,
+                anal.1.max_dry_int_buoyancy,
+            )
+        })
+    }) {
+        if el0 > Meters(5000.0) {
+            let dt_cloud;
+            if lcl_opt.is_some() {
+                dt_cloud = dt0;
+            } else {
+                dt_cloud = CelsiusDiff(0.0);
+            }
+
+            let dt_el = dt0;
+            let delta_z_el = el0;
+
+            let mib;
+            let pct_wet;
+            if let Some(mib0) = mib0.into_option() {
+                mib = mib0;
+
+                if let Some(dry_mib0) = dry_mib0.into_option() {
+                    pct_wet = (mib0 - dry_mib0) / mib0;
+                } else {
+                    pct_wet = 0.0;
+                }
+            } else {
+                mib = JpKg(0.0);
+                pct_wet = 0.0;
+            }
+
+            Some(BlowUpAnalysis {
+                starting_parcel,
+                delta_t_cloud: dt_cloud,
+                delta_t_el: dt_el,
+                delta_z_el,
+                mib,
+                pct_wet,
+            })
+        } else {
+            None
+        }
+    } else {
+        // Technically this is probably an error, but not the one we're looking for, so let the caller
+        // detect and handle it.
+        None
+    }
 }
 
 /// Do a PlumeHeatingAnalysis.
