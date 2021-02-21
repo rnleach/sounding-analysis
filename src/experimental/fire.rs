@@ -542,7 +542,13 @@ fn analyze_plume_parcel_iter(
             lcl_height
         };
 
-    assert!(sfc_height > Meters(std::f64::MAX / 2.0));
+    if sfc_height > Meters(std::f64::MAX / 2.0) {
+        debug_assert!(
+            sfc_height > Meters(std::f64::MAX / 2.0),
+            "sfc_heigh never assigned."
+        );
+        sfc_height = Meters(0.0);
+    }
 
     PlumeAscentAnalysis {
         lcl_height,
