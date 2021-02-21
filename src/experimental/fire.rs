@@ -33,6 +33,8 @@ pub struct PlumeAscentAnalysis {
     pub el_height: Optioned<Meters>,
     /// The level where net CAPE becomes zero, the plume rises no more
     pub max_height: Optioned<Meters>,
+    /// The elevation of the surface.
+    pub sfc_height: Meters,
 }
 
 /// Various analysis results of lifting plumes parcels vs the heating supplied.
@@ -265,7 +267,7 @@ fn check_for_immediate_blow_up(
     starting_parcel: Parcel,
     mut iter: impl Iterator<Item = (CelsiusDiff, PlumeAscentAnalysis)>,
 ) -> Option<BlowUpAnalysis> {
-    if let Some((dt0, el0, lcl_opt, mib0, dry_mib0)) = iter.next().and_then(|anal| {
+    if let Some((dt0, el0, lcl_opt, mib0, dry_mib0, sfc_height)) = iter.next().and_then(|anal| {
         anal.1.el_height.into_option().map(|el| {
             (
                 anal.0,
@@ -273,6 +275,7 @@ fn check_for_immediate_blow_up(
                 anal.1.lcl_height,
                 anal.1.max_int_buoyancy,
                 anal.1.max_dry_int_buoyancy,
+                anal.1.sfc_height,
             )
         })
     }) {
@@ -285,7 +288,7 @@ fn check_for_immediate_blow_up(
             }
 
             let dt_el = dt0;
-            let delta_z_el = el0;
+            let delta_z_el = el0 - sfc_height;
 
             let mib;
             let pct_wet;
@@ -460,6 +463,7 @@ fn analyze_plume_parcel_iter(
     iter: impl Iterator<Item = (f64, f64, AnalLevelType)>,
 ) -> PlumeAscentAnalysis {
     let mut max_height: Optioned<Meters> = none();
+    let mut sfc_height = Meters(std::f64::MAX);
 
     // Construct an iterator that selects the environment values and calculates the
     // corresponding parcel values.
@@ -478,6 +482,11 @@ fn analyze_plume_parcel_iter(
                     let mx_height =
                         linear_interp(0.0, *prev_buoyancy, int_buoyancy, *prev_height, height_val);
                     max_height = some(mx_height);
+                }
+
+                // Find the lowest level and call it the surface
+                if sfc_height > height_val {
+                    sfc_height = height_val;
                 }
 
                 *prev_buoyancy = int_buoyancy;
@@ -533,6 +542,8 @@ fn analyze_plume_parcel_iter(
             lcl_height
         };
 
+    assert!(sfc_height > Meters(std::f64::MAX / 2.0));
+
     PlumeAscentAnalysis {
         lcl_height,
         el_height,
@@ -540,6 +551,7 @@ fn analyze_plume_parcel_iter(
         max_int_buoyancy,
         max_dry_int_buoyancy,
         parcel,
+        sfc_height,
     }
 }
 
