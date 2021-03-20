@@ -643,7 +643,7 @@ impl Sounding {
 
         debug_assert!({
             if let Some(cld) = low_cloud.into_option() {
-                cld >= 0.0 && cld <= 1.0
+                (0.0..=1.0).contains(&cld)
             } else {
                 true
             }
@@ -678,7 +678,7 @@ impl Sounding {
 
         debug_assert!({
             if let Some(cld) = mid_cloud.into_option() {
-                cld >= 0.0 && cld <= 1.0
+                (0.0..=1.0).contains(&cld)
             } else {
                 true
             }
@@ -713,7 +713,7 @@ impl Sounding {
 
         debug_assert!({
             if let Some(cld) = high_cloud.into_option() {
-                cld >= 0.0 && cld <= 1.0
+                (0.0..=1.0).contains(&cld)
             } else {
                 true
             }
@@ -826,7 +826,7 @@ impl Sounding {
     /// assert!(row_opt.is_none());
     /// ```
     #[inline]
-    pub fn bottom_up<'a>(&'a self) -> impl Iterator<Item = DataRow> + 'a {
+    pub fn bottom_up(&self) -> impl Iterator<Item = DataRow> + '_ {
         ProfileIterator {
             next_idx: 0,
             direction: 1,
@@ -879,7 +879,7 @@ impl Sounding {
     /// assert!(row_opt.is_none());
     /// ```
     #[inline]
-    pub fn top_down<'a>(&'a self) -> impl Iterator<Item = DataRow> + 'a {
+    pub fn top_down(&self) -> impl Iterator<Item = DataRow> + '_ {
         ProfileIterator {
             next_idx: (self.pressure.len() - 1) as isize,
             direction: -1,

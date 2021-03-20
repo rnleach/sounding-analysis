@@ -244,16 +244,20 @@ pub fn cold_surface_temperature_layer(
     snd: &Sounding,
     warm_layers: &[Layer],
 ) -> Result<Option<Layer>> {
-    cold_surface_layer(snd, snd.temperature_profile(), warm_layers)
+    Ok(cold_surface_layer(
+        snd,
+        snd.temperature_profile(),
+        warm_layers,
+    ))
 }
 
 fn cold_surface_layer(
     snd: &Sounding,
     t_profile: &[Optioned<Celsius>],
     warm_layers: &[Layer],
-) -> Result<Option<Layer>> {
+) -> Option<Layer> {
     if warm_layers.is_empty() {
-        return Ok(None);
+        return None;
     }
 
     let p_profile = snd.pressure_profile();
@@ -274,7 +278,7 @@ fn cold_surface_layer(
         // Package it up in a layer
         .map(|(bottom, top)| Layer { bottom, top });
 
-    Ok(layer)
+    layer
 }
 
 /// Find the surface layer above freezing.

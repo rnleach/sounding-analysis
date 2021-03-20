@@ -188,9 +188,8 @@ pub fn blow_up(snd: &Sounding, moisture_ratio: Option<f64>) -> Result<BlowUpAnal
 
     let (anal_iter0, anal_iter) = anal_iter.tee();
 
-    match check_for_immediate_blow_up(starting_parcel, anal_iter0) {
-        Some(immediate_blow_up) => return Ok(immediate_blow_up),
-        None => {}
+    if let Some(immediate_blow_up) = check_for_immediate_blow_up(starting_parcel, anal_iter0) {
+        return Ok(immediate_blow_up);
     }
 
     let (mut dt_el, mut delta_z_el, mut mib) = (CelsiusDiff(0.0), Meters(0.0), JpKg(0.0));
@@ -562,10 +561,10 @@ fn analyze_plume_parcel_iter(
 }
 
 /// Get the starting parcel and build an iterator to lift it.
-fn lift_parcel<'a>(
+fn lift_parcel(
     parcel: Parcel,
-    snd: &'a Sounding,
-) -> Result<(Parcel, impl Iterator<Item = (f64, f64, AnalLevelType)> + 'a)> {
+    snd: &Sounding,
+) -> Result<(Parcel, impl Iterator<Item = (f64, f64, AnalLevelType)> + '_)> {
     // Find the LCL
     let (pcl_lcl, _lcl_temperature) = parcel_lcl(&parcel, snd)?;
 

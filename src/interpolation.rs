@@ -148,16 +148,16 @@ fn linear_interp_data_rows(row0: DataRow, row1: DataRow, tgt_p: HectoPascal) -> 
     let run = p1 - p0;
     let dp = tgt_p - p0;
 
-    let mut result = DataRow::default();
-    result.pressure = Optioned::from(tgt_p);
-
-    result.temperature = eval_linear_interp(row0.temperature, row1.temperature, run, dp);
-    result.wet_bulb = eval_linear_interp(row0.wet_bulb, row1.wet_bulb, run, dp);
-    result.dew_point = eval_linear_interp(row0.dew_point, row1.dew_point, run, dp);
-    result.theta_e = eval_linear_interp(row0.theta_e, row1.theta_e, run, dp);
+    let pressure = Optioned::from(tgt_p);
+    let temperature = eval_linear_interp(row0.temperature, row1.temperature, run, dp);
+    let wet_bulb = eval_linear_interp(row0.wet_bulb, row1.wet_bulb, run, dp);
+    let dew_point = eval_linear_interp(row0.dew_point, row1.dew_point, run, dp);
+    let theta_e = eval_linear_interp(row0.theta_e, row1.theta_e, run, dp);
 
     // Special interpolation for vectors
-    if let (Some(w_below), Some(w_above)) = (row0.wind.into_option(), row1.wind.into_option()) {
+    let wind = if let (Some(w_below), Some(w_above)) =
+        (row0.wind.into_option(), row1.wind.into_option())
+    {
         let WindUV::<Knots> {
             u: x_below,
             v: y_below,
@@ -177,12 +177,26 @@ fn linear_interp_data_rows(row0: DataRow, row1: DataRow, tgt_p: HectoPascal) -> 
 
         let interped_wind = WindSpdDir::from(WindUV { u: x, v: y });
 
-        result.wind = interped_wind.into();
-    }
+        Into::<Optioned<WindSpdDir<Knots>>>::into(interped_wind)
+    } else {
+        optional::Optioned::none()
+    };
 
-    result.pvv = eval_linear_interp(row0.pvv, row1.pvv, run, dp);
-    result.height = eval_linear_interp(row0.height, row1.height, run, dp);
-    result.cloud_fraction = eval_linear_interp(row0.cloud_fraction, row1.cloud_fraction, run, dp);
+    let pvv = eval_linear_interp(row0.pvv, row1.pvv, run, dp);
+    let height = eval_linear_interp(row0.height, row1.height, run, dp);
+    let cloud_fraction = eval_linear_interp(row0.cloud_fraction, row1.cloud_fraction, run, dp);
+
+    let result = DataRow {
+        pressure,
+        temperature,
+        wet_bulb,
+        dew_point,
+        theta_e,
+        wind,
+        pvv,
+        height,
+        cloud_fraction,
+    };
 
     Some(result)
 }

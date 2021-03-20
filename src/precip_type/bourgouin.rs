@@ -35,7 +35,7 @@ pub fn bourgouin_precip_type(snd: &Sounding) -> Result<PrecipType> {
         BourgouinType::C { ref warm_sfc_layer } => {
             bourgouin_type_c_precip_type(snd, warm_sfc_layer)?
         }
-        BourgouinType::D => bourgouin_type_d_precip_type(snd)?,
+        BourgouinType::D => bourgouin_type_d_precip_type(snd),
     };
 
     if is_drizzler(snd) {
@@ -172,6 +172,6 @@ fn bourgouin_type_c_precip_type(snd: &Sounding, warm_surface: &Layer) -> Result<
     Ok(p_type)
 }
 
-fn bourgouin_type_d_precip_type(_snd: &Sounding) -> Result<PrecipType> {
-    Ok(PrecipType::LightSnow)
+fn bourgouin_type_d_precip_type(_snd: &Sounding) -> PrecipType {
+    PrecipType::LightSnow
 }
