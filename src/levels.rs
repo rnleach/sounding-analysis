@@ -96,7 +96,9 @@ fn max_t_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<Level>
         return Err(AnalysisError::MissingProfile);
     }
 
-    izip!(0usize.., p_profile, t_profile)
+    let sentinel = Celsius::from(metfor::Kelvin(0.0));
+
+    let (idx, mx_t) = izip!(0usize.., p_profile, t_profile)
         // Filter out levels with missing values
         .filter(|(_, p, t)| p.is_some() && t.is_some())
         // unwrap the Optioned type
@@ -105,23 +107,23 @@ fn max_t_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<Level>
         .take_while(|&(_, p, _)| p >= TOP_PRESSURE)
         // fold to get the maximum value
         .fold(
-            Err(AnalysisError::NotEnoughData),
-            |acc: Result<_>, (i, _, t)| {
-                if let Ok((_, mx_t)) = acc {
+            (0, sentinel),
+            |acc, (i, _, t)| {
+                let (_, mx_t) = acc;
                     if t > mx_t {
-                        Ok((i, t))
+                        (i, t)
                     } else {
                         // Propagate most recent result through
                         acc
                     }
-                } else {
-                    // just starting, so initialize result
-                    Ok((i, t))
-                }
             },
-        )
-        // Retrive the row
-        .and_then(|(idx, _)| snd.data_row(idx).ok_or(InvalidInput))
+        );
+
+    if mx_t == sentinel {
+        Err(AnalysisError::NotEnoughData)
+    } else {
+        snd.data_row(idx).ok_or(InvalidInput)
+    }
 }
 
 /// Maximum temperature in a layer.
