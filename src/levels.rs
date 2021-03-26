@@ -56,7 +56,7 @@ fn find_temperature_levels(
     #[inline]
     fn crosses_target(t0: Celsius, t1: Celsius, target_t: Celsius) -> bool {
         (t0 <= target_t && t1 >= target_t) || (t0 >= target_t && t1 <= target_t)
-    };
+    }
 
     izip!(p_profile, t_profile)
         // Remove levels with missing data
