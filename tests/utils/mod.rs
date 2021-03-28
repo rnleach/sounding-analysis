@@ -53,11 +53,11 @@ macro_rules! check_file_complete {
 
             // Make sure all of these keys are in the hashmaps
             for key in ival_keys.iter() {
-                assert!(ivals.contains_key(*key), *key);
+                assert!(ivals.contains_key(*key), "{}", *key);
             }
 
             for key in fval_keys.iter() {
-                assert!(fvals.contains_key(*key), *key);
+                assert!(fvals.contains_key(*key), "{}", *key);
             }
 
             // Make sure there are no extra keys in there being ignored.
