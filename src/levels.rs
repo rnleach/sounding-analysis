@@ -106,18 +106,15 @@ fn max_t_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<Level>
         // Only look up to a certain level
         .take_while(|&(_, p, _)| p >= TOP_PRESSURE)
         // fold to get the maximum value
-        .fold(
-            (0, sentinel),
-            |acc, (i, _, t)| {
-                let (_, mx_t) = acc;
-                    if t > mx_t {
-                        (i, t)
-                    } else {
-                        // Propagate most recent result through
-                        acc
-                    }
-            },
-        );
+        .fold((0, sentinel), |acc, (i, _, t)| {
+            let (_, mx_t) = acc;
+            if t > mx_t {
+                (i, t)
+            } else {
+                // Propagate most recent result through
+                acc
+            }
+        });
 
     if mx_t == sentinel {
         Err(AnalysisError::NotEnoughData)

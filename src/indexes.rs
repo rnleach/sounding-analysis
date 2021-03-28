@@ -7,8 +7,7 @@ use crate::{
 };
 use itertools::{izip, Itertools};
 use metfor::{
-    mixing_ratio, vapor_pressure_water, Celsius, HectoPascal, Meters, MetersPSec, Mm,
-    Quantity,
+    mixing_ratio, vapor_pressure_water, Celsius, HectoPascal, Meters, MetersPSec, Mm, Quantity,
 };
 
 /// Precipitable water (mm)

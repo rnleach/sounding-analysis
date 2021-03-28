@@ -258,8 +258,9 @@ pub fn mix_down(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
 fn descend_moist(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta_e()?;
 
-    let theta_func =
-        |theta_e, press| metfor::temperature_from_equiv_pot_temp_saturated_and_pressure(press, theta_e);
+    let theta_func = |theta_e, press| {
+        metfor::temperature_from_equiv_pot_temp_saturated_and_pressure(press, theta_e)
+    };
 
     descend_parcel(parcel, snd, theta, theta_func, true, true)
 }

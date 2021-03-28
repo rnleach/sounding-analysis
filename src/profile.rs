@@ -89,7 +89,9 @@ pub fn potential_temperature(snd: &Sounding) -> Vec<Optioned<Kelvin>> {
 
     izip!(p_profile, t_profile)
         .map(|(p_opt, t_opt)| {
-            p_opt.and_then(|p| t_opt.and_then(|t| Optioned::<Kelvin>::from(metfor::potential_temperature(p, t))))
+            p_opt.and_then(|p| {
+                t_opt.and_then(|t| Optioned::<Kelvin>::from(metfor::potential_temperature(p, t)))
+            })
         })
         .collect()
 }
@@ -108,7 +110,9 @@ pub fn equivalent_potential_temperature(snd: &Sounding) -> Vec<Optioned<Kelvin>>
         .map(|(p_opt, t_opt, dp_opt)| {
             p_opt.and_then(|p| {
                 t_opt.and_then(|t| {
-                    dp_opt.and_then(|dp| Optioned::<Kelvin>::from(metfor::equiv_pot_temperature(t, dp, p)))
+                    dp_opt.and_then(|dp| {
+                        Optioned::<Kelvin>::from(metfor::equiv_pot_temperature(t, dp, p))
+                    })
                 })
             })
         })

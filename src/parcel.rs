@@ -245,7 +245,8 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
 
     // Extrapolate dry adiabatically back to the parcel level.
     let tgt_theta = metfor::potential_temperature(tgt_p, tgt_t);
-    let tgt_t = Celsius::from(metfor::temperature_from_pot_temp(tgt_theta, initial_p)).max(initial_t);
+    let tgt_t =
+        Celsius::from(metfor::temperature_from_pot_temp(tgt_theta, initial_p)).max(initial_t);
 
     Ok(Parcel {
         pressure: initial_p,
