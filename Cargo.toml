@@ -1,6 +1,6 @@
 [package]
 name = "sounding-analysis"
-version = "0.15.0"
+version = "0.16.0"
 authors = ["Ryan <rnleach@users.noreply.github.com>"]
 description = """Types and functions for working with weather soundings."""
 repository = "https://github.com/rnleach/sounding-analysis.git"
