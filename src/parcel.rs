@@ -25,12 +25,12 @@ pub struct Parcel {
 impl Parcel {
     /// Get the potential temperatures of the parcel
     pub fn theta(&self) -> Kelvin {
-        metfor::theta(self.pressure, self.temperature)
+        metfor::potential_temperature(self.pressure, self.temperature)
     }
 
     /// Get the equivalent potential temperature of the parcel
     pub fn theta_e(&self) -> Result<Kelvin> {
-        metfor::theta_e(self.temperature, self.dew_point, self.pressure)
+        metfor::equiv_pot_temperature(self.temperature, self.dew_point, self.pressure)
             .ok_or(AnalysisError::MetForError)
     }
 
@@ -92,7 +92,7 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
         // only go up 100 hPa above the lowest level
         .take_while(|&(p, _, _)| p >= top_p)
         // Get theta
-        .map(|(p, t, dp)| (p, dp, metfor::theta(p, t)))
+        .map(|(p, t, dp)| (p, dp, metfor::potential_temperature(p, t)))
         // convert to mw
         .filter_map(|(p, dp, th)| metfor::mixing_ratio(dp, p).map(|mw| (p, th, mw)))
         // calculate the sums and count needed for the average
@@ -111,7 +111,7 @@ pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
 
     // convert back to temperature and dew point at the lowest pressure level.
     let pressure = bottom_p;
-    let temperature = Celsius::from(metfor::temperature_from_theta(
+    let temperature = Celsius::from(metfor::temperature_from_pot_temp(
         Kelvin(sum_t / sum_p.unpack()),
         bottom_p,
     ));
@@ -244,8 +244,8 @@ pub fn convective_parcel(snd: &Sounding) -> Result<Parcel> {
         .ok_or(AnalysisError::NotEnoughData)?;
 
     // Extrapolate dry adiabatically back to the parcel level.
-    let tgt_theta = metfor::theta(tgt_p, tgt_t);
-    let tgt_t = Celsius::from(metfor::temperature_from_theta(tgt_theta, initial_p)).max(initial_t);
+    let tgt_theta = metfor::potential_temperature(tgt_p, tgt_t);
+    let tgt_t = Celsius::from(metfor::temperature_from_pot_temp(tgt_theta, initial_p)).max(initial_t);
 
     Ok(Parcel {
         pressure: initial_p,
@@ -280,7 +280,7 @@ pub fn average_parcel(snd: &Sounding, layer: &Layer) -> Result<Parcel> {
         .map(|(p, t, dp)| (p.unpack(), t.unpack(), dp.unpack()))
         .skip_while(|&(p, _, _)| p > bottom_p)
         .take_while(|&(p, _, _)| p >= top_p)
-        .map(|(p, t, dp)| (p, dp, metfor::theta(p, t)))
+        .map(|(p, t, dp)| (p, dp, metfor::potential_temperature(p, t)))
         .filter_map(|(p, dp, th)| metfor::mixing_ratio(dp, p).map(|mw| (p, th, mw)))
         .fold(
             (HectoPascal(0.0), 0.0f64, 0.0f64, 0),
@@ -301,7 +301,7 @@ pub fn average_parcel(snd: &Sounding, layer: &Layer) -> Result<Parcel> {
 
     // convert back to temperature and dew point at the mean pressure level.
     let pressure = HectoPascal(sum_p.unpack() / f64::from(count));
-    let temperature = Celsius::from(metfor::temperature_from_theta(
+    let temperature = Celsius::from(metfor::temperature_from_pot_temp(
         Kelvin(sum_t / sum_p.unpack()),
         pressure,
     ));

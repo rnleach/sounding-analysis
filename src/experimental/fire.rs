@@ -646,7 +646,7 @@ fn lift_parcel(
                 let dry_pcl0 = if bottom_pres > pcl_lcl.pressure {
                     Some(pcl0)
                 } else {
-                    let pcl_dry_t = metfor::temperature_from_theta(theta0, bottom_pres);
+                    let pcl_dry_t = metfor::temperature_from_pot_temp(theta0, bottom_pres);
                     metfor::virtual_temperature(pcl_dry_t, pcl_dry_t, bottom_pres)
                         .map(Celsius::from)
                 };
@@ -654,7 +654,7 @@ fn lift_parcel(
                 let dry_pcl1 = if top_pres > pcl_lcl.pressure {
                     Some(pcl1)
                 } else {
-                    let pcl_dry_t = metfor::temperature_from_theta(theta0, top_pres);
+                    let pcl_dry_t = metfor::temperature_from_pot_temp(theta0, top_pres);
                     metfor::virtual_temperature(pcl_dry_t, pcl_dry_t, bottom_pres)
                         .map(Celsius::from)
                 };
@@ -835,7 +835,7 @@ pub fn partition_cape(pa: &ParcelAscentAnalysis) -> Result<(JpKg, JpKg)> {
     let upper_dry_profile = izip!(&profile.pressure, &profile.height, &profile.environment_t)
         .skip_while(|(p, _, _)| **p >= lcl)
         .filter_map(|(p, h, et)| {
-            let t_k = metfor::temperature_from_theta(parcel_theta, *p);
+            let t_k = metfor::temperature_from_pot_temp(parcel_theta, *p);
             metfor::virtual_temperature(t_k, t_k, *p).map(|pt_k| (*p, *h, pt_k, *et))
         })
         .take_while(|(_, _, pt, et)| pt >= et)

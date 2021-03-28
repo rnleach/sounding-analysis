@@ -997,7 +997,7 @@ impl Sounding {
         let sfc_p = self.station_pressure.into_option()?;
         let sfc_dp = self.sfc_dew_point.into_option()?;
 
-        metfor::theta_e(sfc_t, sfc_dp, sfc_p)
+        metfor::equiv_pot_temperature(sfc_t, sfc_dp, sfc_p)
     }
 
     #[inline]
@@ -1017,7 +1017,7 @@ impl Sounding {
             }
 
             if !self.theta_e.is_empty() {
-                self.theta_e[0] = metfor::theta_e(sfc_t, sfc_dp, sfc_p).into();
+                self.theta_e[0] = metfor::equiv_pot_temperature(sfc_t, sfc_dp, sfc_p).into();
             }
         }
     }

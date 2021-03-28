@@ -163,7 +163,7 @@ pub(crate) fn find_parcel_start_data(snd: &Sounding, parcel: &Parcel) -> Result<
 
     let pressure = second_guess.pressure.ok_or(AnalysisError::InvalidInput)?;
     let theta = parcel.theta();
-    let temperature = Celsius::from(metfor::temperature_from_theta(theta, pressure));
+    let temperature = Celsius::from(metfor::temperature_from_pot_temp(theta, pressure));
     let mw = parcel.mixing_ratio()?;
     let dew_point =
         metfor::dew_point_from_p_and_mw(pressure, mw).ok_or(AnalysisError::MetForError)?;
@@ -243,7 +243,7 @@ pub fn robust_convective_parcel_ascent(snd: &Sounding) -> Result<ParcelAscentAna
 pub fn mix_down(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta();
     let theta_func = |theta_val, press| {
-        Some(Celsius::from(metfor::temperature_from_theta(
+        Some(Celsius::from(metfor::temperature_from_pot_temp(
             theta_val, press,
         )))
     };
@@ -259,7 +259,7 @@ fn descend_moist(parcel: Parcel, snd: &Sounding) -> Result<ParcelProfile> {
     let theta = parcel.theta_e()?;
 
     let theta_func =
-        |theta_e, press| metfor::temperature_from_theta_e_saturated_and_pressure(press, theta_e);
+        |theta_e, press| metfor::temperature_from_equiv_pot_temp_saturated_and_pressure(press, theta_e);
 
     descend_parcel(parcel, snd, theta, theta_func, true, true)
 }
@@ -410,7 +410,7 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, JpKg, Celsius)> {
         .take_while(|(p, _, _)| *p >= top_p)
         .fold(
             Err(AnalysisError::NotEnoughData),
-            |acc: Result<Parcel>, (p, t, dp)| match metfor::theta_e(t, dp, p) {
+            |acc: Result<Parcel>, (p, t, dp)| match metfor::equiv_pot_temperature(t, dp, p) {
                 Some(th_e) => match acc {
                     Ok(parcel) => {
                         if let Ok(old_theta) = parcel.theta_e() {
@@ -453,8 +453,8 @@ pub fn dcape(snd: &Sounding) -> Result<(ParcelProfile, JpKg, Celsius)> {
         &profile.parcel_t,
         &profile.environment_t
     ) {
-        let pt = metfor::theta(p, pt);
-        let et = metfor::theta(p, et);
+        let pt = metfor::potential_temperature(p, pt);
+        let et = metfor::potential_temperature(p, et);
 
         let dz = h - h0;
         // we must be starting out, becuase h0 starts as a large positive number

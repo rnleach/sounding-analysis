@@ -340,12 +340,12 @@ pub fn melting_freezing_energy_area(snd: &Sounding, lyr: &Layer) -> Result<JpKg>
     // bottom pressure and FREEZING temperature, which we do with theta_bottom.
     let theta_top: Kelvin = top
         .pressure
-        .map(|p| metfor::theta(p, FREEZING))
+        .map(|p| metfor::potential_temperature(p, FREEZING))
         .ok_or(AnalysisError::MissingValue)?;
 
     let theta_bottom: Kelvin = bottom
         .pressure
-        .map(|p| metfor::theta(p, FREEZING))
+        .map(|p| metfor::potential_temperature(p, FREEZING))
         .ok_or(AnalysisError::MissingValue)?;
 
     let bottom_h = bottom.height.ok_or(AnalysisError::MissingValue)?;

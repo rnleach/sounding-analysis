@@ -273,7 +273,7 @@ pub(crate) fn create_parcel_calc_t(
     Ok(move |tgt_pres| {
         if tgt_pres > lcl.pressure {
             // Dry adiabatic lifting
-            let t_k = metfor::temperature_from_theta(theta, tgt_pres);
+            let t_k = metfor::temperature_from_pot_temp(theta, tgt_pres);
             metfor::virtual_temperature(
                 t_k,
                 metfor::dew_point_from_p_and_mw(tgt_pres, dry_mw)?,
@@ -282,7 +282,7 @@ pub(crate) fn create_parcel_calc_t(
             .map(Celsius::from)
         } else {
             // Moist adiabatic lifting
-            metfor::temperature_from_theta_e_saturated_and_pressure(tgt_pres, theta_e)
+            metfor::temperature_from_equiv_pot_temp_saturated_and_pressure(tgt_pres, theta_e)
                 .and_then(|t_c| metfor::virtual_temperature(t_c, t_c, tgt_pres))
                 .map(Celsius::from)
         }
