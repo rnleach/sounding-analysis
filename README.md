@@ -1,5 +1,3 @@
-[![Build Status](https://travis-ci.org/rnleach/sounding-analysis.svg?branch=master)](https://travis-ci.org/rnleach/sounding-analysis)
-[![Build status](https://ci.appveyor.com/api/projects/status/jb5joubn8bendk7s/branch/master?svg=true)](https://ci.appveyor.com/project/rnleach/sounding-analysis/branch/master)
 [![Latest Version](https://img.shields.io/crates/v/sounding-analysis.svg)](https://crates.io/crates/sounding-analysis)
 [![docs](https://docs.rs/sounding-analysis/badge.svg)](https://docs.rs/sounding-analysis)
 
@@ -35,7 +33,7 @@ fn main() {
             .collect();
 
     // Create some station info
-    let stn = StationInfo::new_with_values(None, (45.6789, -115.6789), Feet(992.0));
+    let stn = StationInfo::new_with_values(None, None, (45.6789, -115.6789), Feet(992.0));
 
     // Create a valid time. This uses a `chrono::NaiveDateTime`, and you should always assume
     // that valid times are in UTC.

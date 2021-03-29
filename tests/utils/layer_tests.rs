@@ -168,7 +168,7 @@ pub fn test_warm_wet_bulb_aloft(
 pub fn test_layer_agl(snd: &Sounding, tgt_float_vals: &HashMap<String, Vec<f64>>) {
     use sounding_analysis::layer_agl;
 
-    let analysis = layer_agl(snd, Meters(6000.0)).unwrap();
+    let analysis = layer_agl(snd, Meters(6000.0)).expect("error creating layer");
     println!("\n6km AGL layer: {:#?}", analysis);
     if let Some(agl_layer_pressures) = tgt_float_vals.get("6km agl layer pressures") {
         assert_eq!(agl_layer_pressures.len(), 2);
