@@ -26,6 +26,8 @@ jobs:
     runs-on: windows-latest
 
     steps:
+    - name: disable git crlf conversion
+      run: git config --global core.autocrlf false
     - uses: actions/checkout@v2
     - name: Build
       run: cargo build --verbose
