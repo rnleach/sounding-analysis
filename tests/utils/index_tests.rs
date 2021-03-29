@@ -26,6 +26,12 @@ pub fn test_index<F, Q>(
 
         let analysis = analysis.unwrap_or(err_val);
 
-        assert!(analysis.approx_eq(target_val, tol));
+        assert!(
+            analysis.approx_eq(target_val, tol),
+            "{:?} != {:?} within {:?}",
+            analysis,
+            target_val,
+            tol
+        );
     }
 }
