@@ -1,5 +1,7 @@
 // FIXME: Add some examples of using analysis functions.
 /*!
+[![Github Actions](https://github.com/rnleach/sounding-analysis/actions/workflows/rust.yml/badge.svg)](https://github.com/rnleach/sounding-analysis/actions)
+
 Functions and data types for analyzing soundings from radiosondes or models.
 
 Library to represent an atmospheric sounding with pressure as the vertical coordinate.

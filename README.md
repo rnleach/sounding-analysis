@@ -1,6 +1,6 @@
-![Github Actions](https://github.com/rnleach/sounding-analysis/actions/workflows/rust.yml/badge.svg)
-
 # sounding-analysis
+
+[![Github Actions](https://github.com/rnleach/sounding-analysis/actions/workflows/rust.yml/badge.svg)](https://github.com/rnleach/sounding-analysis/actions)
 
 Functions and data types for analyzing soundings from radiosondes or models.
 
