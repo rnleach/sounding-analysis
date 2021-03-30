@@ -1,7 +1,4 @@
-//! Run these benches with `cargo bench --bench funtions -- --verbose`
-//!
-//! Run with `cargo bench --bench funtions -- --verbose vapor_pressure_over_ice` to select the
-//! single benchmark.
+//! Run these benches with `cargo bench --bench levels -- --verbose`
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
