@@ -154,6 +154,9 @@ fn temperature_layer(
 
 /// This will find the warm layers aloft using the dry bulb temperature.
 ///
+/// A warm layer aloft is defined as a layer of above freezing temperatures with a below freezing
+/// layer below it.
+///
 /// Does not look above 500 hPa.
 pub fn warm_temperature_layer_aloft(snd: &Sounding) -> Result<Layers> {
     warm_layer_aloft(snd, snd.temperature_profile())
@@ -286,10 +289,7 @@ pub fn warm_surface_temperature_layer(snd: &Sounding) -> Result<Option<Layer>> {
     warm_surface_layer(snd, snd.temperature_profile())
 }
 
-pub fn warm_surface_layer(
-    snd: &Sounding,
-    t_profile: &[Optioned<Celsius>],
-) -> Result<Option<Layer>> {
+fn warm_surface_layer(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<Option<Layer>> {
     let p_profile = snd.pressure_profile();
 
     if t_profile.is_empty() || p_profile.is_empty() {
