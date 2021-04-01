@@ -43,3 +43,7 @@ harness = false
 name = "layers"
 harness = false
 
+[[bench]]
+name = "parcel"
+harness = false
+
