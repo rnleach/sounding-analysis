@@ -5,9 +5,6 @@ mod utils;
 
 criterion_main!(parcel_profile_benches);
 
-/**************************************************************************************************
- *                                     Temperature Layers
- **************************************************************************************************/
 criterion_group!(
     parcel_profile_benches,
     lift_parcel_bench,
