@@ -55,3 +55,7 @@ harness = false
 name = "profile"
 harness = false
 
+[[bench]]
+name = "wind"
+harness = false
+
