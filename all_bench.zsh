@@ -1,56 +1,48 @@
 #!/usr/bin/env zsh
 
-setopt verbose
-
 BASELINE_TAG="opt-start"
 COMPARE_TAG="master"
 
 BENCHES=("indexes" "layers" "levels" "parcel" "parcel_profile" "profile" "wind" "fire")
 
+echo "Cleaning up...."
+cargo clean
 
-# Check out the baseline tag.
-git checkout ${BASELINE_TAG}
+function do_bench {
+    
+    # $1 git tag
+    # $2 target-cpu, either "generic" or "native"
+    
+    RUSTFLAGS_VAL="-C target-cpu=$2"
+    BASELINE="$1-$2"
 
-# Force generic compile target.
-RUSTFLAGS_VAL="-C target-cpu=generic"
+    echo "Testing tag $1 with target-cpu=$2"
+    echo "RUSTFLAGS=${RUSTFLAGS_VAL} and BASELINE=${BASELINE}"
+
+    git checkout $1
+    if [ $? -ne 0 ]; then
+        echo "Git failed, aborting."
+        exit 1
+    fi
+
+    for BNAME in ${BENCHES}; do
+        echo ""
+        echo "Doing bench ${BNAME}"
+        echo ""
+
+        RUSTFLAGS="${RUSTFLAGS_VAL}" cargo bench --bench ${BNAME} -- --save-baseline ${BASELINE}
+    done
+
+    echo "Completed baseline ${BASELINE}"
+
+    return 0
+}
 
 # Do a warm up run.
-RUSTFLAGS=${RUSTFLAGS_VAL} cargo bench
+#cargo bench
 
-# Do the real benches
-BASELINE="${BASELINE_TAG}-generic"
-for bench_name in ${BENCHES}; do
-    RUSTFLAGS=${RUSTFLAGS_VAL} cargo bench --bench ${bench_name} -- --save-baseline ${BASELINE_TAG}
-done
-
-# Force to compile to target CPU
-RUSTFLAGS_VAL="-C target-cpu=native"
-
-# Do the real benches
-BASELINE="${BASELINE_TAG}-native"
-for bench_name in ${BENCHES}; do
-    RUSTFLAGS=${RUSTFLAGS_VAL} cargo bench --bench ${bench_name} -- --save-baseline ${BASELINE_TAG}
-done
-
-# Check out the comparison tag
-git checkout ${COMPARE_TAG}
-
-# Force generic compile target.
-RUSTFLAGS_VAL="-C target-cpu=generic"
-
-# Do the real benches
-BASELINE="${COMPARE_TAG}-generic"
-for bench_name in ${BENCHES}; do
-    RUSTFLAGS=${RUSTFLAGS_VAL} cargo bench --bench ${bench_name} -- --save-baseline ${BASELINE_TAG}
-done
-
-# Force to compile to target CPU
-RUSTFLAGS_VAL="-C target-cpu=native"
-
-# Do the real benches
-BASELINE="${COMPARE_TAG}-native"
-for bench_name in ${BENCHES}; do
-    RUSTFLAGS=${RUSTFLAGS_VAL} cargo bench --bench ${bench_name} -- --save-baseline ${BASELINE_TAG}
-done
-
+do_bench ${BASELINE_TAG}  "generic"
+do_bench ${BASELINE_TAG}  "native"
+do_bench ${COMPARE_TAG}  "generic"
+do_bench ${COMPARE_TAG}  "native"
 
