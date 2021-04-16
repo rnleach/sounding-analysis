@@ -2,6 +2,14 @@
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
+fn build_tester() -> Criterion {
+    Criterion::default()
+        .sample_size(200)
+        .measurement_time(std::time::Duration::from_secs(10))
+        .noise_threshold(0.03)
+        .significance_level(0.01)
+}
+
 mod utils;
 
 criterion_main!(
@@ -15,12 +23,11 @@ criterion_main!(
  *                                     Temperature Layers
  **************************************************************************************************/
 criterion_group!(
-    temperature_layers_benches,
-    hail_growth_zone_bench,
-    warm_temperature_layer_aloft_bench,
-    cold_surface_temperature_layer_bench,
-    warm_surface_temperature_layer_bench,
-    melting_freeing_enery_area_bench
+    name = temperature_layers_benches;
+    config = build_tester();
+    targets = hail_growth_zone_bench, warm_temperature_layer_aloft_bench,
+              cold_surface_temperature_layer_bench, warm_surface_temperature_layer_bench,
+              melting_freeing_enery_area_bench
 );
 
 // No bench for dendritic snow zone since it uses the same inner function as this one does.
@@ -128,9 +135,9 @@ fn melting_freeing_enery_area_bench(c: &mut Criterion) {
  *                                     Height/Pressure Layers
  **************************************************************************************************/
 criterion_group!(
-    height_pressure_layers_benches,
-    layer_hgt_bench,
-    pressure_layer_bench
+    name = height_pressure_layers_benches;
+    config = build_tester();
+    targets = layer_hgt_bench, pressure_layer_bench
 );
 
 fn layer_hgt_bench(c: &mut Criterion) {
@@ -204,9 +211,9 @@ fn pressure_layer_bench(c: &mut Criterion) {
  *                                     Inversion Layers
  **************************************************************************************************/
 criterion_group!(
-    inversion_layers_benches,
-    inversions_bench,
-    sfc_based_inversion_bench
+    name = inversion_layers_benches;
+    config = build_tester();
+    targets = inversions_bench, sfc_based_inversion_bench
 );
 
 fn inversions_bench(c: &mut Criterion) {
@@ -237,7 +244,11 @@ fn sfc_based_inversion_bench(c: &mut Criterion) {
 /**************************************************************************************************
  *                                     Convective Layers
  **************************************************************************************************/
-criterion_group!(convective_layers_benches, effective_inflow_layer_bench);
+criterion_group!(
+    name = convective_layers_benches;
+    config = build_tester();
+    targets = effective_inflow_layer_bench
+);
 
 fn effective_inflow_layer_bench(c: &mut Criterion) {
     let snds = utils::load_all_test_files();

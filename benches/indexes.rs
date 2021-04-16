@@ -4,13 +4,20 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 mod utils;
 
+fn build_tester() -> Criterion {
+    Criterion::default()
+        .sample_size(200)
+        .measurement_time(std::time::Duration::from_secs(10))
+        .noise_threshold(0.03)
+        .significance_level(0.01)
+}
+
 criterion_main!(inexes_benches);
 
 criterion_group!(
-    inexes_benches,
-    precipitable_water_bench,
-    haines_mid_bench,
-    hot_dry_windy_bench
+    name = inexes_benches;
+    config = build_tester();
+    targets = precipitable_water_bench, haines_mid_bench, hot_dry_windy_bench
 );
 
 fn precipitable_water_bench(c: &mut Criterion) {

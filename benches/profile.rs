@@ -3,18 +3,23 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 mod utils;
 
+fn build_tester() -> Criterion {
+    Criterion::default()
+        .sample_size(200)
+        .measurement_time(std::time::Duration::from_secs(10))
+        .noise_threshold(0.03)
+        .significance_level(0.01)
+}
+
 criterion_main!(profile_benches);
 
 criterion_group!(
-    profile_benches,
-    wet_bulb_bench,
-    relative_humidity_bench,
-    relative_humidity_ice_bench,
-    potential_temperature_bench,
-    equivalent_potential_temperature_bench,
-    temperature_lapse_rate_bench,
-    sfc_to_level_temperature_lapse_rate_bench,
-    hydrolapse_bench
+    name = profile_benches;
+    config = build_tester();
+    targets = wet_bulb_bench, relative_humidity_bench, relative_humidity_ice_bench,
+              potential_temperature_bench, equivalent_potential_temperature_bench,
+              temperature_lapse_rate_bench, sfc_to_level_temperature_lapse_rate_bench,
+              hydrolapse_bench
 );
 
 fn wet_bulb_bench(c: &mut Criterion) {

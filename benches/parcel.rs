@@ -4,14 +4,21 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 mod utils;
 
+fn build_tester() -> Criterion {
+    Criterion::default()
+        .sample_size(200)
+        .measurement_time(std::time::Duration::from_secs(10))
+        .noise_threshold(0.03)
+        .significance_level(0.01)
+}
+
 criterion_main!(parcel_benches);
 
 criterion_group!(
-    parcel_benches,
-    mixed_layer_parcel_bench,
-    convective_parcel_bench,
-    most_unstable_parcel_bench,
-    average_parcel_bench
+    name = parcel_benches;
+    config = build_tester();
+    targets = mixed_layer_parcel_bench, convective_parcel_bench, most_unstable_parcel_bench,
+              average_parcel_bench
 );
 
 fn mixed_layer_parcel_bench(c: &mut Criterion) {

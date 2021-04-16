@@ -3,13 +3,20 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 mod utils;
 
+fn build_tester() -> Criterion {
+    Criterion::default()
+        .sample_size(200)
+        .measurement_time(std::time::Duration::from_secs(10))
+        .noise_threshold(0.03)
+        .significance_level(0.01)
+}
+
 criterion_main!(wind_benches);
 
 criterion_group!(
-    wind_benches,
-    mean_wind_bench,
-    sr_helicity_bench,
-    bunkers_storm_motion_bench
+    name = wind_benches;
+    config = build_tester();
+    targets = mean_wind_bench, sr_helicity_bench, bunkers_storm_motion_bench
 );
 
 fn mean_wind_bench(c: &mut Criterion) {

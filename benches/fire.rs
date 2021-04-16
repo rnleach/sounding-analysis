@@ -3,15 +3,21 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 mod utils;
 
+fn build_tester() -> Criterion {
+    Criterion::default()
+        .sample_size(200)
+        .measurement_time(std::time::Duration::from_secs(10))
+        .noise_threshold(0.03)
+        .significance_level(0.01)
+}
+
 criterion_main!(fire_benches);
 
 criterion_group!(
-    fire_benches,
-    calc_plumes_bench,
-    blow_up_bench,
-    plume_heating_analysis_bench,
-    analyze_plume_parcel_bench,
-    lift_plume_parcel_bench
+    name = fire_benches;
+    config = build_tester();
+    targets = calc_plumes_bench, blow_up_bench, plume_heating_analysis_bench,
+              analyze_plume_parcel_bench, lift_plume_parcel_bench
 );
 
 fn calc_plumes_bench(c: &mut Criterion) {

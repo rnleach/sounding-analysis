@@ -4,13 +4,21 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 mod utils;
 
+fn build_tester() -> Criterion {
+    Criterion::default()
+        .sample_size(200)
+        .measurement_time(std::time::Duration::from_secs(10))
+        .noise_threshold(0.03)
+        .significance_level(0.01)
+}
+
 criterion_main!(levels_benches);
 
 criterion_group!(
-    levels_benches,
-    freezing_levels_bench,
-    max_temperature_in_profile_bench,
-    max_temperature_in_layer_bench
+    name = levels_benches;
+    config = build_tester();
+    targets = freezing_levels_bench, max_temperature_in_profile_bench,
+              max_temperature_in_layer_bench
 );
 
 fn freezing_levels_bench(c: &mut Criterion) {

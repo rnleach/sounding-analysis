@@ -3,14 +3,20 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 mod utils;
 
+fn build_tester() -> Criterion {
+    Criterion::default()
+        .sample_size(200)
+        .measurement_time(std::time::Duration::from_secs(10))
+        .noise_threshold(0.03)
+        .significance_level(0.01)
+}
+
 criterion_main!(parcel_profile_benches);
 
 criterion_group!(
-    parcel_profile_benches,
-    lift_parcel_bench,
-    robust_convective_parcel_ascent_bench,
-    mix_down_bench,
-    dcape_bench
+    name = parcel_profile_benches;
+    config = build_tester();
+    targets = lift_parcel_bench, robust_convective_parcel_ascent_bench, mix_down_bench, dcape_bench
 );
 
 fn lift_parcel_bench(c: &mut Criterion) {
