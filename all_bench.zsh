@@ -25,24 +25,36 @@ function do_bench {
         exit 1
     fi
 
-    for BNAME in ${BENCHES}; do
-        echo ""
-        echo "Doing bench ${BNAME}"
-        echo ""
+    if [ $# -gt 2 ]; then
+            echo ""
+            echo "Doing bench $3"
+            echo ""
 
-        RUSTFLAGS="${RUSTFLAGS_VAL}" cargo bench --bench ${BNAME} -- --save-baseline ${BASELINE}
-    done
+            RUSTFLAGS="${RUSTFLAGS_VAL}" cargo bench --bench $3 -- --save-baseline ${BASELINE}
+    else
+        for BNAME in ${BENCHES}; do
+            echo ""
+            echo "Doing bench ${BNAME}"
+            echo ""
+
+            RUSTFLAGS="${RUSTFLAGS_VAL}" cargo bench --bench ${BNAME} -- --save-baseline ${BASELINE}
+        done
+    fi
 
     echo "Completed baseline ${BASELINE}"
 
     return 0
 }
 
-# Do a warm up run.
-#cargo bench
-
-do_bench ${BASELINE_TAG}  "generic"
-do_bench ${BASELINE_TAG}  "native"
-do_bench ${COMPARE_TAG}  "generic"
-do_bench ${COMPARE_TAG}  "native"
+if [ $# -eq 0 ]; then
+    do_bench ${BASELINE_TAG}  "generic"
+    do_bench ${BASELINE_TAG}  "native"
+    do_bench ${COMPARE_TAG}  "generic"
+    do_bench ${COMPARE_TAG}  "native"
+else
+    do_bench ${BASELINE_TAG}  "generic" $1
+    do_bench ${BASELINE_TAG}  "native" $1
+    do_bench ${COMPARE_TAG}  "generic" $1
+    do_bench ${COMPARE_TAG}  "native" $1
+fi
 
