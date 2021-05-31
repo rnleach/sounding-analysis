@@ -6,9 +6,7 @@ use crate::{
     sounding::Sounding,
 };
 use itertools::{izip, Itertools};
-use metfor::{
-    mixing_ratio, vapor_pressure_water, Celsius, HectoPascal, Meters, MetersPSec, Mm, Quantity,
-};
+use metfor::{mixing_ratio, Celsius, HectoPascal, Meters, Mm, Quantity};
 
 /// Precipitable water (mm)
 #[inline]
@@ -151,47 +149,4 @@ pub fn haines_high(snd: &Sounding) -> Result<u8> {
     };
 
     Ok(stability_term + moisture_term)
-}
-
-/// The Hot-Dry-Windy index
-#[inline]
-pub fn hot_dry_windy(snd: &Sounding) -> Result<f64> {
-    let elevation = if let Some(sfc_h) = snd.station_info().elevation().into_option() {
-        sfc_h
-    } else if let Some(lowest_h) = snd
-        .height_profile()
-        .iter()
-        .filter_map(|optd| optd.into_option())
-        .next()
-    {
-        lowest_h
-    } else {
-        return Err(AnalysisError::NotEnoughData);
-    };
-
-    let h_profile = snd.height_profile();
-    let t_profile = snd.temperature_profile();
-    let dp_profile = snd.dew_point_profile();
-    let ws_profile = snd.wind_profile();
-
-    let (vpd, ws) = izip!(h_profile, t_profile, dp_profile, ws_profile)
-        // Remove rows with missing data
-        .filter(|(h, t, dp, ws)| h.is_some() && t.is_some() && dp.is_some() && ws.is_some())
-        // Unpack from the Optioned type
-        .map(|(h, t, dp, ws)| (h.unpack(), t.unpack(), dp.unpack(), ws.unpack().speed))
-        // Only look up to 500 m above AGL
-        .take_while(|(h, _, _, _)| *h <= elevation + Meters(500.0))
-        // Convert t and dp to VPD, and remove any levels that error on calculating vapor pressure
-        .filter_map(|(_, t, dp, ws)| {
-            vapor_pressure_water(t)
-                .and_then(|sat_vap| vapor_pressure_water(dp).map(|vap| (sat_vap - vap, ws)))
-        })
-        // Convert knots to m/s and unpack all values from their Quantity types
-        .map(|(vpd, ws)| (vpd.unpack(), MetersPSec::from(ws).unpack()))
-        // Choose the max.
-        .fold((0.0, 0.0), |(vpd_max, ws_max), (vpd, ws)| {
-            (vpd.max(vpd_max), ws.max(ws_max))
-        });
-
-    Ok(vpd * ws)
 }
