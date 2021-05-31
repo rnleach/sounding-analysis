@@ -1,6 +1,6 @@
 [package]
 name = "sounding-analysis"
-version = "0.16.0"
+version = "0.17.0"
 edition = "2018"
 
 authors = ["Ryan <rnleach@users.noreply.github.com>"]
@@ -22,7 +22,7 @@ strum = "0.20.0"
 strum_macros = "0.20.0"
 
 [dependencies.metfor]
-version = "^0.8.1"
+version = "^0.8.2"
 features = ["use_optional"]
 
 [dev-dependencies]
