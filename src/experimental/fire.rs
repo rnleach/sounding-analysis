@@ -54,10 +54,6 @@ pub struct PlumeHeatingAnalysis {
     pub el_heights: Vec<Optioned<Meters>>,
     /// Max Plume Height
     pub max_heights: Vec<Optioned<Meters>>,
-    /// Heat input to CAPE
-    pub fire_efficiencies: Vec<Optioned<f64>>, // MIB / Fire
-    /// How fast the plume grows relative more heating.
-    pub plume_growth_efficiencies: Vec<(CelsiusDiff, f64)>, // dMIB / dFire, Fire = (dt * cp)
 }
 
 /// This characterizes how much heating it would take to cause a plume to "blow up".
@@ -336,11 +332,9 @@ pub fn plume_heating_analysis(
     let mut lcl_heights: Vec<Optioned<Meters>> = vec![];
     let mut el_heights: Vec<Optioned<Meters>> = vec![];
     let mut max_heights: Vec<Optioned<Meters>> = vec![];
-    let mut fire_efficiencies: Vec<Optioned<f64>> = vec![];
-    let mut plume_growth_efficiencies: Vec<(CelsiusDiff, f64)> = vec![];
 
     anal_iter
-        .scan((), |(), (dt, anal)| {
+        .for_each(|(dt, anal)| {
             dts.push(dt);
             max_int_buoyancies.push(anal.max_int_buoyancy);
 
@@ -357,31 +351,6 @@ pub fn plume_heating_analysis(
             lcl_heights.push(anal.lcl_height);
             el_heights.push(anal.el_height);
             max_heights.push(anal.max_height);
-
-            let fire_eff = anal.max_int_buoyancy.map_t(|buoy| {
-                if dt > CelsiusDiff(0.0) {
-                    buoy / (dt * metfor::cp)
-                } else {
-                    0.0
-                }
-            });
-            fire_efficiencies.push(fire_eff);
-
-            Some((dt, anal))
-        })
-        .tuple_windows::<(_, _)>()
-        .filter_map(|((dt0, anal0), (dt1, anal1))| {
-            anal0.max_int_buoyancy.into_option().and_then(|buoy0| {
-                anal1
-                    .max_int_buoyancy
-                    .map(|buoy1| ((dt0, buoy0), (dt1, buoy1)))
-            })
-        })
-        .for_each(|((dt0, mib0), (dt1, mib1))| {
-            let dt: CelsiusDiff = (dt0 + dt1) / 2.0;
-            let run = (dt1 - dt0) * metfor::cp;
-            let rise = mib1 - mib0;
-            plume_growth_efficiencies.push((dt, rise / run));
         });
 
     Ok(PlumeHeatingAnalysis {
@@ -392,8 +361,6 @@ pub fn plume_heating_analysis(
         lcl_heights,
         el_heights,
         max_heights,
-        fire_efficiencies,
-        plume_growth_efficiencies,
     })
 }
 
