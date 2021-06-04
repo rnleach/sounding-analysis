@@ -333,25 +333,24 @@ pub fn plume_heating_analysis(
     let mut el_heights: Vec<Optioned<Meters>> = vec![];
     let mut max_heights: Vec<Optioned<Meters>> = vec![];
 
-    anal_iter
-        .for_each(|(dt, anal)| {
-            dts.push(dt);
-            max_int_buoyancies.push(anal.max_int_buoyancy);
+    anal_iter.for_each(|(dt, anal)| {
+        dts.push(dt);
+        max_int_buoyancies.push(anal.max_int_buoyancy);
 
-            let a_wet_ratio = anal.max_dry_int_buoyancy.and_then(|dry| {
-                anal.max_int_buoyancy.map_t(|total| {
-                    if total > JpKg(0.0) {
-                        (total - dry) / total
-                    } else {
-                        0.0
-                    }
-                })
-            });
-            wet_ratio.push(a_wet_ratio);
-            lcl_heights.push(anal.lcl_height);
-            el_heights.push(anal.el_height);
-            max_heights.push(anal.max_height);
+        let a_wet_ratio = anal.max_dry_int_buoyancy.and_then(|dry| {
+            anal.max_int_buoyancy.map_t(|total| {
+                if total > JpKg(0.0) {
+                    (total - dry) / total
+                } else {
+                    0.0
+                }
+            })
         });
+        wet_ratio.push(a_wet_ratio);
+        lcl_heights.push(anal.lcl_height);
+        el_heights.push(anal.el_height);
+        max_heights.push(anal.max_height);
+    });
 
     Ok(PlumeHeatingAnalysis {
         starting_parcel,
