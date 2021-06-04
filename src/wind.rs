@@ -6,7 +6,6 @@ use crate::{
 };
 use itertools::{izip, Itertools};
 use metfor::{IntHelicityM2pS2, Knots, Meters, MetersPSec, Quantity, WindSpdDir, WindUV};
-use optional::some;
 use std::iter::once;
 
 /// Calculate the mean wind in a layer.
@@ -23,19 +22,22 @@ pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
     let bottom_wind = layer.bottom.wind;
     let top_wind = layer.top.wind;
 
-    let (mut iu, mut iv, dz) =
-        // Start at the bottom of the layer
-        once((&some(min_hgt), &bottom_wind))
-        // Add in any intermediate layers
-        .chain(izip!(height, wind))
-        // Finish with the top layer
-        .chain(once((&some(max_hgt), &top_wind)))
-        // Filter out missing values
-        .filter_map(|(hgt, wind)| hgt.into_option().and_then(|h| wind.map(|w| (h, w))))
+    let intermediate_layers = izip!(height, wind)
+        .filter_map(|(hgt, wind)| hgt.into_option().map(|h| (h, wind)))
         // Skip values below the layer
         .skip_while(|&(hgt, _)| hgt < min_hgt)
         // Only take values below the top of the layer
-        .take_while(|&(hgt, _)| hgt <= max_hgt)
+        .take_while(|&(hgt, _)| hgt < max_hgt);
+
+    let (mut iu, mut iv, dz) =
+        // Start at the bottom of the layer
+        once((min_hgt, &bottom_wind))
+        // Add in any intermediate layers
+        .chain(intermediate_layers)
+        // Finish with the top layer
+        .chain(once((max_hgt, &top_wind)))
+        // Filter out missing values
+        .filter_map(|(hgt, wind)| wind.map(|w| (hgt, w)))
         // Get the wind u-v components in m/s
         .map(|(hgt, wind)| {
             let WindUV { u, v } = WindUV::<MetersPSec>::from(wind);
