@@ -22,7 +22,7 @@ strum = "0.20.0"
 strum_macros = "0.20.0"
 
 [dependencies.metfor]
-version = "^0.8.2"
+version = "^0.9.0"
 features = ["use_optional"]
 
 [dev-dependencies]

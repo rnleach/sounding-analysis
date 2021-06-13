@@ -44,7 +44,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAscentAnalysi
         .dew_point
         .ok_or(AnalysisError::InvalidInput)
         .and_then(|dp| {
-            Ok(metfor::virtual_temperature(
+            metfor::virtual_temperature(
                 parcel_start_data
                     .temperature
                     .ok_or(AnalysisError::InterpolationError)?,
@@ -52,7 +52,7 @@ pub fn lift_parcel(parcel: Parcel, snd: &Sounding) -> Result<ParcelAscentAnalysi
                 p0,
             )
             .map(Celsius::from)
-            .ok_or(AnalysisError::MetForError)?)
+            .ok_or(AnalysisError::MetForError)
         })?;
 
     pressure.push(p0);

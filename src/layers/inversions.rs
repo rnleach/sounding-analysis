@@ -60,7 +60,7 @@ pub fn inversions(snd: &Sounding, top_p: HectoPascal) -> Result<Layers> {
             },
         )
         // Remove iterations that did not capture an inverison
-        .filter_map(|opt| opt)
+        .flatten()
         // Map indexes into layers
         .map(|(i0, i1)| {
             snd.data_row(i0)

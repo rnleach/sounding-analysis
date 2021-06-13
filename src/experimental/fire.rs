@@ -167,7 +167,7 @@ fn plumes_heating_iter(
             },
         )
         // Filter out "bad" layers.
-        .filter_map(|opt| opt);
+        .flatten();
 
     Ok((starting_parcel, anal_iter))
 }

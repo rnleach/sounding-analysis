@@ -142,7 +142,7 @@ fn temperature_layer(
             }
         })
         // Filter out and unwrap steps that didn't yield a complete layer
-        .filter_map(|opt| opt)
+        .flatten()
         // Interpolate the sounding and create a layer.
         .map(|(bottom_p, top_p)| {
             linear_interpolate_sounding(snd, bottom_p).and_then(|bottom| {
@@ -230,7 +230,7 @@ fn warm_layer_aloft(snd: &Sounding, t_profile: &[Optioned<Celsius>]) -> Result<L
             },
         )
         // Filter out and unwrap steps that didn't yield a complete layer
-        .filter_map(|opt| opt)
+        .flatten()
         // Interpolate the sounding and create a layer.
         .map(|(bottom_p, top_p)| {
             linear_interpolate_sounding(snd, bottom_p).and_then(|bottom| {
@@ -386,7 +386,7 @@ pub fn melting_freezing_energy_area(snd: &Sounding, lyr: &Layer) -> Result<JpKg>
 
     let mean_temp = CelsiusDiff(sum_kelvin_dz / sum_dz.unpack() / 2.0);
 
-    let energy = metfor::cp * mean_temp * f64::ln(theta_top / theta_bottom);
+    let energy = metfor::cpd * mean_temp * f64::ln(theta_top / theta_bottom);
 
     Ok(energy)
 }
