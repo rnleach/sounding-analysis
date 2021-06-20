@@ -207,10 +207,18 @@ fn entrained_mixed_layer(
         .elevation()
         .ok_or(AnalysisError::NotEnoughData)?;
 
-    let ps = snd.pressure_profile();
-    let zs = snd.height_profile();
-    let ts = snd.temperature_profile();
-    let dps = snd.dew_point_profile();
+    let mut ps = snd.pressure_profile();
+    let mut zs = snd.height_profile();
+    let mut ts = snd.temperature_profile();
+    let mut dps = snd.dew_point_profile();
+
+    // Check if the first two levels are the same level, and skip one if they are.
+    if zs.len() >= 2 && zs[0] == zs[1] {
+        ps = &ps[1..];
+        zs = &zs[1..];
+        ts = &ts[1..];
+        dps = &dps[1..];
+    }
 
     let bottom_p = ps
         .iter()
@@ -240,6 +248,8 @@ fn entrained_mixed_layer(
                 let (sum_theta, sum_q): (&mut f64, &mut f64) = (&mut state.0, &mut state.1);
 
                 let dh = (h1 - h0).unpack(); // meters
+                debug_assert!(dh > 0.0);
+
                 *sum_theta += (theta0.unpack() * h0.unpack() + theta1.unpack() * h1.unpack()) * dh;
                 *sum_q += (q0 * h0.unpack() + q1 * h1.unpack()) * dh;
 
