@@ -477,25 +477,30 @@ fn min_temperature_diff_to_max_cloud_top_temperature(
 
     let pp = snd.pressure_profile();
     let tp = snd.temperature_profile();
+    let dpp = snd.dew_point_profile();
 
-    let min_diff: CelsiusDiff = izip!(pp, tp)
+    let min_diff: CelsiusDiff = izip!(pp, tp, dpp)
         // Skip levels with missing data.
-        .filter(|(p, t)| p.is_some() && t.is_some())
+        .filter(|(p, t, dp)| p.is_some() && t.is_some() && dp.is_some())
         //Unpack optioned values.
-        .map(|(p, t)| (p.unpack(), t.unpack()))
+        .map(|(p, t, dp)| (p.unpack(), t.unpack(), dp.unpack()))
         // Skip below the top of the mixed layer.
-        .skip_while(|(p, _t)| *p > starting_pressure)
+        .skip_while(|(p, _t, _dp)| *p > starting_pressure)
         // Get the parcel temperature
-        .filter_map(|(p, t)| {
+        .filter_map(|(p, t, dp)| {
             metfor::temperature_from_equiv_pot_temp_saturated_and_pressure(p, starting_theta_e)
-                .map(|pcl_t| (t, pcl_t))
+                .map(|pcl_t| (p, t, dp, pcl_t))
         })
+        // Get the virtual temperature of the environment
+        .filter_map(|(p, t, dp, pcl_t)| metfor::virtual_temperature(t, dp, p).map(|vt| (p, vt, pcl_t)))
+        // Get the virtual temperature of the parcel
+        .filter_map(|(p, vt, pcl_t)| metfor::virtual_temperature(pcl_t, pcl_t, p).map(|pcl_vt| (vt, pcl_vt)))
         // Ensure we get a least 2 levels
         .enumerate()
-        .take_while(|(i, (_t, pcl_t))| *i < 2 || *pcl_t >= MAX_PLUME_TOP_T)
+        .take_while(|(i, (_t_vt, pcl_vt))| *i < 2 || *pcl_vt >= MAX_PLUME_TOP_T)
         // Find the minimum difference
-        .fold(CelsiusDiff(500.0), |min_diff, (_i, (t, pcl_t))| {
-            (pcl_t - t).min(min_diff)
+        .fold(CelsiusDiff(500.0), |min_diff, (_i, (vt, pcl_vt))| {
+            CelsiusDiff::from(pcl_vt - vt).min(min_diff)
         });
 
     if min_diff == CelsiusDiff(500.0) {
