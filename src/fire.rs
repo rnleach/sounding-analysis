@@ -226,7 +226,7 @@ fn entrained_mixed_layer(
         .next()
         .ok_or(AnalysisError::NotEnoughData)?;
 
-    let max_p = bottom_p + HectoPascal(50.0);
+    let max_p = bottom_p - HectoPascal(50.0);
 
     match itertools::izip!(ps, zs, ts, dps)
         // Filter out levels with missing data
@@ -440,33 +440,6 @@ fn potential_t_and_specific_humidity_to_pressure_and_temperature(
     Ok((p, t))
 }
 
-/*
-/// This implements equations 14-17 from Tory et al, 2018.
-fn potential_t_and_specific_humidity_to_pressure_and_temperature(
-    theta: Kelvin,
-    specific_humidity: f64,
-) -> (HectoPascal, Celsius) {
-    let theta_pl = Kelvin::from(theta).unpack();
-    let t_pl = theta_pl;
-    let p0 = HectoPascal(1000.0).unpack();
-    let ps = p0;
-    let mw_pl = metfor::mixing_ratio_from_specific_humidity(specific_humidity);
-
-    let e_pl = ps / ((1.0 - metfor::epsilon) + metfor::epsilon / specific_humidity);
-    let t_sp = 2840.0 / (3.5 * t_pl.ln() - e_pl.ln() - 4.805) + 55.0;
-
-    let k = metfor::cpd / metfor::Rd * (1.0 + mw_pl * 1870.0 / 1005.7)
-        / (1.0 + mw_pl / metfor::epsilon);
-
-    let p_sp = p0 * (t_sp / theta_pl).powf(k);
-
-    let t_sp = Celsius::from(Kelvin(t_sp));
-    let p_sp = HectoPascal(p_sp);
-
-    (p_sp, t_sp)
-}
-*/
-
 /// Get the minimum difference between this theta-e and all those up to -20C.
 fn min_temperature_diff_to_max_cloud_top_temperature(
     snd: &Sounding,
@@ -491,15 +464,17 @@ fn min_temperature_diff_to_max_cloud_top_temperature(
             metfor::temperature_from_equiv_pot_temp_saturated_and_pressure(p, starting_theta_e)
                 .map(|pcl_t| (p, t, dp, pcl_t))
         })
+        // Ensure we get a least 2 levels and only go up to MAX_PLUME_TOP_T
+        .enumerate()
+        .take_while(|(i, (_p, _t, _dp,  pcl_t))| *i < 2 || *pcl_t >= MAX_PLUME_TOP_T)
+        // Unpack the enumerate
+        .map(|(_i, row)| row)
         // Get the virtual temperature of the environment
         .filter_map(|(p, t, dp, pcl_t)| metfor::virtual_temperature(t, dp, p).map(|vt| (p, vt, pcl_t)))
         // Get the virtual temperature of the parcel
         .filter_map(|(p, vt, pcl_t)| metfor::virtual_temperature(pcl_t, pcl_t, p).map(|pcl_vt| (vt, pcl_vt)))
-        // Ensure we get a least 2 levels
-        .enumerate()
-        .take_while(|(i, (_t_vt, pcl_vt))| *i < 2 || *pcl_vt >= MAX_PLUME_TOP_T)
         // Find the minimum difference
-        .fold(CelsiusDiff(500.0), |min_diff, (_i, (vt, pcl_vt))| {
+        .fold(CelsiusDiff(500.0), |min_diff, (vt, pcl_vt)| {
             CelsiusDiff::from(pcl_vt - vt).min(min_diff)
         });
 
