@@ -36,7 +36,7 @@ fn main() {
 
     // Create a valid time. This uses a `chrono::NaiveDateTime`, and you should always assume
     // that valid times are in UTC.
-    let vt = chrono::NaiveDate::from_ymd(2018,3,8).and_hms(12,0,0);
+    let vt = chrono::NaiveDate::from_ymd_opt(2018,3,8).unwrap().and_hms_opt(12,0,0).unwrap();
 
     // Use the builder pattern to construct a sounding.
     let snd = Sounding::new()

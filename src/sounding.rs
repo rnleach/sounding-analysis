@@ -767,7 +767,7 @@ impl Sounding {
     /// use sounding_analysis::Sounding;
     /// use chrono::NaiveDate;
     ///
-    /// let vtime = NaiveDate::from_ymd(2019, 1, 1).and_hms(12, 0, 0);
+    /// let vtime = NaiveDate::from_ymd_opt(2019, 1, 1).unwrap().and_hms_opt(12, 0, 0).unwrap();
     /// let _snd = Sounding::new().with_valid_time(vtime);
     /// let _snd = Sounding::new().with_valid_time(Some(vtime));
     /// ```
