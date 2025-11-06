@@ -63,7 +63,7 @@ impl Parcel {
 ///
 /// Calculated by averaging potential temperature and mixing ratio in the lowest 100 hPa of the
 /// sounding and calculating a temperature and dew point at the lowest pressure level using those
-/// averaged values.
+/// averaged values. This is a pressure weighted average.
 pub fn mixed_layer_parcel(snd: &Sounding) -> Result<Parcel> {
     let press = snd.pressure_profile();
     let t = snd.temperature_profile();

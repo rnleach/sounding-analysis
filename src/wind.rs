@@ -10,71 +10,69 @@ use std::iter::once;
 
 /// Calculate the mean wind in a layer.
 ///
-/// This is NOT the pressure weighted mean.
+/// This IS the pressure weighted mean.
 ///
 pub fn mean_wind(layer: &Layer, snd: &Sounding) -> Result<WindUV<MetersPSec>> {
-    let height = snd.height_profile();
+    let pressure = snd.pressure_profile();
     let wind = snd.wind_profile();
 
-    let max_hgt = layer.top.height.ok_or(AnalysisError::MissingValue)?;
-    let min_hgt = layer.bottom.height.ok_or(AnalysisError::MissingValue)?;
-
-    let bottom_wind = layer.bottom.wind;
+    let top_pres = layer.top.pressure.ok_or(AnalysisError::MissingValue)?;
+    let bottom_pres = layer.bottom.pressure.ok_or(AnalysisError::MissingValue)?;
     let top_wind = layer.top.wind;
+    let bottom_wind = layer.bottom.wind;
 
-    let intermediate_layers = izip!(height, wind)
-        .filter_map(|(hgt, wind)| hgt.into_option().map(|h| (h, wind)))
+    let intermediate_layers = izip!(pressure, wind)
+        .filter_map(|(pres, wind)| pres.into_option().map(|p| (p, wind)))
         // Skip values below the layer
-        .skip_while(|&(hgt, _)| hgt < min_hgt)
+        .skip_while(|&(p, _)| p > bottom_pres)
         // Only take values below the top of the layer
-        .take_while(|&(hgt, _)| hgt < max_hgt);
+        .take_while(|&(p, _)| p > top_pres);
 
-    let (mut iu, mut iv, dz) =
+    let (sum_u, sum_v, sum_dp) =
         // Start at the bottom of the layer
-        once((min_hgt, &bottom_wind))
+        once((bottom_pres, &bottom_wind))
         // Add in any intermediate layers
         .chain(intermediate_layers)
         // Finish with the top layer
-        .chain(once((max_hgt, &top_wind)))
+        .chain(once((top_pres, &top_wind)))
         // Filter out missing values
-        .filter_map(|(hgt, wind)| wind.map(|w| (hgt, w)))
+        .filter_map(|(pres, wind)| wind.map(|w| (pres, w)))
         // Get the wind u-v components in m/s
-        .map(|(hgt, wind)| {
+        .map(|(pres, wind)| {
             let WindUV { u, v } = WindUV::<MetersPSec>::from(wind);
-            (hgt, u, v)
+            (pres, u, v)
         })
         // Make windows to see two points at a time for trapezoid rule integration
         .tuple_windows::<(_, _)>()
         // Integration with the trapezoid rule to find the mean value
         .fold(
             (
-                MetersPSec(0.0), // integrated u component so far
-                MetersPSec(0.0), // integrated v component so far
-                Meters(0.0),     // the total distance integrated so far
+                0.0, // summed u component so far
+                0.0, // summed v component so far
+                0.0, // the total sum of the pressure weights
             ),
-            |acc, ((h0, u0, v0), (h1, u1, v1))| {
-                let (mut iu, mut iv, mut acc_dz) = acc;
+            |acc, ((p0, u0, v0), (p1, u1, v1))| {
+                let (mut sum_u, mut sum_v, mut acc_dp) = acc;
 
-                let dz = h1 - h0;
+                let dp = (p0 - p1).unpack();
 
-                iu += (u0 + u1) * dz.unpack();
-                iv += (v0 + v1) * dz.unpack();
-                acc_dz += dz;
+                sum_u += 0.5 * (u0.unpack() + u1.unpack()) * dp;
+                sum_v += 0.5 * (v0.unpack() + v1.unpack()) * dp;
+                acc_dp += dp;
 
-                (iu, iv, acc_dz)
+                (sum_u, sum_v, acc_dp)
             },
         );
 
-    if dz == Meters(0.0) {
+    if sum_dp == 0.0 {
         // nothing was done, 1 or zero points in the layer
         return Err(AnalysisError::NotEnoughData);
-    } else {
-        // we integrated, so divide by height and constant of 2 for trapezoid rule
-        iu /= 2.0 * dz.unpack();
-        iv /= 2.0 * dz.unpack();
     }
 
-    Ok(WindUV { u: iu, v: iv })
+    let avg_u = MetersPSec(sum_u / sum_dp);
+    let avg_v = MetersPSec(sum_v / sum_dp);
+
+    Ok(WindUV { u: avg_u, v: avg_v })
 }
 
 /// Storm relative helicity.
