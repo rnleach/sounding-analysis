@@ -109,15 +109,24 @@ pub struct PFTAnalysis {
     pub theta_ml: Kelvin,
     /// The height weighted average specific humidity in the mixed layer.
     pub q_ml: f64,
+    /// The mean wind speed in the mixed layer
+    pub u_ml: MetersPSec,
     /// The pressure at the top of the mixed layer.
     pub p_top_ml: HectoPascal,
     /// The pressure at the bottom of the pyroCb, where free convection starts.
     pub p_fc: HectoPascal,
+    /// The height above ground ob the bottom of the pyroCb, where free convection starts.
+    pub z_fc: Meters,
+    /// The extra potential temperature needed for a pyroCb to form.
+    pub d_theta: KelvinDiff,
     /// Coordinates along the SP-curve suitable for plotting on a skew-t log-p chart.
     pub sp_curve: Vec<(HectoPascal, Celsius)>,
     /// The minimum equivalent potential temperature of the plume element required to initiate a
     /// pyrocumulonimbus cloud.
     pub theta_e_fc: Kelvin,
+    /// Coordinates dry parcel that intersects the SP-curve at the free convection level
+    /// suitable for plotting on a skew-t log-p chart.
+    pub theta_curve: Vec<(HectoPascal, Celsius)>,
 }
 
 /// Calculate the Pyrocumulonimbus Firepower Threshold (PFT).
@@ -142,7 +151,7 @@ pub struct PFTAnalysis {
 pub fn pft_analysis(snd: &Sounding, moisture_ratio: f64) -> Result<PFTAnalysis> {
     let (theta_ml, q_ml, _z_ml, p_sfc, p_top_ml) = entrained_mixed_layer(snd)?;
 
-    let (z_fc, p_fc, theta_fc, d_theta_fc, theta_e_fc, sp_curve) =
+    let (z_fc, p_fc, theta_fc, d_theta_fc, theta_e_fc, sp_curve, theta_curve) =
         free_convection_level(snd, moisture_ratio, theta_ml, q_ml)?;
 
     let u_ml: MetersPSec = entrained_layer_mean_wind_speed(z_fc, snd)?;
@@ -153,10 +162,14 @@ pub fn pft_analysis(snd: &Sounding, moisture_ratio: f64) -> Result<PFTAnalysis> 
         pft,
         theta_ml,
         q_ml,
+        u_ml,
         p_top_ml,
         p_fc,
+        z_fc,
+        d_theta: d_theta_fc,
         sp_curve,
         theta_e_fc,
+        theta_curve,
     })
 }
 
@@ -182,7 +195,7 @@ pub fn pft_analysis(snd: &Sounding, moisture_ratio: f64) -> Result<PFTAnalysis> 
 pub fn pft(snd: &Sounding, moisture_ratio: f64) -> Result<GigaWatts> {
     let (theta_ml, q_ml, _z_ml, p_sfc, _p_top_ml) = entrained_mixed_layer(snd)?;
 
-    let (z_fc, p_fc, theta_fc, d_theta_fc, _theta_e, _sp_curve) =
+    let (z_fc, p_fc, theta_fc, d_theta_fc, _theta_e, _sp_curve, _theta_curve) =
         free_convection_level(snd, moisture_ratio, theta_ml, q_ml)?;
 
     let u_ml: MetersPSec = entrained_layer_mean_wind_speed(z_fc, snd)?;
@@ -315,6 +328,7 @@ fn free_convection_level(
     KelvinDiff,
     Kelvin,
     Vec<(HectoPascal, Celsius)>,
+    Vec<(HectoPascal, Celsius)>,
 )> {
     const SP_BETA_MAX: f64 = 0.25;
     const DELTA_BETA: f64 = 0.001;
@@ -405,6 +419,14 @@ fn free_convection_level(
         .next()
         .ok_or(AnalysisError::NotEnoughData)?;
 
+    let mut theta_curve: Vec<(HectoPascal, Celsius)> = pressures
+        .iter()
+        .filter_map(|p| p.into_option().map(|p| (p, metfor::temperature_from_pot_temp(theta_sp, p))))
+        .take_while(|&(p, _)| p > p_lfc)
+        .map(|(p, t)| (p, Celsius::from(t)))
+        .collect();
+    theta_curve.push((p_lfc, t_lfc));
+
     Ok((
         height_asl_lfc - sfc_height,
         p_lfc,
@@ -412,6 +434,7 @@ fn free_convection_level(
         dtheta,
         theta_e_lfc,
         sp_curve,
+        theta_curve,
     ))
 }
 
@@ -487,7 +510,7 @@ fn min_temperature_diff_to_max_cloud_top_temperature(
 
 /// Find the maximum equivalent_potential_temperature above the mixed layer that interesects the
 /// sounding at or above the -20C level.
-const TEMPERATURE_BUFFER: CelsiusDiff = CelsiusDiff(0.5);
+const TEMPERATURE_BUFFER: CelsiusDiff = CelsiusDiff(1.0);
 fn is_free_convecting(
     snd: &Sounding,
     starting_pressure: HectoPascal,
