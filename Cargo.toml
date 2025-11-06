@@ -1,6 +1,6 @@
 [package]
 name = "sounding-analysis"
-version = "0.17.4"
+version = "0.17.5"
 edition = "2018"
 
 authors = ["Ryan <rnleach@users.noreply.github.com>"]
