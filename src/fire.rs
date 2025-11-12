@@ -211,8 +211,9 @@ pub fn pft(snd: &Sounding, moisture_ratio: f64) -> Result<GigaWatts> {
 /// # Returns
 ///
 /// A tuple with the linear-height-weighted average potential temperature, linear-height-weighted
-/// average specific humidity, height AGL of the top, and pressure of the top of the mixing layer.
-fn entrained_mixed_layer(
+/// average specific humidity, height AGL of the top, and pressure of the bottom and top of the
+/// mixing layer.
+pub(crate) fn entrained_mixed_layer(
     snd: &Sounding,
 ) -> Result<(Kelvin, f64, Meters, HectoPascal, HectoPascal)> {
     let elevation: Meters = snd
@@ -330,7 +331,7 @@ fn free_convection_level(
     Vec<(HectoPascal, Celsius)>,
     Vec<(HectoPascal, Celsius)>,
 )> {
-    const SP_BETA_MAX: f64 = 0.25;
+    const SP_BETA_MAX: f64 = 0.20;
     const DELTA_BETA: f64 = 0.001;
 
     let apply_beta = move |beta| {
@@ -421,7 +422,10 @@ fn free_convection_level(
 
     let mut theta_curve: Vec<(HectoPascal, Celsius)> = pressures
         .iter()
-        .filter_map(|p| p.into_option().map(|p| (p, metfor::temperature_from_pot_temp(theta_sp, p))))
+        .filter_map(|p| {
+            p.into_option()
+                .map(|p| (p, metfor::temperature_from_pot_temp(theta_sp, p)))
+        })
         .take_while(|&(p, _)| p > p_lfc)
         .map(|(p, t)| (p, Celsius::from(t)))
         .collect();
@@ -438,7 +442,7 @@ fn free_convection_level(
     ))
 }
 
-fn potential_t_and_specific_humidity_to_pressure_and_temperature(
+pub(crate) fn potential_t_and_specific_humidity_to_pressure_and_temperature(
     theta: Kelvin,
     specific_humidity: f64,
 ) -> Result<(HectoPascal, Celsius)> {
@@ -489,13 +493,17 @@ fn min_temperature_diff_to_max_cloud_top_temperature(
         })
         // Ensure we get a least 2 levels and only go up to MAX_PLUME_TOP_T
         .enumerate()
-        .take_while(|(i, (_p, _t, _dp,  pcl_t))| *i < 2 || *pcl_t >= MAX_PLUME_TOP_T)
+        .take_while(|(i, (_p, _t, _dp, pcl_t))| *i < 2 || *pcl_t >= MAX_PLUME_TOP_T)
         // Unpack the enumerate
         .map(|(_i, row)| row)
         // Get the virtual temperature of the environment
-        .filter_map(|(p, t, dp, pcl_t)| metfor::virtual_temperature(t, dp, p).map(|vt| (p, vt, pcl_t)))
+        .filter_map(|(p, t, dp, pcl_t)| {
+            metfor::virtual_temperature(t, dp, p).map(|vt| (p, vt, pcl_t))
+        })
         // Get the virtual temperature of the parcel
-        .filter_map(|(p, vt, pcl_t)| metfor::virtual_temperature(pcl_t, pcl_t, p).map(|pcl_vt| (vt, pcl_vt)))
+        .filter_map(|(p, vt, pcl_t)| {
+            metfor::virtual_temperature(pcl_t, pcl_t, p).map(|pcl_vt| (vt, pcl_vt))
+        })
         // Find the minimum difference
         .fold(CelsiusDiff(500.0), |min_diff, (vt, pcl_vt)| {
             CelsiusDiff::from(pcl_vt - vt).min(min_diff)
@@ -528,7 +536,7 @@ fn is_free_convecting(
 /// Find the mean wind in the entrainment layer.
 ///
 /// Remember, zfc is the level AGL.
-fn entrained_layer_mean_wind_speed(zfc: Meters, snd: &Sounding) -> Result<MetersPSec> {
+pub(crate) fn entrained_layer_mean_wind_speed(zfc: Meters, snd: &Sounding) -> Result<MetersPSec> {
     let layer = crate::layer_agl(snd, zfc)?;
 
     let mean_wind = crate::wind::mean_wind(&layer, snd)?;
