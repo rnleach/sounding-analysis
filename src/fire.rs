@@ -518,7 +518,7 @@ fn min_temperature_diff_to_max_cloud_top_temperature(
 
 /// Find the maximum equivalent_potential_temperature above the mixed layer that interesects the
 /// sounding at or above the -20C level.
-const TEMPERATURE_BUFFER: CelsiusDiff = CelsiusDiff(1.0);
+const TEMPERATURE_BUFFER: CelsiusDiff = CelsiusDiff(0.5);
 fn is_free_convecting(
     snd: &Sounding,
     starting_pressure: HectoPascal,
