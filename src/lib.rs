@@ -109,7 +109,7 @@ dew point or humidity are often missing (if not totally inaccurate).
 pub use crate::{
     error::{AnalysisError, Result},
     fire::{hot_dry_windy, pft, pft_analysis, PFTAnalysis},
-    indexes::{haines, haines_high, haines_low, haines_mid, precipitable_water},
+    indexes::precipitable_water,
     interpolation::{linear_interpolate, linear_interpolate_sounding},
     layers::{
         cold_surface_temperature_layer, dendritic_snow_zone, effective_inflow_layer,

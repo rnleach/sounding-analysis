@@ -17,7 +17,7 @@ criterion_main!(inexes_benches);
 criterion_group!(
     name = inexes_benches;
     config = build_tester();
-    targets = precipitable_water_bench, haines_mid_bench, hot_dry_windy_bench
+    targets = precipitable_water_bench, hot_dry_windy_bench
 );
 
 fn precipitable_water_bench(c: &mut Criterion) {
@@ -27,18 +27,6 @@ fn precipitable_water_bench(c: &mut Criterion) {
         b.iter(|| {
             for snd in &snds {
                 let _x = sounding_analysis::precipitable_water(&snd).expect("oops");
-            }
-        });
-    });
-}
-
-fn haines_mid_bench(c: &mut Criterion) {
-    let snds = utils::load_all_test_files();
-
-    c.bench_function("haines_mid", |b| {
-        b.iter(|| {
-            for snd in &snds {
-                let _x = sounding_analysis::haines_mid(&snd).expect("oops");
             }
         });
     });

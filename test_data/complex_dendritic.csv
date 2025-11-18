@@ -192,9 +192,5 @@ max wet bulb pressure,835
 max temperature aloft,4.6
 max temperature pressure,835
 warm layer max t,5
-haines_low,4
-haines_mid,5
-haines_high,3
-haines,4
 hdw,1
 precipitable_water,7

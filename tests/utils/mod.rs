@@ -43,10 +43,6 @@ macro_rules! check_file_complete {
                 "max temperature aloft",
                 "max temperature pressure",
                 "warm layer max t",
-                "haines_low",
-                "haines_mid",
-                "haines_high",
-                "haines",
                 "hdw",
                 "precipitable_water",
             ];
@@ -160,58 +156,6 @@ macro_rules! test_file {
                 use crate::utils::index_tests;
                 use crate::$test_mod_name::load_data;
                 use sounding_analysis;
-
-                #[test]
-                fn test_haines_low() {
-                    let (snd, _, fvals) = load_data();
-                    index_tests::test_index(
-                        &snd,
-                        &fvals,
-                        sounding_analysis::haines_low,
-                        "haines_low",
-                        0,
-                        0,
-                    );
-                }
-
-                #[test]
-                fn test_haines_mid() {
-                    let (snd, _, fvals) = load_data();
-                    index_tests::test_index(
-                        &snd,
-                        &fvals,
-                        sounding_analysis::haines_mid,
-                        "haines_mid",
-                        0,
-                        0,
-                    );
-                }
-
-                #[test]
-                fn test_haines_high() {
-                    let (snd, _, fvals) = load_data();
-                    index_tests::test_index(
-                        &snd,
-                        &fvals,
-                        sounding_analysis::haines_high,
-                        "haines_high",
-                        0,
-                        0,
-                    );
-                }
-
-                #[test]
-                fn test_haines() {
-                    let (snd, _, fvals) = load_data();
-                    index_tests::test_index(
-                        &snd,
-                        &fvals,
-                        sounding_analysis::haines,
-                        "haines",
-                        0,
-                        0,
-                    );
-                }
 
                 #[test]
                 fn test_hdw() {
