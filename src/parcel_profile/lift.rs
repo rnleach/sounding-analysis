@@ -421,7 +421,7 @@ fn cape_cin(
     let env_t = &profile.environment_t;
 
     let (cape, cin, hail_zone_cape) = izip!(pressure, height, parcel_t, env_t)
-        .take_while(|(&p, _h, _pt, _et)| p >= el)
+        .take_while(|&(&p, ref _h, ref _pt, ref _et)| p >= el)
         .fold(
             (
                 (0.0, 0.0, 0.0),
