@@ -880,8 +880,14 @@ impl Sounding {
     /// ```
     #[inline]
     pub fn top_down(&self) -> impl Iterator<Item = DataRow> + '_ {
+        let next_idx: isize = if self.pressure.len() > 0 {
+            (self.pressure.len() - 1) as isize
+        } else {
+            -1
+        };
+
         ProfileIterator {
-            next_idx: (self.pressure.len() - 1) as isize,
+            next_idx,
             direction: -1,
             src: self,
         }
