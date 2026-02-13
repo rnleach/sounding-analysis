@@ -119,13 +119,8 @@ impl StationInfo {
     /// ```rust
     /// use sounding_analysis::StationInfo;
     ///
-    /// assert_eq!(
-    ///     StationInfo::new().with_lat_lon((45.0, -116.0)).location().unwrap(), (45.0, -116.0));
-    /// assert_eq!(
-    ///     StationInfo::new().with_lat_lon(Some((45.0, -116.0)))
-    ///         .location()
-    ///         .unwrap(),
-    ///     (45.0, -116.0));
+    /// assert_eq!(StationInfo::new().with_lat_lon((45.0, -116.0)).location().unwrap(), (45.0, -116.0));
+    /// assert_eq!(StationInfo::new().with_lat_lon(Some((45.0, -116.0))).location().unwrap(), (45.0, -116.0));
     ///
     /// ```
     #[inline]
